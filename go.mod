@@ -5,6 +5,7 @@ go 1.27.1
 require (
 	github.com/caarlos0/env/v11 v11.4.1
 	github.com/lmittmann/tint v1.2.0
+	github.com/oklog/ulid/v2 v2.1.2
 )
 
 require (
