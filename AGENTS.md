@@ -14,7 +14,8 @@ Tools run via `go tool` (declared in `go.mod`). Migration targets require `DATAB
 make build                      # go build ./...
 make test                       # go test -race ./...
 make lint                       # go tool golangci-lint run ./...
-make generate                   # go tool sqlc generate
+make generate                   # sqlc, OpenAPI document, and web API client
+make generate-client            # OpenAPI document and web API client
 make migrate-up                 # goose up
 make migrate-down               # goose down
 make migrate-status             # goose status

@@ -8,6 +8,7 @@
     "build": "vp build && tsc --noEmit",
     "preview": "vp preview",
     "check": "vp check",
+    "generate:api": "orval && vp fmt src/api/generated",
     "test": "vp test",
     "test:run": "vp test run"
   },
@@ -17,6 +18,7 @@
     "@hugeicons/core-free-icons": "^4.3.2",
     "@hugeicons/react": "^1.1.10",
     "@tailwindcss/vite": "^4.3.3",
+    "@tanstack/react-query": "^5.102.8",
     "@tanstack/react-router": "^1.170.35",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.3.0",
@@ -35,6 +37,7 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
     "jsdom": "^30.0.1",
+    "orval": "^8.32.0",
     "typescript": "~6.0.2",
     "vite": "catalog:",
     "vite-plus": "catalog:"
