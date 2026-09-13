@@ -257,6 +257,23 @@ components:
         - name
         - quota_mb
       type: object
+    LibraryQuotaInput:
+      additionalProperties: false
+      properties:
+        id:
+          maxLength: 64
+          type: string
+        quota_mb:
+          description: Quota in megabytes. A null value uses the user default quota.
+          format: int64
+          minimum: 0
+          type:
+            - integer
+            - "null"
+      required:
+        - id
+        - quota_mb
+      type: object
     LocalConfig:
       additionalProperties: false
       properties:
@@ -572,6 +589,11 @@ components:
           type:
             - integer
             - "null"
+        libraries:
+          description: Library quota overrides to update atomically with the user quota.
+          items:
+            $ref: "#/components/schemas/LibraryQuotaInput"
+          type: array
       required:
         - default_quota_mb
       type: object
@@ -1241,7 +1263,7 @@ paths:
           description: Internal Server Error
       security:
         - session: []
-      summary: Set the default quota of a user
+      summary: Set user and library quotas
       tags:
         - Admin
   /api/v1/auth/account:

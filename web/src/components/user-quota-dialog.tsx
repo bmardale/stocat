@@ -2,11 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { z } from "zod";
 import type { AdminUser } from "@/api/generated/model";
-import {
-  getAdminUsersListQueryKey,
-  useAdminLibrariesQuotaSet,
-  useAdminUsersQuotaSet,
-} from "@/api/generated/admin/admin";
+import { getAdminUsersListQueryKey, useAdminUsersQuotaSet } from "@/api/generated/admin/admin";
 import { useAppForm } from "@/components/form";
 import { Button } from "@/components/ui/button";
 import {
@@ -77,7 +73,6 @@ function UserQuotaForm({ user, onSaved }: { user: AdminUser; onSaved: () => void
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
   const setUserQuota = useAdminUsersQuotaSet();
-  const setLibraryQuota = useAdminLibrariesQuotaSet();
   const form = useAppForm({
     defaultValues: formValues(user),
     validators: { onSubmit: quotaSchema },
@@ -87,14 +82,14 @@ function UserQuotaForm({ user, onSaved }: { user: AdminUser; onSaved: () => void
       try {
         await setUserQuota.mutateAsync({
           id: user.id,
-          data: { default_quota_mb: parseQuota(value.defaultQuota) },
+          data: {
+            default_quota_mb: parseQuota(value.defaultQuota),
+            libraries: user.libraries.map((library) => ({
+              id: library.id,
+              quota_mb: parseQuota(value.libraries[library.id] ?? ""),
+            })),
+          },
         });
-        for (const library of user.libraries) {
-          const next = parseQuota(value.libraries[library.id] ?? "");
-          if (next !== library.quota_mb) {
-            await setLibraryQuota.mutateAsync({ id: library.id, data: { quota_mb: next } });
-          }
-        }
         await queryClient.invalidateQueries({ queryKey: getAdminUsersListQueryKey() });
         onSaved();
       } catch (cause) {

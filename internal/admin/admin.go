@@ -15,14 +15,22 @@ import (
 )
 
 type Service struct {
+	pool    *pgxpool.Pool
 	queries *db.Queries
 	log     *slog.Logger
 }
+
+var errLibraryQuotaNotFound = errors.New("library quota target not found")
 
 type LibraryQuota struct {
 	ID      string `json:"id"`
 	Name    string `json:"name"`
 	QuotaMB *int64 `json:"quota_mb" doc:"Quota in megabytes. A null value uses the user default quota."`
+}
+
+type LibraryQuotaInput struct {
+	ID      string `json:"id" maxLength:"64"`
+	QuotaMB *int64 `json:"quota_mb" minimum:"0" doc:"Quota in megabytes. A null value uses the user default quota."`
 }
 
 type AdminUser struct {
@@ -37,7 +45,8 @@ type AdminUser struct {
 type updateUserQuotaInput struct {
 	ID   string `path:"id" maxLength:"64"`
 	Body struct {
-		DefaultQuotaMB *int64 `json:"default_quota_mb" minimum:"0" doc:"Default quota in megabytes. Send null for no limit."`
+		DefaultQuotaMB *int64              `json:"default_quota_mb" minimum:"0" doc:"Default quota in megabytes. Send null for no limit."`
+		Libraries      []LibraryQuotaInput `json:"libraries,omitempty" nullable:"false" doc:"Library quota overrides to update atomically with the user quota."`
 	}
 }
 
@@ -60,7 +69,7 @@ func New(pool *pgxpool.Pool, logger *slog.Logger) *Service {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Service{queries: db.New(pool), log: logger}
+	return &Service{pool: pool, queries: db.New(pool), log: logger}
 }
 
 // Register adds the routes to api. The caller must restrict api to administrators.
@@ -75,7 +84,7 @@ func (s *Service) Register(api huma.API) {
 	}, s.list)
 	huma.Register(group, huma.Operation{
 		OperationID: "admin-users-quota-set", Method: http.MethodPut, Path: "/{id}/quota",
-		Summary: "Set the default quota of a user", MaxBodyBytes: 4096,
+		Summary: "Set user and library quotas", MaxBodyBytes: 65536,
 		Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity},
 	}, s.setUserQuota)
 
@@ -120,11 +129,32 @@ func (s *Service) list(ctx context.Context, _ *struct{}) (*usersOutput, error) {
 }
 
 func (s *Service) setUserQuota(ctx context.Context, input *updateUserQuotaInput) (*userOutput, error) {
-	if _, err := s.queries.UpdateUserDefaultQuota(ctx, db.UpdateUserDefaultQuotaParams{
-		PublicID: input.ID, DefaultQuotaMb: quotaValue(input.Body.DefaultQuotaMB),
-	}); errors.Is(err, pgx.ErrNoRows) {
+	err := db.InTx(ctx, s.pool, func(queries *db.Queries) error {
+		user, err := queries.UpdateUserDefaultQuota(ctx, db.UpdateUserDefaultQuotaParams{
+			PublicID: input.ID, DefaultQuotaMb: quotaValue(input.Body.DefaultQuotaMB),
+		})
+		if err != nil {
+			return err
+		}
+		for _, library := range input.Body.Libraries {
+			if _, err := queries.UpdateLibraryQuotaForOwner(ctx, db.UpdateLibraryQuotaForOwnerParams{
+				PublicID: library.ID, OwnerID: user.ID, QuotaMb: quotaValue(library.QuotaMB),
+			}); err != nil {
+				if errors.Is(err, pgx.ErrNoRows) {
+					return errLibraryQuotaNotFound
+				}
+				return err
+			}
+		}
+		return nil
+	})
+	if errors.Is(err, errLibraryQuotaNotFound) {
+		return nil, huma.Error404NotFound("The library does not belong to the user.")
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, huma.Error404NotFound("The user does not exist.")
-	} else if err != nil {
+	}
+	if err != nil {
 		return nil, s.internalError(ctx, "set user quota", err)
 	}
 	return s.user(ctx, input.ID)

@@ -132,19 +132,22 @@ func TestAdminUserQuotas(t *testing.T) {
 
 	response = env.api.PutCtx(ctx, "/api/v1/admin/users/"+target.PublicID+"/quota", adminCookie, map[string]any{
 		"default_quota_mb": 10240,
+		"libraries":        []map[string]any{{"id": libraryID, "quota_mb": 1024}},
 	})
 	requireStatus(t, response, http.StatusOK)
-	if user := decode[AdminUser](t, response); user.DefaultQuotaMB == nil || *user.DefaultQuotaMB != 10240 {
+	if user := decode[AdminUser](t, response); user.DefaultQuotaMB == nil || *user.DefaultQuotaMB != 10240 ||
+		len(user.Libraries) != 1 || user.Libraries[0].QuotaMB == nil || *user.Libraries[0].QuotaMB != 1024 {
 		t.Fatalf("updated user = %+v", user)
 	}
 
-	response = env.api.PutCtx(ctx, "/api/v1/admin/libraries/"+libraryID+"/quota", adminCookie, map[string]any{
-		"quota_mb": 1024,
+	response = env.api.PutCtx(ctx, "/api/v1/admin/users/"+target.PublicID+"/quota", adminCookie, map[string]any{
+		"default_quota_mb": 20480,
+		"libraries": []map[string]any{
+			{"id": libraryID, "quota_mb": 2048},
+			{"id": "missing", "quota_mb": 1},
+		},
 	})
-	requireStatus(t, response, http.StatusOK)
-	if library := decode[LibraryQuota](t, response); library.QuotaMB == nil || *library.QuotaMB != 1024 {
-		t.Fatalf("updated library = %+v", library)
-	}
+	requireStatus(t, response, http.StatusNotFound)
 
 	response = env.api.GetCtx(ctx, "/api/v1/admin/users", adminCookie)
 	requireStatus(t, response, http.StatusOK)

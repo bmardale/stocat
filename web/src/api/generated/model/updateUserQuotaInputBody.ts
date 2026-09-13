@@ -4,6 +4,7 @@
  * stocat
  * OpenAPI spec version: 0.0.1
  */
+import type { LibraryQuotaInput } from "./libraryQuotaInput.ts";
 
 export interface UpdateUserQuotaInputBody {
   /**
@@ -12,4 +13,6 @@ export interface UpdateUserQuotaInputBody {
    * @nullable
    */
   default_quota_mb: number | null;
+  /** Library quota overrides to update atomically with the user quota. */
+  libraries?: LibraryQuotaInput[];
 }
