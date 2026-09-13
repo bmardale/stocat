@@ -1,7 +1,14 @@
 import { createFormHook, createFormHookContexts } from "@tanstack/react-form";
 import { useId } from "react";
-import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldError,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 
 const { fieldContext, formContext, useFieldContext } = createFormHookContexts();
 
@@ -36,9 +43,30 @@ function TextField({ label, description, ...props }: TextFieldProps) {
   );
 }
 
+function SwitchField({ label, description }: { label: string; description?: string }) {
+  const field = useFieldContext<boolean>();
+  const id = useId();
+
+  return (
+    <Field orientation="horizontal">
+      <FieldContent>
+        <FieldLabel htmlFor={id}>{label}</FieldLabel>
+        {description && <FieldDescription>{description}</FieldDescription>}
+      </FieldContent>
+      <Switch
+        id={id}
+        name={field.name}
+        checked={field.state.value}
+        onCheckedChange={(checked) => field.handleChange(checked)}
+        onBlur={field.handleBlur}
+      />
+    </Field>
+  );
+}
+
 export const { useAppForm } = createFormHook({
   fieldContext,
   formContext,
-  fieldComponents: { TextField },
+  fieldComponents: { TextField, SwitchField },
   formComponents: {},
 });

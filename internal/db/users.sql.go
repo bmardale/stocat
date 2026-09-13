@@ -143,6 +143,33 @@ func (q *Queries) GetUserByPublicID(ctx context.Context, publicID string) (User,
 	return i, err
 }
 
+const setUserAdminByEmail = `-- name: SetUserAdminByEmail :one
+UPDATE users SET is_admin = $1
+WHERE lower(email) = lower($2::text)
+RETURNING id, public_id, name, email, password_hash, created_at, updated_at, is_admin
+`
+
+type SetUserAdminByEmailParams struct {
+	IsAdmin bool
+	Email   string
+}
+
+func (q *Queries) SetUserAdminByEmail(ctx context.Context, arg SetUserAdminByEmailParams) (User, error) {
+	row := q.db.QueryRow(ctx, setUserAdminByEmail, arg.IsAdmin, arg.Email)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.PublicID,
+		&i.Name,
+		&i.Email,
+		&i.PasswordHash,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.IsAdmin,
+	)
+	return i, err
+}
+
 const updateUserAccount = `-- name: UpdateUserAccount :one
 UPDATE users
 SET name = $2, email = $3

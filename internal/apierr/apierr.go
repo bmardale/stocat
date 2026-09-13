@@ -56,6 +56,23 @@ func addRequestID(ctx huma.Context, _ string, value any) (any, error) {
 	return value, nil
 }
 
+// RedactValues removes request values from error details. Use it on
+// operations that accept secrets, because a validation error can contain
+// the complete request body.
+func RedactValues(_ huma.Context, _ string, value any) (any, error) {
+	var details []*huma.ErrorDetail
+	switch problem := value.(type) {
+	case *Problem:
+		details = problem.Errors
+	case *huma.ErrorModel:
+		details = problem.Errors
+	}
+	for _, detail := range details {
+		detail.Value = nil
+	}
+	return value, nil
+}
+
 // Write sends a problem body for a request that reaches no operation.
 func Write(w http.ResponseWriter, r *http.Request, status int, detail string) {
 	problem := New(status, detail)

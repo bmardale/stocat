@@ -8,7 +8,7 @@ Go service. Database access goes through `sqlc`-generated code. Schema changes g
 
 ## Commands
 
-Tools run via `go tool` (declared in `go.mod`). Migration targets require `DATABASE_URL`.
+Tools run via `go tool` (declared in `go.mod`). Migration and admin targets require `DATABASE_URL`. The server also requires `APP_KEY`.
 
 ```sh
 make build                      # go build ./...
@@ -20,6 +20,9 @@ make migrate-up                 # goose up
 make migrate-down               # goose down
 make migrate-status             # goose status
 make migrate-create name=<name> # new SQL migration
+make key-generate               # print a new APP_KEY
+make admin-grant email=<email>  # make a user an administrator
+make admin-revoke email=<email> # remove the administrator role
 ```
 
 Run `make lint` and `make test` before you report a task as done. Do not disable a linter to make it pass. Fix the code.

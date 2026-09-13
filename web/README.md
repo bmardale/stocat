@@ -36,6 +36,8 @@ A folder name that starts with `_` adds a layout. It does not change the URL.
 - `_auth` contains the sign-in and registration pages. It sends signed-in users to `/`.
 - `_app` contains the pages that require a session. It adds the site header and sends guests to sign in.
 - `_app/settings/sessions.tsx` lists the sessions of the user. It revokes one session or all other sessions.
+- `_app/admin` contains the pages for administrators. It sends other users to `/`.
+- `_app/admin/storage.tsx` lists the storage backends. Dialogs add, edit, and delete backends.
 
 `parseUserAgent()` in `src/lib/user-agent.ts` uses Bowser to get the browser, operating system, and device type.
 

@@ -58,12 +58,12 @@ func testMigrationRollback(t *testing.T, pool *pgxpool.Pool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := provider.Down(t.Context())
+	results, err := provider.DownTo(t.Context(), 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Source.Version != 2 {
-		t.Fatalf("rolled back migration %d, want 2", result.Source.Version)
+	if len(results) == 0 || results[len(results)-1].Source.Version != 2 {
+		t.Fatalf("rolled back %d migrations, want migrations down to 2", len(results))
 	}
 	if _, err := db.New(pool).GetUserByEmail(t.Context(), "user@example.com"); err != nil {
 		t.Fatalf("rollback damaged the users table: %v", err)

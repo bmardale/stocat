@@ -120,12 +120,7 @@ func (s *Service) Protected(api huma.API, prefixes ...string) *huma.Group {
 		ratelimit.Document(api, op)
 		op.Security = []map[string][]string{{securityScheme: {}}}
 		for _, status := range []int{http.StatusUnauthorized, http.StatusInternalServerError} {
-			op.Responses[strconv.Itoa(status)] = &huma.Response{
-				Description: http.StatusText(status),
-				Content: map[string]*huma.MediaType{apierr.ContentType: {
-					Schema: api.OpenAPI().Components.Schemas.Schema(reflect.TypeFor[apierr.Problem](), true, "Problem"),
-				}},
-			}
+			op.Responses[strconv.Itoa(status)] = problemResponse(api, status)
 		}
 	})
 	group.UseMiddleware(func(ctx huma.Context, next func(huma.Context)) {
@@ -161,6 +156,31 @@ func (s *Service) Protected(api huma.API, prefixes ...string) *huma.Group {
 		next(huma.WithValue(ctx, sessionKey{}, hash))
 	})
 	return group
+}
+
+// Admin returns a protected group that rejects users who are not administrators with status 403.
+func (s *Service) Admin(api huma.API, prefixes ...string) *huma.Group {
+	group := huma.NewGroup(s.Protected(api), prefixes...)
+	group.UseSimpleModifier(func(op *huma.Operation) {
+		op.Responses[strconv.Itoa(http.StatusForbidden)] = problemResponse(api, http.StatusForbidden)
+	})
+	group.UseMiddleware(func(ctx huma.Context, next func(huma.Context)) {
+		if user, _ := UserFromContext(ctx.Context()); !user.IsAdmin {
+			s.writeAuthError(api, ctx, http.StatusForbidden, "Only administrators can do this.")
+			return
+		}
+		next(ctx)
+	})
+	return group
+}
+
+func problemResponse(api huma.API, status int) *huma.Response {
+	return &huma.Response{
+		Description: http.StatusText(status),
+		Content: map[string]*huma.MediaType{apierr.ContentType: {
+			Schema: api.OpenAPI().Components.Schemas.Schema(reflect.TypeFor[apierr.Problem](), true, "Problem"),
+		}},
+	}
 }
 
 func (s *Service) writeAuthError(api huma.API, ctx huma.Context, status int, message string) {
