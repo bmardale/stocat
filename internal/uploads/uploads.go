@@ -358,7 +358,7 @@ func (s *Service) cancel(ctx context.Context, input *uploadInput) (*noContentOut
 		return nil, s.databaseError(ctx, "cancel upload", err)
 	}
 	_ = s.staging.Remove(row.StagingKey)
-	return &noContentOutput{}, nil
+	return &noContentOutput{Status: http.StatusNoContent}, nil
 }
 
 type encryptedMetadata struct {
