@@ -13,6 +13,7 @@ import (
 	"github.com/bmardale/stocat/internal/admin"
 	"github.com/bmardale/stocat/internal/apierr"
 	"github.com/bmardale/stocat/internal/auth"
+	"github.com/bmardale/stocat/internal/files"
 	"github.com/bmardale/stocat/internal/libraries"
 	"github.com/bmardale/stocat/internal/platform/crypt"
 	"github.com/bmardale/stocat/internal/platform/o11y"
@@ -94,6 +95,7 @@ func New(cfg Config, pool *pgxpool.Pool) (*Server, error) {
 	admin.New(pool, log).Register(adminGroup)
 	protected := authService.Protected(api, "/api/v1")
 	libraries.New(pool, log).Register(protected)
+	files.New(pool, storageService, log).Register(protected)
 	uploadService, err := uploads.New(pool, nil, uploads.Config{
 		StagingDir: cfg.UploadStagingDir, MaxUploadSize: cfg.MaxUploadSize,
 		StagingCapacity: cfg.UploadStagingCapacity, SessionLifetime: cfg.UploadSessionLifetime, Logger: log,
