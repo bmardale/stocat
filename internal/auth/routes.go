@@ -51,7 +51,7 @@ func (s *Service) Register(api huma.API) {
 		ratelimit.Document(api, op)
 	})
 	group.UseMiddleware(captureMetadata)
-	group.UseTransformer(redactErrorValues)
+	group.UseTransformer(apierr.RedactValues)
 	huma.Register(group, huma.Operation{
 		OperationID: "auth-register", Method: http.MethodPost, Path: "/register",
 		Middlewares: huma.Middlewares{s.limitCredentials(api, s.authIP, s.registerIP)},
@@ -91,21 +91,6 @@ func (s *Service) Register(api huma.API) {
 		Summary: "Revoke a session", DefaultStatus: http.StatusNoContent,
 		Errors: []int{http.StatusNotFound},
 	}, s.revokeSession)
-}
-
-func redactErrorValues(_ huma.Context, _ string, value any) (any, error) {
-	var details []*huma.ErrorDetail
-	switch problem := value.(type) {
-	case *apierr.Problem:
-		details = problem.Errors
-	case *huma.ErrorModel:
-		details = problem.Errors
-	}
-	// Missing-field errors can contain the complete request body, including its password.
-	for _, detail := range details {
-		detail.Value = nil
-	}
-	return value, nil
 }
 
 func (s *Service) register(ctx context.Context, input *registerInput) (*sessionOutput, error) {

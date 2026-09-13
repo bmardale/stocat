@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/bmardale/stocat/internal/platform/crypt"
 	"github.com/caarlos0/env/v11"
 )
 
@@ -20,6 +21,11 @@ type Config struct {
 	Addr string `env:"ADDR" envDefault:":8080"`
 
 	SessionCookieSecure bool `env:"SESSION_COOKIE_SECURE" envDefault:"true"`
+
+	// AppKey encrypts secrets in the database. Generate one with "make key-generate".
+	AppKey crypt.Key `env:"APP_KEY,required,notEmpty"`
+	// AppPreviousKeys decrypt data that an earlier APP_KEY encrypted.
+	AppPreviousKeys []crypt.Key `env:"APP_PREVIOUS_KEYS" envSeparator:","`
 
 	LogLevel        slog.Level    `env:"LOG_LEVEL" envDefault:"info"`
 	ShutdownTimeout time.Duration `env:"SHUTDOWN_TIMEOUT" envDefault:"10s"`

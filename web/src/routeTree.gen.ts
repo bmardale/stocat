@@ -12,8 +12,10 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteRouteImport } from './routes/_app/route'
 import { Route as AuthRouteRouteImport } from './routes/_auth/route'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
+import { Route as AppAdminRouteRouteImport } from './routes/_app/admin/route'
 import { Route as AuthLoginRouteImport } from './routes/_auth/login'
 import { Route as AuthRegisterRouteImport } from './routes/_auth/register'
+import { Route as AppAdminStorageRouteImport } from './routes/_app/admin/storage'
 import { Route as AppSettingsSessionsRouteImport } from './routes/_app/settings/sessions'
 
 const AppRouteRoute = AppRouteRouteImport.update({
@@ -29,6 +31,11 @@ const AppIndexRoute = AppIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppRouteRoute,
 } as any)
+const AppAdminRouteRoute = AppAdminRouteRouteImport.update({
+  id: '/admin',
+  path: '/admin',
+  getParentRoute: () => AppRouteRoute,
+} as any)
 const AuthLoginRoute = AuthLoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -39,6 +46,11 @@ const AuthRegisterRoute = AuthRegisterRouteImport.update({
   path: '/register',
   getParentRoute: () => AuthRouteRoute,
 } as any)
+const AppAdminStorageRoute = AppAdminStorageRouteImport.update({
+  id: '/storage',
+  path: '/storage',
+  getParentRoute: () => AppAdminRouteRoute,
+} as any)
 const AppSettingsSessionsRoute = AppSettingsSessionsRouteImport.update({
   id: '/settings/sessions',
   path: '/settings/sessions',
@@ -47,37 +59,57 @@ const AppSettingsSessionsRoute = AppSettingsSessionsRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
+  '/admin': typeof AppAdminRouteRouteWithChildren
   '/login': typeof AuthLoginRoute
   '/register': typeof AuthRegisterRoute
+  '/admin/storage': typeof AppAdminStorageRoute
   '/settings/sessions': typeof AppSettingsSessionsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof AppIndexRoute
+  '/admin': typeof AppAdminRouteRouteWithChildren
   '/login': typeof AuthLoginRoute
   '/register': typeof AuthRegisterRoute
+  '/admin/storage': typeof AppAdminStorageRoute
   '/settings/sessions': typeof AppSettingsSessionsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteRouteWithChildren
   '/_auth': typeof AuthRouteRouteWithChildren
+  '/_app/admin': typeof AppAdminRouteRouteWithChildren
   '/_auth/login': typeof AuthLoginRoute
   '/_auth/register': typeof AuthRegisterRoute
   '/_app/': typeof AppIndexRoute
+  '/_app/admin/storage': typeof AppAdminStorageRoute
   '/_app/settings/sessions': typeof AppSettingsSessionsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/register' | '/settings/sessions'
+  fullPaths:
+    | '/'
+    | '/admin'
+    | '/login'
+    | '/register'
+    | '/admin/storage'
+    | '/settings/sessions'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/register' | '/settings/sessions'
+  to:
+    | '/'
+    | '/admin'
+    | '/login'
+    | '/register'
+    | '/admin/storage'
+    | '/settings/sessions'
   id:
     | '__root__'
     | '/_app'
     | '/_auth'
+    | '/_app/admin'
     | '/_auth/login'
     | '/_auth/register'
     | '/_app/'
+    | '/_app/admin/storage'
     | '/_app/settings/sessions'
   fileRoutesById: FileRoutesById
 }
@@ -109,6 +141,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRouteRoute
     }
+    '/_app/admin': {
+      id: '/_app/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AppAdminRouteRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
     '/_auth/login': {
       id: '/_auth/login'
       path: '/login'
@@ -123,6 +162,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthRegisterRouteImport
       parentRoute: typeof AuthRouteRoute
     }
+    '/_app/admin/storage': {
+      id: '/_app/admin/storage'
+      path: '/storage'
+      fullPath: '/admin/storage'
+      preLoaderRoute: typeof AppAdminStorageRouteImport
+      parentRoute: typeof AppAdminRouteRoute
+    }
     '/_app/settings/sessions': {
       id: '/_app/settings/sessions'
       path: '/settings/sessions'
@@ -133,12 +179,26 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface AppAdminRouteRouteChildren {
+  AppAdminStorageRoute: typeof AppAdminStorageRoute
+}
+
+const AppAdminRouteRouteChildren: AppAdminRouteRouteChildren = {
+  AppAdminStorageRoute: AppAdminStorageRoute,
+}
+
+const AppAdminRouteRouteWithChildren = AppAdminRouteRoute._addFileChildren(
+  AppAdminRouteRouteChildren,
+)
+
 interface AppRouteRouteChildren {
+  AppAdminRouteRoute: typeof AppAdminRouteRouteWithChildren
   AppIndexRoute: typeof AppIndexRoute
   AppSettingsSessionsRoute: typeof AppSettingsSessionsRoute
 }
 
 const AppRouteRouteChildren: AppRouteRouteChildren = {
+  AppAdminRouteRoute: AppAdminRouteRouteWithChildren,
   AppIndexRoute: AppIndexRoute,
   AppSettingsSessionsRoute: AppSettingsSessionsRoute,
 }

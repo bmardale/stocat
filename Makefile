@@ -1,4 +1,4 @@
-.PHONY: build test test-unit lint generate generate-db generate-openapi generate-client migrate-up migrate-down migrate-reset migrate-status migrate-create
+.PHONY: build test test-unit lint generate generate-db generate-openapi generate-client key-generate admin-grant admin-revoke migrate-up migrate-down migrate-reset migrate-status migrate-create
 
 GOOSE := GOOSE_DRIVER=postgres GOOSE_DBSTRING="$$DATABASE_URL" go tool goose -dir db/migrations
 
@@ -24,6 +24,17 @@ generate-openapi:
 
 generate-client: generate-openapi
 	cd web && vp run generate:api
+
+key-generate:
+	@echo "APP_KEY=$$(go run ./cmd/keygen)"
+
+admin-grant: require-db
+	@test -n "$$email" || (echo "usage: make admin-grant email=user@example.com" >&2; exit 1)
+	go run ./cmd/admin grant "$$email"
+
+admin-revoke: require-db
+	@test -n "$$email" || (echo "usage: make admin-revoke email=user@example.com" >&2; exit 1)
+	go run ./cmd/admin revoke "$$email"
 
 require-db:
 	@test -n "$$DATABASE_URL" || (echo "DATABASE_URL is required" >&2; exit 1)

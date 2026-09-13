@@ -123,5 +123,12 @@ files := huma.NewGroup(private, "/files")
 
 The group verifies sessions before handlers run. It also documents cookie authentication and authentication errors in OpenAPI.
 Child groups inherit authentication. Add permission middleware to child groups, or check resource permissions in their handlers.
+Use `Admin` instead of `Protected` for routes that only administrators can use:
+
+```go
+storageService.Register(authService.Admin(api, "/admin"))
+```
+
+The admin group adds the checks of `Protected`. It returns status 403 when `is_admin` is false.
 Use `auth.UserFromContext(ctx)` to read the user. Its internal `ID` supports database queries and never enters JSON responses.
 The context user contains no password hash. Each request loads current user data from the database.

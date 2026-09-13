@@ -11,3 +11,8 @@ SELECT * FROM users WHERE public_id = $1;
 
 -- name: GetUserByEmail :one
 SELECT * FROM users WHERE lower(email) = lower(sqlc.arg(email)::text);
+
+-- name: SetUserAdminByEmail :one
+UPDATE users SET is_admin = sqlc.arg(is_admin)
+WHERE lower(email) = lower(sqlc.arg(email)::text)
+RETURNING *;

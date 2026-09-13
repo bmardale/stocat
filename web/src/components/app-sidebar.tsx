@@ -1,4 +1,4 @@
-import { Home01Icon } from "@hugeicons/core-free-icons";
+import { DatabaseIcon, Home01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Link, useMatchRoute } from "@tanstack/react-router";
 import logoMark from "@/assets/logo-mark.svg";
@@ -10,6 +10,7 @@ import {
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
@@ -58,6 +59,23 @@ export function AppSidebar() {
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarGroup>
+        {user?.is_admin && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Administration</SidebarGroupLabel>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  tooltip="Storage"
+                  isActive={Boolean(matchRoute({ to: "/admin/storage" }))}
+                  render={<Link to="/admin/storage" onClick={() => setOpenMobile(false)} />}
+                >
+                  <HugeiconsIcon icon={DatabaseIcon} strokeWidth={2} />
+                  <span>Storage</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroup>
+        )}
       </SidebarContent>
       <SidebarFooter>{user && <NavUser user={user} />}</SidebarFooter>
       <SidebarRail />

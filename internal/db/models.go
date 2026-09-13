@@ -20,6 +20,18 @@ type Session struct {
 	ExpiresAt pgtype.Timestamptz
 }
 
+type StorageBackend struct {
+	ID               int64
+	PublicID         string
+	Name             string
+	Type             string
+	Config           []byte
+	EncryptedSecrets string
+	Enabled          bool
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+}
+
 type User struct {
 	ID           int64
 	PublicID     string

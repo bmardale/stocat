@@ -11,6 +11,7 @@ import (
 
 	"github.com/bmardale/stocat/internal/db"
 	"github.com/bmardale/stocat/internal/platform/config"
+	"github.com/bmardale/stocat/internal/platform/crypt"
 	"github.com/bmardale/stocat/internal/platform/o11y"
 	"github.com/bmardale/stocat/internal/platform/splash"
 	"github.com/bmardale/stocat/internal/platform/version"
@@ -44,6 +45,11 @@ func run() error {
 		}
 	}
 
+	encrypter, err := crypt.New(cfg.AppKey, cfg.AppPreviousKeys...)
+	if err != nil {
+		return fmt.Errorf("create encrypter: %w", err)
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	startupCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -64,6 +70,7 @@ func run() error {
 		Addr:          cfg.Addr,
 		SecureCookies: cfg.SessionCookieSecure,
 		Logger:        log,
+		Encrypter:     encrypter,
 	}, pool)
 	if err != nil {
 		return fmt.Errorf("create server: %w", err)

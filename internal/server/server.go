@@ -12,9 +12,11 @@ import (
 
 	"github.com/bmardale/stocat/internal/apierr"
 	"github.com/bmardale/stocat/internal/auth"
+	"github.com/bmardale/stocat/internal/platform/crypt"
 	"github.com/bmardale/stocat/internal/platform/o11y"
 	"github.com/bmardale/stocat/internal/platform/ratelimit"
 	"github.com/bmardale/stocat/internal/platform/version"
+	"github.com/bmardale/stocat/internal/storage"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
 	"github.com/go-chi/chi/v5"
@@ -31,6 +33,7 @@ type Config struct {
 	Addr          string
 	SecureCookies bool
 	Logger        *slog.Logger
+	Encrypter     *crypt.Encrypter
 	// RateLimitClock defaults to time.Now. It controls all request limiters.
 	RateLimitClock func() time.Time
 }
@@ -74,6 +77,7 @@ func New(cfg Config, pool *pgxpool.Pool) (*Server, error) {
 		return nil, fmt.Errorf("create authentication service: %w", err)
 	}
 	authService.Register(api)
+	storage.New(pool, storage.Config{Encrypter: cfg.Encrypter, Logger: log}).Register(authService.Admin(api, "/admin"))
 
 	s := &Server{api: api, log: log, httpServer: &http.Server{
 		Addr: cfg.Addr, Handler: router,

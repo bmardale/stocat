@@ -16,7 +16,7 @@ func TestRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"openapi: 3.1.0", "/auth/register:", "/healthz:"} {
+	for _, want := range []string{"openapi: 3.1.0", "/auth/register:", "/healthz:", "/admin/storage-backends:"} {
 		if !strings.Contains(string(spec), want) {
 			t.Errorf("OpenAPI document does not contain %q", want)
 		}

@@ -5,10 +5,21 @@
  * OpenAPI spec version: 0.0.1
  */
 
+export * from "./backend.ts";
+export * from "./backendType.ts";
+export * from "./checkSettingsInputBody.ts";
+export * from "./checkSettingsInputBodyType.ts";
+export * from "./connectionCheck.ts";
+export * from "./createBackendInputBody.ts";
+export * from "./createBackendInputBodyType.ts";
 export * from "./errorDetail.ts";
+export * from "./localConfig.ts";
 export * from "./loginInputBody.ts";
 export * from "./probeOutputBody.ts";
 export * from "./problem.ts";
 export * from "./registerInputBody.ts";
+export * from "./s3Config.ts";
+export * from "./s3Input.ts";
 export * from "./session.ts";
+export * from "./updateBackendInputBody.ts";
 export * from "./user.ts";
