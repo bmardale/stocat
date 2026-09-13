@@ -1,8 +1,8 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useId } from "react";
 import { z } from "zod";
-import { filesRename, useFilesDelete } from "@/api/generated/files/files";
-import { getNodesListQueryKey } from "@/api/generated/libraries/libraries";
+import { filesDelete, filesRename } from "@/api/generated/files/files";
+import { foldersDelete, getNodesListQueryKey } from "@/api/generated/libraries/libraries";
 import type { Library } from "@/api/generated/model";
 import type { FileTarget } from "@/components/file-preview";
 import { useAppForm } from "@/components/form";
@@ -151,23 +151,28 @@ function RenameFileForm({
   );
 }
 
-export function DeleteFileDialog({
+export type DeleteDialogState = {
+  open: boolean;
+  target?: FileTarget & { kind: "file" | "folder" };
+};
+
+export function DeleteNodeDialog({
   state,
   onOpenChange,
   library,
 }: {
-  state: FileDialogState;
+  state: DeleteDialogState;
   onOpenChange: (open: boolean) => void;
   library: Library;
 }) {
   const queryClient = useQueryClient();
-  const file = state.file;
-  const remove = useFilesDelete({
-    mutation: {
-      onSuccess: async () => {
-        toast.add({ type: "success", description: "File deleted." });
-        await queryClient.invalidateQueries({ queryKey: getNodesListQueryKey(library.id) });
-      },
+  const target = state.target;
+  const remove = useMutation({
+    mutationFn: (item: FileTarget & { kind: "file" | "folder" }) =>
+      item.kind === "folder" ? foldersDelete(library.id, item.id) : filesDelete(item.id),
+    onSuccess: async () => {
+      toast.add({ type: "success", description: "Item moved to the trash." });
+      await queryClient.invalidateQueries({ queryKey: getNodesListQueryKey(library.id) });
     },
   });
 
@@ -183,9 +188,9 @@ export function DeleteFileDialog({
     >
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Delete {file?.name}?</AlertDialogTitle>
+          <AlertDialogTitle>Move {target?.name} to the trash?</AlertDialogTitle>
           <AlertDialogDescription>
-            The server permanently deletes the file and its versions. You cannot undo this action.
+            The item stays in the trash for 30 days. After that, the server deletes it permanently.
           </AlertDialogDescription>
         </AlertDialogHeader>
         {remove.error && <FieldError>{remove.error.message}</FieldError>}
@@ -195,10 +200,10 @@ export function DeleteFileDialog({
             variant="destructive"
             disabled={remove.isPending}
             onClick={() =>
-              file && remove.mutate({ id: file.id }, { onSuccess: () => onOpenChange(false) })
+              target && remove.mutate(target, { onSuccess: () => onOpenChange(false) })
             }
           >
-            Delete
+            Move to trash
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

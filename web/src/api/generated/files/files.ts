@@ -47,7 +47,7 @@ export const getFilesDeleteUrl = (id: string) => {
 };
 
 /**
- * @summary Delete a file
+ * @summary Move a file to the trash
  */
 export const filesDelete = async (
   id: string,
@@ -103,7 +103,7 @@ export type FilesDeleteMutationError = ErrorType<Problem>;
 export type FilesDeleteMutationVariables = { id: string };
 
 /**
- * @summary Delete a file
+ * @summary Move a file to the trash
  */
 export const useFilesDelete = <TError = ErrorType<Problem>, TContext = unknown>(
   options?: {

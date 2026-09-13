@@ -497,6 +497,89 @@ export const useFoldersCreate = <TError = ErrorType<Problem>, TContext = unknown
 > => {
   return useMutation(getFoldersCreateMutationOptions(options), queryClient);
 };
+export const getFoldersDeleteUrl = (id: string, folderId: string) => {
+  return `/api/v1/libraries/${id}/folders/${folderId}`;
+};
+
+/**
+ * @summary Move a folder to the trash
+ */
+export const foldersDelete = async (
+  id: string,
+  folderId: string,
+  options?: Parameters<typeof apiFetch>[1],
+): Promise<void> => {
+  return apiFetch<void>(getFoldersDeleteUrl(id, folderId), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getFoldersDeleteMutationKey = () => ["foldersDelete"] as const;
+
+export const getFoldersDeleteMutationOptions = <
+  TError = ErrorType<Problem>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof foldersDelete>>,
+    TError,
+    FoldersDeleteMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof apiFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof foldersDelete>>,
+  TError,
+  FoldersDeleteMutationVariables,
+  TContext
+> => {
+  const mutationKey = getFoldersDeleteMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof foldersDelete>>,
+    FoldersDeleteMutationVariables
+  > = (props) => {
+    const { id, folderId } = props ?? {};
+
+    return foldersDelete(id, folderId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type FoldersDeleteMutationResult = NonNullable<Awaited<ReturnType<typeof foldersDelete>>>;
+
+export type FoldersDeleteMutationError = ErrorType<Problem>;
+export type FoldersDeleteMutationVariables = { id: string; folderId: string };
+
+/**
+ * @summary Move a folder to the trash
+ */
+export const useFoldersDelete = <TError = ErrorType<Problem>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof foldersDelete>>,
+      TError,
+      FoldersDeleteMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof foldersDelete>>,
+  TError,
+  FoldersDeleteMutationVariables,
+  TContext
+> => {
+  return useMutation(getFoldersDeleteMutationOptions(options), queryClient);
+};
 export const getNodesListUrl = (id: string, params?: NodesListParams) => {
   const normalizedParams = new URLSearchParams();
 

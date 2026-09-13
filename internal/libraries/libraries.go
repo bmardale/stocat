@@ -86,6 +86,11 @@ type folderInput struct {
 	}
 }
 
+type deleteFolderInput struct {
+	LibraryID string `path:"id" maxLength:"64"`
+	FolderID  string `path:"folder_id" maxLength:"64"`
+}
+
 type listNodesInput struct {
 	LibraryID string `path:"id" maxLength:"64"`
 	ParentID  string `query:"parent_id" maxLength:"64"`
@@ -142,6 +147,12 @@ func (s *Service) Register(api huma.API) {
 		OperationID: "nodes-list", Method: http.MethodGet, Path: "/{id}/nodes", Summary: "List a folder",
 		Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity},
 	}, s.listNodes)
+	huma.Register(group, huma.Operation{
+		OperationID: "folders-delete", Method: http.MethodDelete, Path: "/{id}/folders/{folder_id}",
+		Summary:       "Move a folder to the trash",
+		DefaultStatus: http.StatusNoContent,
+		Errors:        []int{http.StatusConflict, http.StatusNotFound},
+	}, s.deleteFolder)
 }
 
 func (s *Service) listBackends(ctx context.Context, _ *struct{}) (*backendsOutput, error) {
@@ -270,6 +281,39 @@ func (s *Service) createFolder(ctx context.Context, input *folderInput) (*nodeOu
 		return nil, s.internalError(ctx, "create folder", err)
 	}
 	return &nodeOutput{Body: NodeFromRow(row, library.PublicID, parentPublicID)}, nil
+}
+
+func (s *Service) deleteFolder(ctx context.Context, input *deleteFolderInput) (*struct{}, error) {
+	user, _ := auth.UserFromContext(ctx)
+	library, err := s.queries.GetLibraryByPublicIDAndOwner(ctx, db.GetLibraryByPublicIDAndOwnerParams{
+		PublicID: input.LibraryID, OwnerID: user.ID,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, libraryNotFound()
+	}
+	if err != nil {
+		return nil, s.internalError(ctx, "get library for folder deletion", err)
+	}
+	node, err := s.queries.GetNodeByPublicIDAndOwner(ctx, db.GetNodeByPublicIDAndOwnerParams{
+		PublicID: input.FolderID, OwnerID: user.ID,
+	})
+	if errors.Is(err, pgx.ErrNoRows) || err == nil && (node.LibraryID != library.ID || node.Kind != nodeFolder || !node.ParentID.Valid || node.TrashedAt.Valid) {
+		return nil, huma.Error404NotFound("The folder does not exist.")
+	}
+	if err != nil {
+		return nil, s.internalError(ctx, "get folder for deletion", err)
+	}
+	blocked, err := s.queries.CountActiveUploadSessionsInSubtree(ctx, node.ID)
+	if err != nil {
+		return nil, s.internalError(ctx, "count uploads in folder", err)
+	}
+	if blocked > 0 {
+		return nil, huma.Error409Conflict("An upload is in progress in this folder. Cancel the upload and try again.")
+	}
+	if _, err := s.queries.TrashNodeSubtree(ctx, node.ID); err != nil {
+		return nil, s.internalError(ctx, "trash folder", err)
+	}
+	return nil, nil
 }
 
 func (s *Service) listNodes(ctx context.Context, input *listNodesInput) (*nodesOutput, error) {

@@ -22,7 +22,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/riverqueue/river"
 )
 
 const writeIdleTimeout = 30 * time.Second
@@ -66,7 +65,6 @@ type Service struct {
 	pool    *pgxpool.Pool
 	queries *db.Queries
 	stores  *storage.Service
-	queue   *river.Client[pgx.Tx]
 	log     *slog.Logger
 }
 
@@ -101,9 +99,9 @@ func (s *Service) Register(api huma.API) {
 		MaxBodyBytes: 65536, Errors: []int{http.StatusConflict, http.StatusNotFound, http.StatusUnprocessableEntity},
 	}, s.rename)
 	huma.Register(group, huma.Operation{
-		OperationID: "files-delete", Method: http.MethodDelete, Path: "/{id}", Summary: "Delete a file",
+		OperationID: "files-delete", Method: http.MethodDelete, Path: "/{id}", Summary: "Move a file to the trash",
 		DefaultStatus: http.StatusNoContent,
-		Errors:        []int{http.StatusConflict, http.StatusNotFound, http.StatusServiceUnavailable},
+		Errors:        []int{http.StatusNotFound},
 	}, s.remove)
 	huma.Register(group, huma.Operation{
 		OperationID: "files-content", Method: http.MethodGet, Path: "/{id}/content", Summary: "Stream file content",

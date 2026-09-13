@@ -67,13 +67,27 @@ func (w *finalizeWorker) Work(ctx context.Context, job *river.Job[FinalizeArgs])
 	return err
 }
 
-// ConfigureQueue creates the River client. Each register function adds the workers of another service.
-func (s *Service) ConfigureQueue(stores *storage.Service, register ...func(*river.Workers)) (*river.Client[pgx.Tx], error) {
+// QueueHooks adds the workers and periodic jobs of another service.
+type QueueHooks struct {
+	Workers  []func(*river.Workers)
+	Periodic []*river.PeriodicJob
+}
+
+// ConfigureQueue creates the River client. Each hook adds the workers and jobs of another service.
+func (s *Service) ConfigureQueue(stores *storage.Service, hooks ...QueueHooks) (*river.Client[pgx.Tx], error) {
 	workers := river.NewWorkers()
 	river.AddWorker(workers, &finalizeWorker{service: s, stores: stores})
 	river.AddWorker(workers, &expireWorker{service: s})
-	for _, add := range register {
-		add(workers)
+	periodic := []*river.PeriodicJob{
+		river.NewPeriodicJob(river.PeriodicInterval(time.Hour), func() (river.JobArgs, *river.InsertOpts) {
+			return expireArgs{}, &river.InsertOpts{Queue: "maintenance", MaxAttempts: 8}
+		}, &river.PeriodicJobOpts{ID: "expire-uploads", RunOnStart: true}),
+	}
+	for _, hook := range hooks {
+		for _, add := range hook.Workers {
+			add(workers)
+		}
+		periodic = append(periodic, hook.Periodic...)
 	}
 	client, err := river.NewClient(riverpgxv5.New(s.pool), &river.Config{
 		Logger: s.log, Workers: workers, JobTimeout: -1,
@@ -82,11 +96,7 @@ func (s *Service) ConfigureQueue(stores *storage.Service, register ...func(*rive
 			"publication": {MaxWorkers: 2},
 			"maintenance": {MaxWorkers: 1},
 		},
-		PeriodicJobs: []*river.PeriodicJob{
-			river.NewPeriodicJob(river.PeriodicInterval(time.Hour), func() (river.JobArgs, *river.InsertOpts) {
-				return expireArgs{}, &river.InsertOpts{Queue: "maintenance", MaxAttempts: 8}
-			}, &river.PeriodicJobOpts{ID: "expire-uploads", RunOnStart: true}),
-		},
+		PeriodicJobs: periodic,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create River client: %w", err)

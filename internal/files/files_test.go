@@ -2,16 +2,13 @@ package files
 
 import (
 	"bytes"
-	"context"
 	"crypto/sha256"
 	"encoding/json"
-	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/bmardale/stocat/internal/apierr"
 	"github.com/bmardale/stocat/internal/auth"
@@ -23,8 +20,6 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/riverqueue/river"
-	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 )
 
 func TestFileMetadataAndContent(t *testing.T) {
@@ -113,51 +108,30 @@ func TestRenameFile(t *testing.T) {
 	}
 }
 
-func TestDeleteFile(t *testing.T) {
+func TestTrashFile(t *testing.T) {
 	f := newFixture(t)
 	const sharedKey = "blobs/test/shared"
 	shared := f.storeBlob(t, sharedKey, []byte("shared content"))
 	first, _ := f.createFile(t, "first.txt", shared)
-	second, secondVersion := f.createFile(t, "second.txt", shared)
-	replacement := f.createUploadSession(t, pgtype.Int8{Int64: second.ID, Valid: true})
-	published := f.createUploadSession(t, pgtype.Int8{})
-	if err := f.queries.SetZeroLengthUploadReady(t.Context(), published.ID); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := f.queries.SetPlainUploadFinalizing(t.Context(), published.ID); err != nil {
-		t.Fatal(err)
-	}
-	if err := f.queries.CompleteUploadSession(t.Context(), db.CompleteUploadSessionParams{
-		ID:                 published.ID,
-		PublishedNodeID:    pgtype.Int8{Int64: second.ID, Valid: true},
-		PublishedVersionID: pgtype.Int8{Int64: secondVersion.ID, Valid: true},
-	}); err != nil {
-		t.Fatal(err)
-	}
+	second, _ := f.createFile(t, "second.txt", shared)
 
 	requireFileStatus(t, f.api.Delete("/api/v1/files/"+first.PublicID), http.StatusUnauthorized)
 	requireFileStatus(t, f.api.Delete("/api/v1/files/"+first.PublicID, f.cookie), http.StatusNoContent)
 	requireFileStatus(t, f.api.Get("/api/v1/files/"+first.PublicID, f.cookie), http.StatusNotFound)
 	requireFileStatus(t, f.api.Delete("/api/v1/files/"+first.PublicID, f.cookie), http.StatusNotFound)
+	row, err := f.queries.GetNodeByPublicIDAndOwner(t.Context(), db.GetNodeByPublicIDAndOwnerParams{
+		PublicID: first.PublicID, OwnerID: f.ownerID,
+	})
+	if err != nil || !row.TrashedAt.Valid {
+		t.Fatalf("trashed node = %+v, %v", row, err)
+	}
 	if stored := f.storedBytes(t); stored != shared.SizeBytes {
-		t.Fatalf("stored bytes after the first deletion = %d, want %d", stored, shared.SizeBytes)
+		t.Fatalf("stored bytes after the first move to trash = %d, want %d", stored, shared.SizeBytes)
 	}
 
 	requireFileStatus(t, f.api.Delete("/api/v1/files/"+second.PublicID, f.cookie), http.StatusNoContent)
-	if stored := f.storedBytes(t); stored != 0 {
-		t.Fatalf("stored bytes after the last deletion = %d", stored)
-	}
-	f.waitForObjectDeletion(t, sharedKey)
-	for _, session := range []db.UploadSession{replacement, published} {
-		row, err := f.queries.GetUploadSessionByPublicIDAndOwner(t.Context(), db.GetUploadSessionByPublicIDAndOwnerParams{
-			PublicID: session.PublicID, OwnerID: f.ownerID,
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if row.TargetNodeID.Valid || row.PublishedNodeID.Valid || row.PublishedVersionID.Valid || row.ExpectedRevision != session.ExpectedRevision {
-			t.Fatalf("upload session = %+v", row)
-		}
+	if stored := f.storedBytes(t); stored != shared.SizeBytes {
+		t.Fatalf("stored bytes after the second move to trash = %d", stored)
 	}
 }
 
@@ -261,25 +235,6 @@ func newFixture(t *testing.T) fixture {
 	stores := storage.New(pool, storage.Config{Logger: log})
 	service := New(pool, stores, log)
 	service.Register(protected)
-	workers := river.NewWorkers()
-	service.AddWorkers(workers)
-	queue, err := river.NewClient(riverpgxv5.New(pool), &river.Config{
-		Logger: log, Workers: workers, Queues: map[string]river.QueueConfig{"maintenance": {MaxWorkers: 1}},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	service.UseQueue(queue)
-	if err := queue.Start(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if err := queue.Stop(stopCtx); err != nil {
-			t.Errorf("stop River: %v", err)
-		}
-	})
 
 	queries := db.New(pool)
 	backendID := id.New(id.StorageBackend)
@@ -370,25 +325,6 @@ func (f fixture) createFile(t *testing.T, name string, blob db.Blob) (db.Node, d
 	return node, version
 }
 
-func (f fixture) createUploadSession(t *testing.T, target pgtype.Int8) db.UploadSession {
-	t.Helper()
-	publicID := id.New(id.Upload)
-	params := db.CreateUploadSessionParams{
-		PublicID: publicID, OwnerID: f.ownerID, LibraryID: f.library.ID, ParentID: f.library.RootNodeID,
-		TargetNodeID: target, Name: pgtype.Text{String: "upload.txt", Valid: true},
-		StagingKey: publicID + ".part", DestinationKey: "objects/" + f.library.PublicID + "/" + publicID,
-		ExpiresAt: pgtype.Timestamptz{Time: time.Now().Add(time.Hour), Valid: true},
-	}
-	if target.Valid {
-		params.ExpectedRevision = pgtype.Int8{Int64: 2, Valid: true}
-	}
-	session, err := f.queries.CreateUploadSession(t.Context(), params)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return session
-}
-
 func (f fixture) storedBytes(t *testing.T) int64 {
 	t.Helper()
 	stored, err := f.queries.SumLibraryStoredBytes(t.Context(), f.library.ID)
@@ -396,29 +332,6 @@ func (f fixture) storedBytes(t *testing.T) int64 {
 		t.Fatal(err)
 	}
 	return stored
-}
-
-func (f fixture) waitForObjectDeletion(t *testing.T, key string) {
-	t.Helper()
-	store, err := f.stores.ObjectStore(t.Context(), f.backendID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = store.Close() }()
-	deadline := time.Now().Add(10 * time.Second)
-	for {
-		_, err := store.Stat(t.Context(), key)
-		if errors.Is(err, storage.ErrMissing) {
-			return
-		}
-		if err != nil {
-			t.Fatal(err)
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("object %s still exists", key)
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
 }
 
 func register(t *testing.T, api humatest.TestAPI) (string, string) {

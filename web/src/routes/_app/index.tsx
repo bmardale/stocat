@@ -41,8 +41,9 @@ import {
   type PreviewState,
 } from "@/components/file-preview";
 import {
-  DeleteFileDialog,
+  DeleteNodeDialog,
   RenameFileDialog,
+  type DeleteDialogState,
   type FileDialogState,
 } from "@/components/file-dialogs";
 import { useLibraryKeys } from "@/components/library-keys";
@@ -304,7 +305,7 @@ function FileBrowser({
   const [creating, setCreating] = useState(false);
   const [previewing, setPreviewing] = useState<PreviewState>({ open: false });
   const [renaming, setRenaming] = useState<FileDialogState>({ open: false });
-  const [deleting, setDeleting] = useState<FileDialogState>({ open: false });
+  const [deleting, setDeleting] = useState<DeleteDialogState>({ open: false });
   const downloads = useFileDownload(keys);
   const uploads = useFileUploads({
     library,
@@ -403,7 +404,7 @@ function FileBrowser({
             onPreview={(file) => setPreviewing({ open: true, file })}
             onDownload={(file) => void downloads.download(file)}
             onRename={(file) => setRenaming({ open: true, file })}
-            onDelete={(file) => setDeleting({ open: true, file })}
+            onDelete={(target) => setDeleting({ open: true, target })}
           />
         </div>
       )}
@@ -434,7 +435,7 @@ function FileBrowser({
         library={library}
         keys={keys}
       />
-      <DeleteFileDialog
+      <DeleteNodeDialog
         state={deleting}
         onOpenChange={(open) => setDeleting((state) => ({ ...state, open }))}
         library={library}
@@ -460,7 +461,7 @@ function FolderContents({
   onPreview: (file: FileTarget) => void;
   onDownload: (file: FileTarget) => void;
   onRename: (file: FileTarget) => void;
-  onDelete: (file: FileTarget) => void;
+  onDelete: (target: NodeTarget) => void;
 }) {
   const nodes = useInfiniteQuery(nodesQueryOptions(library, folder, keys));
 
@@ -516,9 +517,14 @@ function FolderContents({
                   </time>
                 </TableCell>
                 <TableCell className="pr-2 text-right">
-                  {node.kind === "file" && node.displayName !== undefined && (
-                    <FileActions
-                      file={{ id: node.id, name: node.displayName, parentId: node.parent_id }}
+                  {node.displayName !== undefined && (
+                    <NodeActions
+                      node={{
+                        id: node.id,
+                        name: node.displayName,
+                        parentId: node.parent_id,
+                        kind: node.kind,
+                      }}
                       onPreview={onPreview}
                       onDownload={onDownload}
                       onRename={onRename}
@@ -593,43 +599,49 @@ function NodeName({
   );
 }
 
-function FileActions({
-  file,
+type NodeTarget = FileTarget & { kind: "file" | "folder" };
+
+function NodeActions({
+  node,
   onPreview,
   onDownload,
   onRename,
   onDelete,
 }: {
-  file: FileTarget;
+  node: NodeTarget;
   onPreview: (file: FileTarget) => void;
   onDownload: (file: FileTarget) => void;
   onRename: (file: FileTarget) => void;
-  onDelete: (file: FileTarget) => void;
+  onDelete: (target: NodeTarget) => void;
 }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        render={<Button variant="ghost" size="icon-sm" aria-label={`Actions for ${file.name}`} />}
+        render={<Button variant="ghost" size="icon-sm" aria-label={`Actions for ${node.name}`} />}
       >
         <HugeiconsIcon icon={MoreVerticalIcon} strokeWidth={2} />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-auto min-w-40">
-        <DropdownMenuItem onClick={() => onPreview(file)}>
-          <HugeiconsIcon icon={ViewIcon} strokeWidth={2} />
-          Preview
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => onDownload(file)}>
-          <HugeiconsIcon icon={Download04Icon} strokeWidth={2} />
-          Download
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => onRename(file)}>
-          <HugeiconsIcon icon={PencilEdit02Icon} strokeWidth={2} />
-          Rename
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem variant="destructive" onClick={() => onDelete(file)}>
+        {node.kind === "file" && (
+          <>
+            <DropdownMenuItem onClick={() => onPreview(node)}>
+              <HugeiconsIcon icon={ViewIcon} strokeWidth={2} />
+              Preview
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onDownload(node)}>
+              <HugeiconsIcon icon={Download04Icon} strokeWidth={2} />
+              Download
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onRename(node)}>
+              <HugeiconsIcon icon={PencilEdit02Icon} strokeWidth={2} />
+              Rename
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        )}
+        <DropdownMenuItem variant="destructive" onClick={() => onDelete(node)}>
           <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} />
-          Delete
+          Move to trash
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

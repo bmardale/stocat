@@ -20,6 +20,7 @@ import (
 	"github.com/bmardale/stocat/internal/platform/ratelimit"
 	"github.com/bmardale/stocat/internal/platform/version"
 	"github.com/bmardale/stocat/internal/storage"
+	"github.com/bmardale/stocat/internal/trash"
 	"github.com/bmardale/stocat/internal/uploads"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
@@ -100,6 +101,8 @@ func New(cfg Config, pool *pgxpool.Pool) (*Server, error) {
 	libraries.New(pool, log).Register(protected)
 	fileService := files.New(pool, storageService, log)
 	fileService.Register(protected)
+	trashService := trash.New(pool, log)
+	trashService.Register(protected)
 	uploadService, err := uploads.New(pool, nil, uploads.Config{
 		StagingDir: cfg.UploadStagingDir, MaxUploadSize: cfg.MaxUploadSize,
 		StagingCapacity: cfg.UploadStagingCapacity, SessionLifetime: cfg.UploadSessionLifetime, Logger: log,
@@ -109,12 +112,15 @@ func New(cfg Config, pool *pgxpool.Pool) (*Server, error) {
 	}
 	var queue *river.Client[pgx.Tx]
 	if pool != nil {
-		queue, err = uploadService.ConfigureQueue(storageService, fileService.AddWorkers)
+		queue, err = uploadService.ConfigureQueue(storageService, uploads.QueueHooks{
+			Workers:  []func(*river.Workers){fileService.AddWorkers, trashService.AddWorkers},
+			Periodic: trashService.PeriodicJobs(),
+		})
 		if err != nil {
 			_ = uploadService.Close()
 			return nil, err
 		}
-		fileService.UseQueue(queue)
+		trashService.UseQueue(queue)
 	}
 	uploadService.Register(protected)
 

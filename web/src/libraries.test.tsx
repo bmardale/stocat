@@ -507,10 +507,10 @@ describe("files", () => {
     expect(within(dialog).getByText("2.0 KiB")).toBeDefined();
   });
 
-  it("renames a file and deletes it after confirmation", async () => {
+  it("renames a file and moves it to the trash after confirmation", async () => {
     let items: Node[] = [{ ...folder("nod_note", "notes.txt"), kind: "file" }];
     let renameBody: unknown;
-    let deleted = false;
+    let trashed = false;
     stubApi({
       "GET /api/v1/auth/me": () => jsonResponse(200, testUser),
       "GET /api/v1/libraries": () => jsonResponse(200, [documents]),
@@ -521,7 +521,7 @@ describe("files", () => {
         return jsonResponse(200, items[0]);
       },
       "DELETE /api/v1/files/nod_note": () => {
-        deleted = true;
+        trashed = true;
         items = [];
         return new Response(null, { status: 204 });
       },
@@ -537,12 +537,35 @@ describe("files", () => {
     await waitFor(() => expect(document.querySelector('[data-slot="dialog-content"]')).toBeNull());
 
     fireEvent.click(screen.getByRole("button", { name: "Actions for todo.txt" }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Move to trash" }));
     const confirm = await screen.findByRole("alertdialog");
-    expect(within(confirm).getByText("Delete todo.txt?")).toBeDefined();
-    fireEvent.click(within(confirm).getByRole("button", { name: "Delete" }));
+    expect(within(confirm).getByText("Move todo.txt to the trash?")).toBeDefined();
+    fireEvent.click(within(confirm).getByRole("button", { name: "Move to trash" }));
     expect(await screen.findByText("This folder is empty")).toBeDefined();
-    expect(deleted).toBe(true);
+    expect(trashed).toBe(true);
+  });
+
+  it("moves a folder to the trash", async () => {
+    let items: Node[] = [folder("nod_photos", "Photos")];
+    let trashed = false;
+    stubApi({
+      "GET /api/v1/auth/me": () => jsonResponse(200, testUser),
+      "GET /api/v1/libraries": () => jsonResponse(200, [documents]),
+      "GET /api/v1/libraries/lib_docs/nodes": () => jsonResponse(200, { items }),
+      "DELETE /api/v1/libraries/lib_docs/folders/nod_photos": () => {
+        trashed = true;
+        items = [];
+        return new Response(null, { status: 204 });
+      },
+    });
+    await renderApp("/");
+    fireEvent.click(await screen.findByRole("button", { name: "Actions for Photos" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Move to trash" }));
+    const confirm = await screen.findByRole("alertdialog");
+    expect(within(confirm).getByText("Move Photos to the trash?")).toBeDefined();
+    fireEvent.click(within(confirm).getByRole("button", { name: "Move to trash" }));
+    expect(await screen.findByText("This folder is empty")).toBeDefined();
+    expect(trashed).toBe(true);
   });
 
   it("encrypts the new name of a file in an encrypted library", async () => {

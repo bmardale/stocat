@@ -45,7 +45,7 @@ func TestTusUploadsPublishFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	queue, err := service.ConfigureQueue(stores)
+	queue, err := service.ConfigureQueue(stores, QueueHooks{})
 	if err != nil {
 		t.Fatal(err)
 	}

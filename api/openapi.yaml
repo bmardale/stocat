@@ -682,6 +682,75 @@ components:
         - created_at
         - current
       type: object
+    TrashItem:
+      additionalProperties: false
+      properties:
+        created_at:
+          format: date-time
+          type: string
+        encrypted_name:
+          contentEncoding: base64
+          type: string
+        encryption_mode:
+          enum:
+            - none
+            - e2ee
+          type: string
+        expires_at:
+          format: date-time
+          type: string
+        id:
+          type: string
+        kind:
+          enum:
+            - file
+            - folder
+          type: string
+        library_id:
+          type: string
+        library_name:
+          type: string
+        name:
+          type: string
+        name_token:
+          contentEncoding: base64
+          type: string
+        parent_id:
+          type: string
+        revision:
+          format: int64
+          type: integer
+        trashed_at:
+          format: date-time
+          type: string
+        updated_at:
+          format: date-time
+          type: string
+      required:
+        - id
+        - library_id
+        - library_name
+        - encryption_mode
+        - parent_id
+        - kind
+        - revision
+        - trashed_at
+        - expires_at
+        - created_at
+        - updated_at
+      type: object
+    TrashPage:
+      additionalProperties: false
+      properties:
+        items:
+          items:
+            $ref: "#/components/schemas/TrashItem"
+          type: array
+        next_cursor:
+          type: string
+      required:
+        - items
+      type: object
     UpdateAccountInputBody:
       additionalProperties: false
       properties:
@@ -2286,12 +2355,6 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
           description: Not Found
-        "409":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/Problem"
-          description: Conflict
         "422":
           content:
             application/problem+json:
@@ -2316,15 +2379,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
           description: Internal Server Error
-        "503":
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/Problem"
-          description: Service Unavailable
       security:
         - session: []
-      summary: Delete a file
+      summary: Move a file to the trash
       tags:
         - Files
     get:
@@ -2771,6 +2828,72 @@ paths:
       summary: Create a folder
       tags:
         - Libraries
+  /api/v1/libraries/{id}/folders/{folder_id}:
+    delete:
+      operationId: folders-delete
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+        - in: path
+          name: folder_id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      responses:
+        "204":
+          description: No Content
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Conflict
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+      security:
+        - session: []
+      summary: Move a folder to the trash
+      tags:
+        - Libraries
   /api/v1/libraries/{id}/nodes:
     get:
       operationId: nodes-list
@@ -2897,6 +3020,239 @@ paths:
       summary: List storage backends for new libraries
       tags:
         - Libraries
+  /api/v1/trash:
+    delete:
+      operationId: trash-empty
+      responses:
+        "204":
+          description: No Content
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Conflict
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
+      security:
+        - session: []
+      summary: Permanently delete all trashed nodes
+      tags:
+        - Trash
+    get:
+      operationId: trash-list
+      parameters:
+        - explode: false
+          in: query
+          name: cursor
+          schema:
+            maxLength: 64
+            type: string
+        - explode: false
+          in: query
+          name: limit
+          schema:
+            default: 100
+            format: int32
+            maximum: 200
+            minimum: 1
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrashPage"
+          description: OK
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+      security:
+        - session: []
+      summary: List trashed nodes
+      tags:
+        - Trash
+  /api/v1/trash/{id}:
+    delete:
+      operationId: trash-delete
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      responses:
+        "204":
+          description: No Content
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Conflict
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
+      security:
+        - session: []
+      summary: Permanently delete a trashed node
+      tags:
+        - Trash
+  /api/v1/trash/{id}/restore:
+    post:
+      operationId: trash-restore
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      responses:
+        "204":
+          description: No Content
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Conflict
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+      security:
+        - session: []
+      summary: Restore a trashed node
+      tags:
+        - Trash
   /api/v1/uploads:
     post:
       operationId: uploads-create

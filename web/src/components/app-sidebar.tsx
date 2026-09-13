@@ -1,5 +1,6 @@
 import {
   DatabaseIcon,
+  Delete02Icon,
   Folder01Icon,
   LibraryIcon,
   UserAccountIcon,
@@ -70,6 +71,16 @@ export function AppSidebar() {
               >
                 <HugeiconsIcon icon={LibraryIcon} strokeWidth={2} />
                 <span>Libraries</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                tooltip="Trash"
+                isActive={Boolean(matchRoute({ to: "/trash", fuzzy: true }))}
+                render={<Link to="/trash" onClick={() => setOpenMobile(false)} />}
+              >
+                <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} />
+                <span>Trash</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
