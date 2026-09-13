@@ -1,5 +1,7 @@
 import { createRootRoute, Link, Outlet } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
+import { ModeToggle } from "@/components/mode-toggle";
+import { ThemeProvider } from "@/components/theme-provider";
 import { buttonVariants } from "@/components/ui/button";
 
 const RouterDevtools = import.meta.env.DEV
@@ -17,14 +19,15 @@ export const Route = createRootRoute({
 
 function RootLayout() {
   return (
-    <>
-      <header className="border-b px-6 py-6 sm:px-12 lg:px-24">
+    <ThemeProvider>
+      <header className="flex items-center justify-between border-b px-6 py-6 sm:px-12 lg:px-24">
         <Link
           to="/"
           className="rounded-sm font-heading text-2xl font-bold tracking-tighter focus-visible:outline-2 focus-visible:outline-offset-4"
         >
           stocat
         </Link>
+        <ModeToggle />
       </header>
       <main id="main" className="mx-auto max-w-5xl px-6 py-16 sm:py-24 lg:py-40">
         <Outlet />
@@ -32,7 +35,7 @@ function RootLayout() {
       <Suspense>
         <RouterDevtools />
       </Suspense>
-    </>
+    </ThemeProvider>
   );
 }
 
