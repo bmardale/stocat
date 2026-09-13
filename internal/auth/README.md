@@ -56,7 +56,7 @@ Email checks run after schema validation and before database queries or password
 Registration also validates the name and password length before it consumes an email token.
 These checks count successful and failed attempts. They also count attempts for email addresses without accounts.
 Login and registration use separate email buckets. These buckets store hashes of normalized email addresses.
-Login checks the email-and-IP bucket before the shared email bucket.
+Login checks the email-and-IP bucket and the shared email bucket together.
 One IP cannot consume shared email tokens faster than the shared bucket restores them.
 Clients on the same IP or IPv6 /64 share the stricter bucket for each email.
 Distributed attackers can still exhaust the shared email budget and prevent login while they sustain the attack.
@@ -71,7 +71,8 @@ Login throttling does not prevent logout unless the general IP limit also reject
 
 The server returns status 429 with the standard problem body and a `Retry-After` header in seconds.
 These responses prohibit caching. Auth and protected routes document this response in OpenAPI.
-The retry delay applies to the rejecting bucket. Other traffic or another bucket can require a longer delay.
+Buckets checked together consume tokens only when all of them allow the request.
+The retry delay is the longest delay among these rejecting buckets. Other traffic or a later check can require a longer delay.
 
 The server groups IPv6 addresses by /64. IPv4 and IPv4-mapped IPv6 addresses share the same identity.
 Unavailable connection addresses share one fallback bucket.

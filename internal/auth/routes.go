@@ -138,10 +138,11 @@ func (s *Service) login(ctx context.Context, input *loginInput) (*sessionOutput,
 	if meta.ip != nil {
 		remote = meta.ip.String()
 	}
-	if delay := s.loginEmailIP.Allow(normalizeEmail(input.Body.Email) + "\x00" + ratelimit.IPKey(remote)); delay > 0 {
-		return nil, ratelimit.Error(delay)
-	}
-	if delay := s.loginEmail.Allow(normalizeEmail(input.Body.Email)); delay > 0 {
+	email := normalizeEmail(input.Body.Email)
+	if delay := ratelimit.AllowAll(
+		ratelimit.Check{Limiter: s.loginEmailIP, Key: email + "\x00" + ratelimit.IPKey(remote)},
+		ratelimit.Check{Limiter: s.loginEmail, Key: email},
+	); delay > 0 {
 		return nil, ratelimit.Error(delay)
 	}
 	if input.Body.Password == "" || len(input.Body.Password) > 1024 {

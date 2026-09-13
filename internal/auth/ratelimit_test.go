@@ -85,6 +85,34 @@ func TestCredentialSharedIPLimit(t *testing.T) {
 	requireRateLimited(t, authRequest(t, router, http.MethodPost, "/auth/login", "{}", "192.0.2.1:1234", ""))
 }
 
+func TestRejectedRegistrationKeepsSharedIPTokens(t *testing.T) {
+	router, _, _ := newTestAPI(t, nil, true)
+	for range 3 {
+		requireStatus(t, authRequest(t, router, http.MethodPost, "/auth/register", "{", "192.0.2.1:1234", ""), http.StatusBadRequest)
+	}
+	for range 10 {
+		requireRateLimited(t, authRequest(t, router, http.MethodPost, "/auth/register", "{", "192.0.2.1:1234", ""))
+	}
+	for range 7 {
+		requireStatus(t, authRequest(t, router, http.MethodPost, "/auth/login", "{", "192.0.2.1:1234", ""), http.StatusBadRequest)
+	}
+	requireRateLimited(t, authRequest(t, router, http.MethodPost, "/auth/login", "{", "192.0.2.1:1234", ""))
+}
+
+func TestRejectedLoginKeepsEmailIPTokens(t *testing.T) {
+	now := time.Now()
+	router, _, _ := newTestAPI(t, nil, true, func() time.Time { return now })
+	const body = `{"email":"user@example.com","password":""}`
+	for i := range 15 {
+		requireStatus(t, authRequest(t, router, http.MethodPost, "/auth/login", body, fmt.Sprintf("192.0.2.%d:1234", i+1), ""), http.StatusUnauthorized)
+	}
+	for range 6 {
+		requireRateLimited(t, authRequest(t, router, http.MethodPost, "/auth/login", body, "198.51.100.1:1234", ""))
+	}
+	now = now.Add(2 * time.Second)
+	requireStatus(t, authRequest(t, router, http.MethodPost, "/auth/login", body, "198.51.100.1:1234", ""), http.StatusUnauthorized)
+}
+
 func TestLoginEmailLimit(t *testing.T) {
 	router, _, _ := newTestAPI(t, nil, true)
 	for i := range 15 {

@@ -10,11 +10,13 @@ import (
 func (s *Service) limitCredentials(api huma.API, limits ...*ratelimit.Limiter) func(huma.Context, func(huma.Context)) {
 	return func(ctx huma.Context, next func(huma.Context)) {
 		key := ratelimit.IPKey(ctx.RemoteAddr())
-		for _, limit := range limits {
-			if delay := limit.Allow(key); delay > 0 {
-				s.writeRateLimitError(api, ctx, delay)
-				return
-			}
+		checks := make([]ratelimit.Check, len(limits))
+		for i, limit := range limits {
+			checks[i] = ratelimit.Check{Limiter: limit, Key: key}
+		}
+		if delay := ratelimit.AllowAll(checks...); delay > 0 {
+			s.writeRateLimitError(api, ctx, delay)
+			return
 		}
 		next(ctx)
 	}

@@ -86,6 +86,49 @@ func TestConcurrentLimit(t *testing.T) {
 	}
 }
 
+func TestAllowAll(t *testing.T) {
+	now := time.Now()
+	clock := func() time.Time { return now }
+	wide := newTestLimiter(t, Policy{Interval: time.Second, Burst: 3}, clock)
+	narrow := newTestLimiter(t, Policy{Interval: 5 * time.Second, Burst: 1}, clock)
+	checks := []Check{{Limiter: narrow, Key: "a"}, {Limiter: wide, Key: "a"}}
+	if delay := AllowAll(checks...); delay != 0 {
+		t.Fatalf("first request rejected: %s", delay)
+	}
+	for range 3 {
+		if delay := AllowAll(checks...); delay != 5*time.Second {
+			t.Fatalf("delay = %s, want 5s", delay)
+		}
+	}
+	for range 2 {
+		if delay := wide.Allow("a"); delay != 0 {
+			t.Fatalf("rejected check consumed a token from another limiter: %s", delay)
+		}
+	}
+	if delay := wide.Allow("a"); delay != time.Second {
+		t.Fatalf("delay = %s, want 1s", delay)
+	}
+	if delay := AllowAll(checks[1], checks[0]); delay != 5*time.Second {
+		t.Fatalf("delay = %s, want the longest delay 5s", delay)
+	}
+}
+
+func TestAllowAllConcurrentOrder(t *testing.T) {
+	a := newTestLimiter(t, Policy{Interval: time.Millisecond, Burst: 1000}, nil)
+	b := newTestLimiter(t, Policy{Interval: time.Millisecond, Burst: 1000}, nil)
+	var workers sync.WaitGroup
+	for i := range 100 {
+		workers.Go(func() {
+			if i%2 == 0 {
+				AllowAll(Check{Limiter: a, Key: "k"}, Check{Limiter: b, Key: "k"})
+			} else {
+				AllowAll(Check{Limiter: b, Key: "k"}, Check{Limiter: a, Key: "k"})
+			}
+		})
+	}
+	workers.Wait()
+}
+
 func TestCapacityAndCleanup(t *testing.T) {
 	now := time.Now()
 	limiter := newTestLimiter(t, Policy{Interval: 12 * time.Second, Burst: 5}, func() time.Time { return now })
