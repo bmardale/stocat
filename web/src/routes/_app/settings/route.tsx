@@ -12,12 +12,15 @@ function SettingsLayout() {
         <div className="flex flex-col gap-2">
           <h1 className="font-heading text-4xl font-bold tracking-tighter">Settings</h1>
           <p className="leading-relaxed text-muted-foreground">
-            Manage your account details, password, and signed-in devices.
+            Manage your account details, password, passkeys, and signed-in devices.
           </p>
         </div>
         <nav aria-label="Settings" className="flex gap-6 border-b">
           <Link to="/settings" activeOptions={{ exact: true }} className={linkClass}>
             Account
+          </Link>
+          <Link to="/settings/passkeys" className={linkClass}>
+            Passkeys
           </Link>
           <Link to="/settings/sessions" className={linkClass}>
             Sessions

@@ -11,6 +11,13 @@ The `Auth` OpenAPI tag contains these routes:
 | GET | `/api/v1/auth/sessions` | Require a valid session. Return the active sessions of the user with status 200. |
 | DELETE | `/api/v1/auth/sessions` | Require a valid session. Delete all other sessions of the user. Return status 204. |
 | DELETE | `/api/v1/auth/sessions/{id}` | Require a valid session. Delete one session of the user. Return status 204. |
+| POST | `/api/v1/auth/passkeys/login/options` | Start a passkey sign-in. Return the request options with status 200. |
+| POST | `/api/v1/auth/passkeys/login` | Verify a passkey and create a session. Return the user with status 200. |
+| GET | `/api/v1/auth/passkeys` | Require a valid session. Return the passkeys of the user with status 200. |
+| POST | `/api/v1/auth/passkeys/registration/options` | Require a valid session and the password. Return the creation options with status 200. |
+| POST | `/api/v1/auth/passkeys` | Require a valid session. Verify and store a passkey. Return it with status 201. |
+| PATCH | `/api/v1/auth/passkeys/{id}` | Require a valid session. Rename one passkey of the user. Return it with status 200. |
+| DELETE | `/api/v1/auth/passkeys/{id}` | Require a valid session. Delete one passkey of the user. Return status 204. |
 
 Registration requires `name`, `email`, and `password`. Login requires `email` and `password`.
 Email comparison ignores case. Registration and login remove leading and trailing spaces from email addresses.
@@ -45,6 +52,38 @@ When the ID identifies the current session, the response also clears the cookie.
 Cookies use `HttpOnly`, `SameSite=Lax`, and `Path=/`. The server configuration controls `Secure`.
 The server rejects cross-origin write requests through `http.CrossOriginProtection`.
 
+## Passkeys
+
+Passkeys use WebAuthn discoverable credentials. The server requires user verification for registration and sign-in.
+The server requests no attestation. It accepts any authenticator that verifies the user.
+
+Set these variables to configure the relying party:
+
+| Variable | Default | Value |
+| --- | --- | --- |
+| `WEBAUTHN_RP_ID` | `localhost` | The domain of the site, without a scheme or port. |
+| `WEBAUTHN_RP_NAME` | `Stocat` | The name that authenticators show. |
+| `WEBAUTHN_RP_ORIGINS` | `http://localhost:5173` | A comma-separated list of the origins that serve the web app. |
+
+The RP ID must equal the host of each origin or a registrable domain suffix of that host.
+The server stores the RP ID with each passkey. A change to the RP ID hides all earlier passkeys.
+When the auth configuration has no RP ID, passkey ceremonies return status 503.
+
+Each ceremony has two requests. The options request returns JSON for `PublicKeyCredential.parseCreationOptionsFromJSON()`
+or `PublicKeyCredential.parseRequestOptionsFromJSON()`. Send the `toJSON()` value of the credential in the second request.
+The server stores each challenge for 5 minutes. The second request deletes the challenge before verification.
+Thus each challenge allows one attempt. Registration challenges belong to the user that requested them.
+
+Registration requires the current password, so a stolen session cannot add a persistent credential.
+The server excludes the existing passkeys of the user from registration.
+Each user has one random 64-byte WebAuthn user handle. The handle contains no account data.
+
+Passkey sign-in creates a session in the same way as password sign-in.
+Sign-in fails with status 401 when the sign counter does not increase. This can indicate a cloned authenticator.
+Authenticators that always report a zero counter, such as synced passkeys, pass this check.
+Passkey responses contain `id`, `name`, `created_at`, `last_used_at`, and `synced`.
+The `synced` field is true when the authenticator backs up the passkey.
+
 ## Rate limits
 
 The server uses token buckets. Each bucket starts full and restores tokens continuously.
@@ -53,7 +92,7 @@ Each accepted request consumes one token. Rejected requests do not extend the bu
 | Requests | Identity | Tokens per minute | Burst |
 | --- | --- | --- | --- |
 | All requests except GET health probes | Connection IP | 300 | 60 |
-| Login and registration, combined | Connection IP | 20 | 10 |
+| Login, registration, and passkey sign-in, combined | Connection IP | 20 | 10 |
 | Registration | Connection IP | 5 | 3 |
 | Login | Normalized email and connection IP | 5 | 5 |
 | Login | Normalized email across all IPs | 30 | 15 |

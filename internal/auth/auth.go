@@ -22,6 +22,7 @@ import (
 	"github.com/bmardale/stocat/internal/platform/id"
 	"github.com/bmardale/stocat/internal/platform/ratelimit"
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -37,7 +38,9 @@ const (
 
 type Config struct {
 	SecureCookies bool
-	Logger        *slog.Logger
+	// WebAuthn disables passkeys when RPID is empty.
+	WebAuthn WebAuthnConfig
+	Logger   *slog.Logger
 	// RateLimitClock defaults to time.Now. It does not control session expiry.
 	RateLimitClock func() time.Time
 }
@@ -46,6 +49,8 @@ type Service struct {
 	pool          *pgxpool.Pool
 	queries       *db.Queries
 	secureCookies bool
+	webauthn      *webauthn.WebAuthn
+	rpID          string
 	log           *slog.Logger
 	authIP        *ratelimit.Limiter
 	registerIP    *ratelimit.Limiter
@@ -79,7 +84,14 @@ func New(pool *pgxpool.Pool, cfg Config) (*Service, error) {
 		log = slog.Default()
 	}
 	s := &Service{
-		pool: pool, queries: db.New(pool), secureCookies: cfg.SecureCookies, log: log,
+		pool: pool, queries: db.New(pool), secureCookies: cfg.SecureCookies, rpID: cfg.WebAuthn.RPID, log: log,
+	}
+	if cfg.WebAuthn.RPID != "" {
+		relyingParty, err := newWebAuthn(cfg.WebAuthn)
+		if err != nil {
+			return nil, fmt.Errorf("configure WebAuthn: %w", err)
+		}
+		s.webauthn = relyingParty
 	}
 	for _, limit := range []struct {
 		target **ratelimit.Limiter

@@ -22,6 +22,12 @@ type Config struct {
 
 	SessionCookieSecure bool `env:"SESSION_COOKIE_SECURE" envDefault:"true"`
 
+	// WebAuthnRPID must equal the host of each origin or a registrable domain suffix of that host.
+	// A change to this value invalidates all registered passkeys.
+	WebAuthnRPID      string   `env:"WEBAUTHN_RP_ID" envDefault:"localhost"`
+	WebAuthnRPName    string   `env:"WEBAUTHN_RP_NAME" envDefault:"Stocat"`
+	WebAuthnRPOrigins []string `env:"WEBAUTHN_RP_ORIGINS" envSeparator:"," envDefault:"http://localhost:5173"`
+
 	// AppKey encrypts secrets in the database. Generate one with "make key-generate".
 	AppKey crypt.Key `env:"APP_KEY,required,notEmpty"`
 	// AppPreviousKeys decrypt data that an earlier APP_KEY encrypted.
