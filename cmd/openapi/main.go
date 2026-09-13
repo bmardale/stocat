@@ -18,7 +18,11 @@ func main() {
 }
 
 func run(path string) error {
-	spec, err := server.New(server.Config{}, nil).OpenAPI()
+	srv, err := server.New(server.Config{}, nil)
+	if err != nil {
+		return fmt.Errorf("create server: %w", err)
+	}
+	spec, err := srv.OpenAPI()
 	if err != nil {
 		return fmt.Errorf("generate OpenAPI: %w", err)
 	}

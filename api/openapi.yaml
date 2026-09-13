@@ -162,6 +162,18 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
           description: Unprocessable Entity
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
         "500":
           content:
             application/problem+json:
@@ -181,6 +193,18 @@ paths:
             Set-Cookie:
               schema:
                 type: string
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
         "500":
           content:
             application/problem+json:
@@ -206,6 +230,18 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
           description: Unauthorized
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
         "500":
           content:
             application/problem+json:
@@ -255,6 +291,18 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
           description: Unprocessable Entity
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
         "500":
           content:
             application/problem+json:
