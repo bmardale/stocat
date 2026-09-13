@@ -17,14 +17,9 @@ export function SiteLayout({ children }: { children: React.ReactNode }) {
         </Link>
         <nav className="flex items-center gap-2">
           {user ? (
-            <>
-              <Link to="/dashboard" className={buttonVariants({ variant: "ghost" })}>
-                Dashboard
-              </Link>
-              <Button variant="outline" onClick={() => void logout()}>
-                Sign out
-              </Button>
-            </>
+            <Button variant="outline" onClick={() => void logout()}>
+              Sign out
+            </Button>
           ) : (
             <>
               <Link to="/login" className={buttonVariants({ variant: "ghost" })}>

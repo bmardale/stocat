@@ -33,7 +33,7 @@ function Register() {
     mutation: {
       onSuccess: (user) => {
         setUser(user);
-        router.history.push(redirect ?? "/dashboard");
+        router.history.push(redirect ?? "/");
       },
     },
   });

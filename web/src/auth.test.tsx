@@ -7,19 +7,27 @@ function fill(label: string, value: string) {
 }
 
 describe("auth", () => {
-  it("sends a guest from the dashboard to sign in", async () => {
+  it("sends a guest from home to sign in without a redirect path", async () => {
     stubApi({ "GET /api/auth/me": unauthorized });
-    const router = await renderApp("/dashboard");
+    const router = await renderApp("/");
     expect(await screen.findByRole("button", { name: "Sign in" })).toBeDefined();
     expect(router.state.location.pathname).toBe("/login");
-    expect(router.state.location.search).toEqual({ redirect: "/dashboard" });
+    expect(router.state.location.search).toEqual({});
   });
 
-  it("sends a signed-in user from sign in to the dashboard", async () => {
+  it("keeps the requested path when it sends a guest to sign in", async () => {
+    stubApi({ "GET /api/auth/me": unauthorized });
+    const router = await renderApp("/?view=grid");
+    expect(await screen.findByRole("button", { name: "Sign in" })).toBeDefined();
+    expect(router.state.location.pathname).toBe("/login");
+    expect(router.state.location.search).toEqual({ redirect: "/?view=grid" });
+  });
+
+  it("sends a signed-in user from sign in to home", async () => {
     stubApi({ "GET /api/auth/me": () => jsonResponse(200, testUser) });
     const router = await renderApp("/login");
     expect(await screen.findByText("Signed in as ada@example.com.")).toBeDefined();
-    expect(router.state.location.pathname).toBe("/dashboard");
+    expect(router.state.location.pathname).toBe("/");
   });
 
   it("validates the sign-in form before it sends a request", async () => {
@@ -73,7 +81,7 @@ describe("auth", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("registers and opens the dashboard", async () => {
+  it("registers and opens home", async () => {
     stubApi({
       "GET /api/auth/me": unauthorized,
       "POST /api/auth/register": () => jsonResponse(201, testUser),
@@ -84,7 +92,7 @@ describe("auth", () => {
     fill("Password", "correct horse battery staple");
     fireEvent.click(screen.getByRole("button", { name: "Create account" }));
     expect(await screen.findByText("Signed in as ada@example.com.")).toBeDefined();
-    expect(router.state.location.pathname).toBe("/dashboard");
+    expect(router.state.location.pathname).toBe("/");
   });
 
   it("signs out and opens sign in", async () => {
@@ -92,7 +100,7 @@ describe("auth", () => {
       "GET /api/auth/me": () => jsonResponse(200, testUser),
       "POST /api/auth/logout": () => jsonResponse(204),
     });
-    const router = await renderApp("/dashboard");
+    const router = await renderApp("/");
     fireEvent.click(await screen.findByRole("button", { name: "Sign out" }));
     expect(await screen.findByRole("button", { name: "Sign in" })).toBeDefined();
     await waitFor(() => expect(router.state.location.pathname).toBe("/login"));
