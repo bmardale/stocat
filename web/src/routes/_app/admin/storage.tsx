@@ -49,6 +49,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { toast } from "@/components/ui/toast";
 
 const backendsQueryOptions = queryOptions({
   queryKey: getStorageBackendsListQueryKey(),
@@ -116,10 +117,26 @@ function StorageBackends() {
     });
   const testConnection = (backend: Backend) => {
     setCheck(backend.id, "pending");
-    check.mutateAsync({ id: backend.id }).then(
-      (result) => setCheck(backend.id, result),
-      (error: Error) => setCheck(backend.id, { ok: false, message: error.message }),
-    );
+    void toast
+      .promise(
+        check.mutateAsync({ id: backend.id }).then((result) => {
+          setCheck(backend.id, result);
+          if (!result.ok) {
+            throw new Error(result.message);
+          }
+          return result;
+        }),
+        {
+          loading: `Testing ${backend.name}…`,
+          success: `${backend.name} works.`,
+          error: (error: unknown) => {
+            const message = error instanceof Error ? error.message : "The connection failed.";
+            setCheck(backend.id, { ok: false, message });
+            return message;
+          },
+        },
+      )
+      .catch(() => {});
   };
 
   return (

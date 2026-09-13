@@ -1,6 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
 import { z } from "zod";
 import {
   getAuthSessionsListQueryKey,
@@ -12,6 +11,7 @@ import { useAppForm } from "@/components/form";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { FieldError, FieldGroup } from "@/components/ui/field";
+import { toast } from "@/components/ui/toast";
 
 export const Route = createFileRoute("/_app/settings/")({ component: Account });
 
@@ -61,13 +61,12 @@ function Account() {
 
 function ProfileForm({ name, email }: { name: string; email: string }) {
   const { setUser } = useAuth();
-  const [saved, setSaved] = useState(false);
   const update = useAuthAccountUpdate({
     mutation: {
       onSuccess: (user) => {
         setUser(user);
         form.reset({ name: user.name, email: user.email });
-        setSaved(true);
+        toast.add({ type: "success", description: "Account details saved." });
       },
     },
   });
@@ -75,7 +74,6 @@ function ProfileForm({ name, email }: { name: string; email: string }) {
     defaultValues: { name, email },
     validators: { onSubmit: accountSchema },
     onSubmit: ({ value }) => {
-      setSaved(false);
       update.mutate({ data: { name: value.name.trim(), email: value.email.trim() } });
     },
   });
@@ -103,11 +101,6 @@ function ProfileForm({ name, email }: { name: string; email: string }) {
               {(field) => <field.TextField label="Email" type="email" autoComplete="email" />}
             </form.AppField>
             {update.error && <FieldError>{update.error.message}</FieldError>}
-            {saved && (
-              <p role="status" className="text-sm text-muted-foreground">
-                Account details saved.
-              </p>
-            )}
             <Button type="submit" className="self-start" disabled={update.isPending}>
               Save changes
             </Button>
@@ -120,12 +113,14 @@ function ProfileForm({ name, email }: { name: string; email: string }) {
 
 function PasswordForm() {
   const queryClient = useQueryClient();
-  const [saved, setSaved] = useState(false);
   const change = useAuthPasswordChange({
     mutation: {
       onSuccess: () => {
         form.reset();
-        setSaved(true);
+        toast.add({
+          type: "success",
+          description: "Password changed. Other devices are signed out.",
+        });
         void queryClient.invalidateQueries({ queryKey: getAuthSessionsListQueryKey() });
       },
     },
@@ -134,7 +129,6 @@ function PasswordForm() {
     defaultValues: { current_password: "", new_password: "", confirm_password: "" },
     validators: { onSubmit: passwordSchema },
     onSubmit: ({ value }) => {
-      setSaved(false);
       change.mutate({
         data: { current_password: value.current_password, new_password: value.new_password },
       });
@@ -188,11 +182,6 @@ function PasswordForm() {
               )}
             </form.AppField>
             {change.error && <FieldError>{change.error.message}</FieldError>}
-            {saved && (
-              <p role="status" className="text-sm text-muted-foreground">
-                Password changed. Other devices are signed out.
-              </p>
-            )}
             <Button type="submit" className="self-start" disabled={change.isPending}>
               Change password
             </Button>

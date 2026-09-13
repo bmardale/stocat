@@ -47,6 +47,7 @@ import {
   FieldTitle,
 } from "@/components/ui/field";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { toast } from "@/components/ui/toast";
 import {
   createKeyEnvelope,
   encryptName,
@@ -169,6 +170,7 @@ function CreateLibraryForm({
       if (keys) {
         unlock(library.id, keys);
       }
+      toast.add({ type: "success", description: "Library created." });
       await queryClient.invalidateQueries({ queryKey: getLibrariesListQueryKey() });
     },
   });
@@ -374,7 +376,10 @@ function CreateFolderForm({
       return foldersCreate(library.id, data);
     },
     // Keep the mutation pending until the list shows the result.
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: getNodesListQueryKey(library.id) }),
+    onSuccess: () => {
+      toast.add({ type: "success", description: "Folder created." });
+      return queryClient.invalidateQueries({ queryKey: getNodesListQueryKey(library.id) });
+    },
   });
   const form = useAppForm({
     defaultValues: { name: "" },

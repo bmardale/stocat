@@ -7,6 +7,7 @@ import { AuthProvider } from "@/components/auth-provider";
 import { SiteLayout } from "@/components/site-layout";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Toaster } from "@/components/ui/toast";
 import { NOT_FOUND_COPY, pageError } from "@/lib/errors";
 
 const RouterDevtools = import.meta.env.DEV
@@ -64,6 +65,7 @@ function RootLayout() {
       <AuthProvider>
         <Outlet />
       </AuthProvider>
+      <Toaster />
       <Suspense>
         <RouterDevtools />
       </Suspense>

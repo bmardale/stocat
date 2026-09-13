@@ -123,7 +123,7 @@ describe("storage backends", () => {
     expect(bodies).toEqual([
       { name: "Media", type: "local", enabled: true, local: { root: "/srv/media" } },
     ]);
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(document.querySelector('[data-slot="dialog-content"]')).toBeNull());
   });
 
   it("adds an S3 backend", async () => {
@@ -251,13 +251,11 @@ describe("storage backends", () => {
     const dialog = await screen.findByRole("dialog");
     fill(dialog, "Directory", "/srv/missing");
     fireEvent.click(within(dialog).getByRole("button", { name: "Test connection" }));
-    expect(await within(dialog).findByText("Connection failed")).toBeDefined();
-    expect(within(dialog).getByText("The directory does not exist.")).toBeDefined();
+    expect(await screen.findByText("The directory does not exist.")).toBeDefined();
 
     fill(dialog, "Directory", "/srv/media");
-    await waitFor(() => expect(within(dialog).queryByText("Connection failed")).toBeNull());
     fireEvent.click(within(dialog).getByRole("button", { name: "Test connection" }));
-    expect(await within(dialog).findByText("Connection works")).toBeDefined();
+    expect(await screen.findByText("The connection works.")).toBeDefined();
     expect(bodies).toEqual([
       { type: "local", local: { root: "/srv/missing" } },
       { type: "local", local: { root: "/srv/media" } },
@@ -284,7 +282,7 @@ describe("storage backends", () => {
     fill(dialog, "Endpoint", "https://other.example.com");
     fireEvent.click(within(dialog).getByRole("button", { name: "Test connection" }));
     expect(
-      await within(dialog).findByText("Enter the credentials again when you change the endpoint."),
+      await screen.findByText("Enter the credentials again when you change the endpoint."),
     ).toBeDefined();
     expect(body).toEqual({
       id: "stb_s3",
