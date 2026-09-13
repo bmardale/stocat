@@ -12,6 +12,7 @@ import (
 
 type Session struct {
 	TokenHash []byte
+	PublicID  string
 	UserID    int64
 	UserAgent string
 	IpAddress *netip.Addr

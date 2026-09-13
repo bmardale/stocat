@@ -1,6 +1,6 @@
 # Authentication
 
-The `Auth` OpenAPI tag contains four routes:
+The `Auth` OpenAPI tag contains these routes:
 
 | Method | Path | Result |
 | --- | --- | --- |
@@ -8,6 +8,9 @@ The `Auth` OpenAPI tag contains four routes:
 | POST | `/auth/login` | Create a session. Return the user with status 200. |
 | GET | `/auth/me` | Require a valid session. Return the user with status 200. |
 | POST | `/auth/logout` | Delete the current session and clear its cookie. Return status 204. |
+| GET | `/auth/sessions` | Require a valid session. Return the active sessions of the user with status 200. |
+| DELETE | `/auth/sessions` | Require a valid session. Delete all other sessions of the user. Return status 204. |
+| DELETE | `/auth/sessions/{id}` | Require a valid session. Delete one session of the user. Return status 204. |
 
 Registration requires `name`, `email`, and `password`. Login requires `email` and `password`.
 Email comparison ignores case. Registration and login remove leading and trailing spaces from email addresses.
@@ -26,6 +29,18 @@ Sessions expire after 30 days. Requests do not extend this period.
 Login and registration replace the session presented by the current cookie.
 Logout succeeds when the cookie is missing, invalid, expired, or already revoked.
 Logout preserves sessions from other devices.
+
+## Session management
+
+Each session has a public ID with the `ses_` prefix. Responses never contain the token or its hash.
+Session responses contain `id`, `user_agent`, `ip_address`, `created_at`, and `current`.
+The `current` field is true for the session that sent the request.
+The list contains only sessions that have not expired. The current session is first. Newer sessions come next.
+The server stores the raw user agent. Clients parse it for display.
+
+`DELETE /auth/sessions` keeps the current session. Use logout to also delete the current session.
+`DELETE /auth/sessions/{id}` returns status 404 when the session does not exist or belongs to another user.
+When the ID identifies the current session, the response also clears the cookie.
 
 Cookies use `HttpOnly`, `SameSite=Lax`, and `Path=/`. The server configuration controls `Secure`.
 The server rejects cross-origin write requests through `http.CrossOriginProtection`.
