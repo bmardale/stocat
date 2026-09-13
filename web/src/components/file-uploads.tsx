@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { toast } from "@/components/ui/toast";
 import type { LibraryKeys } from "@/lib/library-crypto";
+import { formatBytes } from "@/lib/utils";
 import { cn } from "cn";
 
 type UploadState = "queued" | UploadPhase | "completed" | "failed" | "cancelled";
@@ -305,17 +306,4 @@ function statusText(item: UploadItem) {
   if (item.state === "failed") return "Failed";
   if (item.state === "cancelled") return "Cancelled";
   return `${formatBytes(item.uploaded)} of ${formatBytes(item.total)}`;
-}
-
-function formatBytes(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`;
-  const units = ["KiB", "MiB", "GiB", "TiB"];
-  let value = bytes / 1024;
-  let unit = units[0];
-  for (const next of units.slice(1)) {
-    if (value < 1024) break;
-    value /= 1024;
-    unit = next;
-  }
-  return `${value.toFixed(value >= 10 ? 0 : 1)} ${unit}`;
 }

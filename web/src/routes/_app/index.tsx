@@ -1,12 +1,15 @@
 import {
   ArrowDown01Icon,
+  Download04Icon,
   File01Icon,
   Folder01Icon,
   FolderAddIcon,
   LibraryIcon,
+  MoreVerticalIcon,
   Settings01Icon,
   SquareLock02Icon,
   Upload01Icon,
+  ViewIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -29,6 +32,12 @@ import {
   UploadQueue,
   useFileUploads,
 } from "@/components/file-uploads";
+import {
+  FilePreviewDialog,
+  useFileDownload,
+  type FileTarget,
+  type PreviewState,
+} from "@/components/file-preview";
 import { useLibraryKeys } from "@/components/library-keys";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -286,6 +295,8 @@ function FileBrowser({
   const locked = library.encryption_mode === "e2ee" && !keys;
   const path = useFolderPath(library, locked ? undefined : folder);
   const [creating, setCreating] = useState(false);
+  const [previewing, setPreviewing] = useState<PreviewState>({ open: false });
+  const downloads = useFileDownload(keys);
   const uploads = useFileUploads({
     library,
     parentId: folder ?? library.root_node_id,
@@ -293,6 +304,7 @@ function FileBrowser({
   });
 
   const lock = () => {
+    setPreviewing((state) => ({ ...state, open: false }));
     libraryKeys.lock(library.id);
     queryClient.removeQueries({ queryKey: getNodesListQueryKey(library.id) });
   };
@@ -375,7 +387,13 @@ function FileBrowser({
         <div className="relative" {...uploads.dropProps}>
           <UploadInput inputRef={uploads.inputRef} onFiles={uploads.add} />
           <UploadDropOverlay visible={uploads.dragging} />
-          <FolderContents library={library} folder={folder} keys={keys} />
+          <FolderContents
+            library={library}
+            folder={folder}
+            keys={keys}
+            onPreview={(file) => setPreviewing({ open: true, file })}
+            onDownload={(file) => void downloads.download(file)}
+          />
         </div>
       )}
       {!locked && (
@@ -385,6 +403,13 @@ function FileBrowser({
           onClear={uploads.removeFinished}
         />
       )}
+      <FilePreviewDialog
+        state={previewing}
+        onOpenChange={(open) => setPreviewing((state) => ({ ...state, open }))}
+        keys={keys}
+        downloading={downloads.downloading}
+        onDownload={(file) => void downloads.download(file)}
+      />
       <CreateFolderDialog
         open={creating}
         onOpenChange={setCreating}
@@ -402,10 +427,14 @@ function FolderContents({
   library,
   folder,
   keys,
+  onPreview,
+  onDownload,
 }: {
   library: Library;
   folder?: string;
   keys?: LibraryKeys;
+  onPreview: (file: FileTarget) => void;
+  onDownload: (file: FileTarget) => void;
 }) {
   const nodes = useInfiniteQuery(nodesQueryOptions(library, folder, keys));
 
@@ -443,19 +472,31 @@ function FolderContents({
           <TableHeader>
             <TableRow>
               <TableHead className="pl-4">Name</TableHead>
-              <TableHead className="w-48 pr-4">Modified</TableHead>
+              <TableHead className="w-48">Modified</TableHead>
+              <TableHead className="w-12 pr-2">
+                <span className="sr-only">Actions</span>
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {items.map((node) => (
               <TableRow key={node.id}>
                 <TableCell className="max-w-0 pl-4">
-                  <NodeName library={library} node={node} />
+                  <NodeName library={library} node={node} onPreview={onPreview} />
                 </TableCell>
-                <TableCell className="pr-4 text-muted-foreground">
+                <TableCell className="text-muted-foreground">
                   <time dateTime={node.updated_at}>
                     {dateFormat.format(new Date(node.updated_at))}
                   </time>
+                </TableCell>
+                <TableCell className="pr-2 text-right">
+                  {node.kind === "file" && node.displayName !== undefined && (
+                    <FileActions
+                      file={{ id: node.id, name: node.displayName }}
+                      onPreview={onPreview}
+                      onDownload={onDownload}
+                    />
+                  )}
                 </TableCell>
               </TableRow>
             ))}
@@ -475,7 +516,15 @@ function FolderContents({
   );
 }
 
-function NodeName({ library, node }: { library: Library; node: LibraryNode }) {
+function NodeName({
+  library,
+  node,
+  onPreview,
+}: {
+  library: Library;
+  node: LibraryNode;
+  onPreview: (file: FileTarget) => void;
+}) {
   const label = node.displayName ?? (
     <span className="text-muted-foreground italic">Name cannot be decrypted</span>
   );
@@ -491,7 +540,19 @@ function NodeName({ library, node }: { library: Library; node: LibraryNode }) {
   );
 
   if (node.kind === "file") {
-    return <span className="flex items-center gap-2">{content}</span>;
+    const name = node.displayName;
+    if (name === undefined) {
+      return <span className="flex items-center gap-2">{content}</span>;
+    }
+    return (
+      <button
+        type="button"
+        onClick={() => onPreview({ id: node.id, name })}
+        className="flex max-w-full items-center gap-2 text-left hover:underline"
+      >
+        {content}
+      </button>
+    );
   }
   return (
     <Link
@@ -501,5 +562,35 @@ function NodeName({ library, node }: { library: Library; node: LibraryNode }) {
     >
       {content}
     </Link>
+  );
+}
+
+function FileActions({
+  file,
+  onPreview,
+  onDownload,
+}: {
+  file: FileTarget;
+  onPreview: (file: FileTarget) => void;
+  onDownload: (file: FileTarget) => void;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={<Button variant="ghost" size="icon-sm" aria-label={`Actions for ${file.name}`} />}
+      >
+        <HugeiconsIcon icon={MoreVerticalIcon} strokeWidth={2} />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-auto min-w-40">
+        <DropdownMenuItem onClick={() => onPreview(file)}>
+          <HugeiconsIcon icon={ViewIcon} strokeWidth={2} />
+          Preview
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => onDownload(file)}>
+          <HugeiconsIcon icon={Download04Icon} strokeWidth={2} />
+          Download
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

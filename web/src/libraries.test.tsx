@@ -1,6 +1,7 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it } from "vite-plus/test";
-import type { Library, LibraryBackend, Node, User } from "@/api/generated/model";
+import { describe, expect, it, vi } from "vite-plus/test";
+import type { FileDetails, Library, LibraryBackend, Node, User } from "@/api/generated/model";
+import { encryptFile } from "@/lib/file-crypto";
 import {
   createKeyEnvelope,
   encryptName,
@@ -48,6 +49,18 @@ function folder(id: string, name: string, parent = "nod_root"): Node {
     revision: 1,
     created_at: "2026-09-11T09:00:00Z",
     updated_at: "2026-09-11T09:00:00Z",
+  };
+}
+
+function fileDetails(id: string, size: number): FileDetails {
+  return {
+    id,
+    library_id: "lib_docs",
+    version_id: `ver_${id}`,
+    revision: 1,
+    size,
+    stored_size: size,
+    content_url: `/api/v1/files/${id}/content`,
   };
 }
 
@@ -448,6 +461,109 @@ describe("files", () => {
     expect(completeBody?.encryption_format).toBe("stocat-framed-v1");
     expect(fromBase64(completeBody?.dedup_fingerprint as string)).toHaveLength(32);
     expect(fromBase64(completeBody?.encrypted_file_key as string)).toHaveLength(61);
+  });
+
+  it("previews a text file and downloads it", async () => {
+    const note: Node = { ...folder("nod_note", "notes.txt"), kind: "file" };
+    stubApi({
+      "GET /api/v1/auth/me": () => jsonResponse(200, testUser),
+      "GET /api/v1/libraries": () => jsonResponse(200, [documents]),
+      "GET /api/v1/libraries/lib_docs/nodes": () => jsonResponse(200, { items: [note] }),
+      "GET /api/v1/files/nod_note": () => jsonResponse(200, fileDetails("nod_note", 11)),
+      "GET /api/v1/files/nod_note/content?disposition=inline": () => new Response("hello world"),
+    });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    await renderApp("/");
+    fireEvent.click(await screen.findByRole("button", { name: "notes.txt" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(await within(dialog).findByText("hello world")).toBeDefined();
+    expect(within(dialog).getByText("11 B")).toBeDefined();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Download" }));
+    await waitFor(() => expect(click).toHaveBeenCalledTimes(1));
+    const anchor = click.mock.contexts[0] as HTMLAnchorElement;
+    expect(anchor.getAttribute("href")).toBe(
+      "/api/v1/files/nod_note/content?disposition=attachment",
+    );
+    expect(anchor.download).toBe("notes.txt");
+  });
+
+  it("explains when a file type has no preview", async () => {
+    const archive: Node = { ...folder("nod_archive", "backup.zip"), kind: "file" };
+    stubApi({
+      "GET /api/v1/auth/me": () => jsonResponse(200, testUser),
+      "GET /api/v1/libraries": () => jsonResponse(200, [documents]),
+      "GET /api/v1/libraries/lib_docs/nodes": () => jsonResponse(200, { items: [archive] }),
+      "GET /api/v1/files/nod_archive": () => jsonResponse(200, fileDetails("nod_archive", 2048)),
+    });
+    await renderApp("/");
+    fireEvent.click(await screen.findByRole("button", { name: "Actions for backup.zip" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Preview" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      await within(dialog).findByText("This file type does not have a preview."),
+    ).toBeDefined();
+    expect(within(dialog).getByText("2.0 KiB")).toBeDefined();
+  });
+
+  it("decrypts an encrypted file for preview and download", async () => {
+    const { library, keys } = await encryptedLibrary();
+    const encrypted = await encryptFile(new Blob(["top secret"]), keys, 64 * 1024);
+    const ciphertext = new Uint8Array(await new Response(encrypted.stream).arrayBuffer());
+    const report: Node = {
+      ...folder("nod_report", "", library.root_node_id),
+      library_id: library.id,
+      kind: "file",
+      name: undefined,
+      encrypted_name: await encryptName(keys, "report.txt"),
+    };
+    const details: FileDetails = {
+      ...fileDetails("nod_report", 10),
+      library_id: library.id,
+      stored_size: ciphertext.length,
+      encryption_format: encrypted.encryptionFormat,
+      encrypted_file_key: encrypted.encryptedFileKey,
+    };
+    stubApi({
+      "GET /api/v1/auth/me": () => jsonResponse(200, testUser),
+      "GET /api/v1/libraries": () => jsonResponse(200, [library]),
+      "GET /api/v1/libraries/lib_private/nodes": () => jsonResponse(200, { items: [report] }),
+      "GET /api/v1/files/nod_report": () => jsonResponse(200, details),
+      "GET /api/v1/files/nod_report/content?disposition=inline": () => new Response(ciphertext),
+      "GET /api/v1/files/nod_report/content?disposition=attachment": () => new Response(ciphertext),
+    });
+    const written: string[] = [];
+    Object.defineProperty(window, "showSaveFilePicker", {
+      configurable: true,
+      value: async () => ({
+        createWritable: async () =>
+          new WritableStream<Uint8Array>({
+            write: (chunk) => {
+              written.push(new TextDecoder().decode(chunk));
+            },
+          }),
+      }),
+    });
+    try {
+      await renderApp("/");
+      fireEvent.click(await screen.findByRole("button", { name: "Unlock" }));
+      const unlock = await screen.findByRole("dialog");
+      fill(unlock, "Passphrase", passphrase);
+      fireEvent.click(within(unlock).getByRole("button", { name: "Unlock" }));
+      const name = await screen.findByRole("button", { name: "report.txt" });
+      await waitFor(() =>
+        expect(document.querySelector('[data-slot="dialog-content"]')).toBeNull(),
+      );
+
+      fireEvent.click(name);
+      const dialog = await screen.findByRole("dialog");
+      expect(await within(dialog).findByText("top secret")).toBeDefined();
+      expect(within(dialog).getByText("10 B · End-to-end encrypted")).toBeDefined();
+      fireEvent.click(within(dialog).getByRole("button", { name: "Download" }));
+      await waitFor(() => expect(written.join("")).toBe("top secret"));
+    } finally {
+      Reflect.deleteProperty(window, "showSaveFilePicker");
+    }
   });
 });
 

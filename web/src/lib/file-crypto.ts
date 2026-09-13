@@ -23,6 +23,11 @@ export type EncryptedFile = {
   metadata: Promise<EncryptedFileMetadata>;
 };
 
+export type DecryptedFile = {
+  size: number;
+  stream: ReadableStream<Uint8Array>;
+};
+
 export async function encryptFile(
   source: Blob,
   keys: LibraryKeys,
@@ -108,28 +113,34 @@ export async function encryptFile(
   };
 }
 
-export async function decryptFile(
-  source: Blob,
+export async function decryptFileStream(
+  source: ReadableStream<Uint8Array>,
   keys: LibraryKeys,
   encryptedFileKey: string,
-): Promise<ReadableStream<Uint8Array>> {
-  if (source.size < headerSize + tagSize) {
-    throw new Error("The encrypted file is incomplete.");
-  }
-  const header = new Uint8Array(await source.slice(0, headerSize).arrayBuffer());
+  storedSize?: number,
+): Promise<DecryptedFile> {
+  const bytes = new StreamBytes(source);
+  const header = await bytes.read(headerSize);
   const parsed = parseHeader(header);
-  if (source.size !== encryptedSize(parsed.plaintextSize, parsed.frameSize)) {
+  if (
+    storedSize !== undefined &&
+    storedSize !== encryptedSize(parsed.plaintextSize, parsed.frameSize)
+  ) {
     throw new Error("The encrypted file size is invalid.");
   }
   const fileKeyBytes = await unwrapFileKey(keys.files, encryptedFileKey);
   const fileKey = await crypto.subtle.importKey("raw", fileKeyBytes, "AES-GCM", false, ["decrypt"]);
   const frameCount = Math.max(1, Math.ceil(parsed.plaintextSize / parsed.frameSize));
   let frameIndex = 0;
-  let ciphertextOffset = headerSize;
-  return new ReadableStream<Uint8Array>({
+  const stream = new ReadableStream<Uint8Array>({
     async pull(controller) {
       if (frameIndex === frameCount) {
-        controller.close();
+        try {
+          if (await bytes.hasMore()) throw new Error("The encrypted file has trailing data.");
+          controller.close();
+        } catch (error) {
+          controller.error(error);
+        }
         return;
       }
       try {
@@ -138,9 +149,7 @@ export async function decryptFile(
           Math.max(0, parsed.plaintextSize - frameIndex * parsed.frameSize),
         );
         const ciphertextLength = plaintextLength + tagSize;
-        const ciphertext = await source
-          .slice(ciphertextOffset, ciphertextOffset + ciphertextLength)
-          .arrayBuffer();
+        const ciphertext = await bytes.read(ciphertextLength);
         const plaintext = await crypto.subtle.decrypt(
           {
             name: "AES-GCM",
@@ -151,13 +160,66 @@ export async function decryptFile(
           ciphertext,
         );
         controller.enqueue(new Uint8Array(plaintext));
-        ciphertextOffset += ciphertextLength;
         frameIndex += 1;
       } catch (error) {
         controller.error(error);
       }
     },
+    cancel(reason) {
+      return bytes.cancel(reason);
+    },
   });
+  return { size: parsed.plaintextSize, stream };
+}
+
+// Network chunks are small and a frame is large. A chunk queue copies each byte once.
+class StreamBytes {
+  private readonly reader: ReadableStreamDefaultReader<Uint8Array>;
+  private readonly chunks: Uint8Array[] = [];
+  private buffered = 0;
+  private done = false;
+
+  constructor(stream: ReadableStream<Uint8Array>) {
+    this.reader = stream.getReader();
+  }
+
+  async read(length: number) {
+    while (this.buffered < length && !this.done) await this.pull();
+    if (this.buffered < length) throw new Error("The encrypted file is incomplete.");
+    const result = new Uint8Array(length);
+    let offset = 0;
+    while (offset < length) {
+      const chunk = this.chunks.shift();
+      if (!chunk) throw new Error("The encrypted file is incomplete.");
+      const count = Math.min(chunk.byteLength, length - offset);
+      result.set(chunk.subarray(0, count), offset);
+      offset += count;
+      if (count < chunk.byteLength) this.chunks.unshift(chunk.subarray(count));
+    }
+    this.buffered -= length;
+    return result;
+  }
+
+  async hasMore() {
+    while (this.buffered === 0 && !this.done) await this.pull();
+    return this.buffered > 0;
+  }
+
+  cancel(reason?: unknown) {
+    return this.reader.cancel(reason);
+  }
+
+  private async pull() {
+    const next = await this.reader.read();
+    if (next.done) {
+      this.done = true;
+      return;
+    }
+    if (next.value.byteLength > 0) {
+      this.chunks.push(next.value);
+      this.buffered += next.value.byteLength;
+    }
+  }
 }
 
 export function encryptedSize(plaintextSize: number, frameSize = defaultFrameSize) {
