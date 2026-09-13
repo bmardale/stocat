@@ -9,10 +9,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  test:
-    name: Test
+  go-test:
+    name: Go test
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -23,9 +28,10 @@ jobs:
       - name: Run tests
         run: make test
 
-  lint:
-    name: Lint
+  go-lint:
+    name: Go lint
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -37,3 +43,28 @@ jobs:
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.13.2
+
+  web:
+    name: Web
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+      - name: Set up Vite+
+        uses: voidzero-dev/setup-vp@v1.20.0
+        with:
+          working-directory: web
+          cache: true
+          run-install: false
+      - name: Install dependencies
+        run: vp install --frozen-lockfile
+      - name: Check formatting, lint, and types
+        run: vp check
+      - name: Run tests
+        run: vp test run
+      - name: Build application
+        run: vp run build
