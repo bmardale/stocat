@@ -12,13 +12,13 @@ Other users get status 403. Requests without a valid session get status 401.
 
 | Method | Path | Result |
 | --- | --- | --- |
-| GET | `/admin/storage-backends` | Return all backends, sorted by name, with status 200. |
-| POST | `/admin/storage-backends` | Create a backend. Return it with status 201. |
-| GET | `/admin/storage-backends/{id}` | Return one backend with status 200. |
-| PUT | `/admin/storage-backends/{id}` | Replace the name, enabled flag, and settings. Return the backend with status 200. |
-| DELETE | `/admin/storage-backends/{id}` | Delete a backend. Return status 204. |
-| POST | `/admin/storage-backends/check` | Check the connection with settings that are not saved. Return the result with status 200. |
-| POST | `/admin/storage-backends/{id}/check` | Check the connection of a saved backend. Return the result with status 200. |
+| GET | `/api/v1/admin/storage-backends` | Return all backends, sorted by name, with status 200. |
+| POST | `/api/v1/admin/storage-backends` | Create a backend. Return it with status 201. |
+| GET | `/api/v1/admin/storage-backends/{id}` | Return one backend with status 200. |
+| PUT | `/api/v1/admin/storage-backends/{id}` | Replace the name, enabled flag, and settings. Return the backend with status 200. |
+| DELETE | `/api/v1/admin/storage-backends/{id}` | Delete a backend. Return status 204. |
+| POST | `/api/v1/admin/storage-backends/check` | Check the connection with settings that are not saved. Return the result with status 200. |
+| POST | `/api/v1/admin/storage-backends/{id}/check` | Check the connection of a saved backend. Return the result with status 200. |
 
 Backend IDs have the `stb_` prefix. Names are unique. The comparison ignores case.
 A request body contains `local` for a local backend or `s3` for an S3 backend. It cannot contain both.

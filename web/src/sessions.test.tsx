@@ -32,13 +32,13 @@ const laptopSession: Session = {
 function stubSessions(initial: Session[]) {
   let sessions = initial;
   const fetchMock = stubApi({
-    "GET /api/auth/me": () => jsonResponse(200, testUser),
-    "GET /api/auth/sessions": () => jsonResponse(200, sessions),
-    "DELETE /api/auth/sessions": () => {
+    "GET /api/v1/auth/me": () => jsonResponse(200, testUser),
+    "GET /api/v1/auth/sessions": () => jsonResponse(200, sessions),
+    "DELETE /api/v1/auth/sessions": () => {
       sessions = sessions.filter((session) => session.current);
       return jsonResponse(204);
     },
-    "DELETE /api/auth/sessions/ses_phone": () => {
+    "DELETE /api/v1/auth/sessions/ses_phone": () => {
       sessions = sessions.filter((session) => session.id !== "ses_phone");
       return jsonResponse(204);
     },
@@ -85,7 +85,7 @@ describe("sessions", () => {
     expect(screen.queryByText("Safari 18 on iOS")).toBeNull();
     expect(screen.getByText("Firefox 143 on Linux")).toBeDefined();
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/auth/sessions/ses_phone",
+      "/api/v1/auth/sessions/ses_phone",
       expect.objectContaining({ method: "DELETE" }),
     );
   });
@@ -103,9 +103,9 @@ describe("sessions", () => {
 
   it("shows the server error when a revoke fails", async () => {
     stubApi({
-      "GET /api/auth/me": () => jsonResponse(200, testUser),
-      "GET /api/auth/sessions": () => jsonResponse(200, [currentSession, phoneSession]),
-      "DELETE /api/auth/sessions/ses_phone": () =>
+      "GET /api/v1/auth/me": () => jsonResponse(200, testUser),
+      "GET /api/v1/auth/sessions": () => jsonResponse(200, [currentSession, phoneSession]),
+      "DELETE /api/v1/auth/sessions/ses_phone": () =>
         jsonResponse(404, { status: 404, detail: "The session does not exist." }),
     });
     await renderApp("/settings/sessions");

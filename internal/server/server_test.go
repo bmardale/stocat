@@ -76,7 +76,7 @@ func TestGlobalRateLimit(t *testing.T) {
 			t.Fatalf("request %d: %d %s", i, response.Code, response.Body)
 		}
 	}
-	response := request("/auth/me", "[::ffff:192.0.2.1]:5678", 61)
+	response := request("/api/v1/auth/me", "[::ffff:192.0.2.1]:5678", 61)
 	if response.Code != http.StatusTooManyRequests || response.Header().Get("Retry-After") != "1" || response.Header().Get("Cache-Control") != "no-store" {
 		t.Fatalf("missing rate limit response: %d %s", response.Code, response.Body)
 	}
@@ -106,7 +106,7 @@ func TestGlobalRateLimit(t *testing.T) {
 
 func TestAuthCrossOriginProtection(t *testing.T) {
 	s := newTestServer(t, Config{SecureCookies: true, Logger: slog.New(slog.DiscardHandler)}, nil)
-	for _, path := range []string{"/auth/register", "/auth/login", "/auth/logout"} {
+	for _, path := range []string{"/api/v1/auth/register", "/api/v1/auth/login", "/api/v1/auth/logout"} {
 		t.Run(path, func(t *testing.T) {
 			request := httptest.NewRequestWithContext(t.Context(), http.MethodPost, path, strings.NewReader("{}"))
 			request.Header.Set("Content-Type", "application/json")

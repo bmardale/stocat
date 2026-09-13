@@ -117,7 +117,7 @@ func testLifecycle(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
 	router, api, service := newTestAPI(t, pool, true)
 	queries := db.New(pool)
-	request := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/auth/register",
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/auth/register",
 		strings.NewReader(`{"name":"Test User","email":"User@Example.com","password":"`+testPassword+`"}`))
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("User-Agent", "stocat-test")
@@ -160,29 +160,29 @@ func testLifecycle(t *testing.T, pool *pgxpool.Pool) {
 	if _, ok := UserFromContext(t.Context()); ok {
 		t.Fatal("user escaped the request context")
 	}
-	for _, path := range []string{"/auth/me", "/private/nested/user"} {
+	for _, path := range []string{"/api/v1/auth/me", "/private/nested/user"} {
 		requireStatus(t, api.GetCtx(t.Context(), path), http.StatusUnauthorized)
 		response = api.GetCtx(t.Context(), path, "Cookie: "+cookie.String())
 		requireStatus(t, response, http.StatusOK)
 		assertUser(t, response, "user@example.com")
 	}
 	_, restarted, _ := newTestAPI(t, pool, true)
-	requireStatus(t, restarted.GetCtx(t.Context(), "/auth/me", "Cookie: "+cookie.String()), http.StatusOK)
-	response = api.PostCtx(t.Context(), "/auth/login", credentials(" USER@example.com "), "Cookie: "+cookie.String())
+	requireStatus(t, restarted.GetCtx(t.Context(), "/api/v1/auth/me", "Cookie: "+cookie.String()), http.StatusOK)
+	response = api.PostCtx(t.Context(), "/api/v1/auth/login", credentials(" USER@example.com "), "Cookie: "+cookie.String())
 	requireStatus(t, response, http.StatusOK)
 	assertUser(t, response, "user@example.com")
 	fresh := responseCookie(t, response)
 	if fresh.Value == cookie.Value {
 		t.Fatal("login reused the old token")
 	}
-	requireStatus(t, api.GetCtx(t.Context(), "/auth/me", "Cookie: "+cookie.String()), http.StatusUnauthorized)
+	requireStatus(t, api.GetCtx(t.Context(), "/api/v1/auth/me", "Cookie: "+cookie.String()), http.StatusUnauthorized)
 	if _, err := queries.GetSession(t.Context(), tokenHash(cookie.Value)); !errors.Is(err, pgx.ErrNoRows) {
 		t.Fatalf("old session was not deleted: %v", err)
 	}
-	response = api.PostCtx(t.Context(), "/auth/login", credentials("user@example.com"))
+	response = api.PostCtx(t.Context(), "/api/v1/auth/login", credentials("user@example.com"))
 	requireStatus(t, response, http.StatusOK)
 	otherDevice := responseCookie(t, response)
-	response = api.PostCtx(t.Context(), "/auth/logout", "Cookie: "+fresh.String())
+	response = api.PostCtx(t.Context(), "/api/v1/auth/logout", "Cookie: "+fresh.String())
 	requireStatus(t, response, http.StatusNoContent)
 	cleared := responseCookie(t, response)
 	if cleared.Value != "" || cleared.MaxAge != -1 || !cleared.Expires.Before(time.Now()) || !cleared.HttpOnly || !cleared.Secure {
@@ -194,17 +194,17 @@ func testLifecycle(t *testing.T, pool *pgxpool.Pool) {
 	if _, err := queries.GetSession(t.Context(), tokenHash(fresh.Value)); !errors.Is(err, pgx.ErrNoRows) {
 		t.Fatalf("logout did not delete the session: %v", err)
 	}
-	requireStatus(t, api.GetCtx(t.Context(), "/auth/me", "Cookie: "+fresh.String()), http.StatusUnauthorized)
-	requireStatus(t, api.GetCtx(t.Context(), "/auth/me", "Cookie: "+otherDevice.String()), http.StatusOK)
+	requireStatus(t, api.GetCtx(t.Context(), "/api/v1/auth/me", "Cookie: "+fresh.String()), http.StatusUnauthorized)
+	requireStatus(t, api.GetCtx(t.Context(), "/api/v1/auth/me", "Cookie: "+otherDevice.String()), http.StatusOK)
 	for _, header := range []string{"Cookie: " + fresh.String(), "Cookie: " + CookieName + "=invalid", "Cookie: unrelated=1"} {
-		requireStatus(t, api.PostCtx(t.Context(), "/auth/logout", header), http.StatusNoContent)
+		requireStatus(t, api.PostCtx(t.Context(), "/api/v1/auth/logout", header), http.StatusNoContent)
 	}
 }
 
 func testInvalidRequests(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
 	_, api, _ := newTestAPI(t, pool, false)
-	response := api.PostCtx(t.Context(), "/auth/register", registration("validation@example.com"))
+	response := api.PostCtx(t.Context(), "/api/v1/auth/register", registration("validation@example.com"))
 	requireStatus(t, response, http.StatusCreated)
 	if responseCookie(t, response).Secure {
 		t.Fatal("development cookie requires HTTPS")
@@ -214,18 +214,18 @@ func testInvalidRequests(t *testing.T, pool *pgxpool.Pool) {
 		body       map[string]string
 		status     int
 	}{
-		{"duplicate", "/auth/register", registration("VALIDATION@example.com"), http.StatusConflict},
-		{"padded duplicate", "/auth/register", registration(" validation@example.com\t"), http.StatusConflict},
-		{"missing password", "/auth/register", map[string]string{"name": "Test", "email": "missing@example.com"}, http.StatusUnprocessableEntity},
-		{"missing name", "/auth/register", credentials("missing-name@example.com"), http.StatusUnprocessableEntity},
-		{"missing email", "/auth/login", map[string]string{"password": testPassword}, http.StatusUnprocessableEntity},
-		{"short password", "/auth/register", map[string]string{"name": "Test", "email": "short@example.com", "password": "secret"}, http.StatusUnprocessableEntity},
-		{"long password", "/auth/register", map[string]string{"name": "Test", "email": "long@example.com", "password": strings.Repeat("x", 1025)}, http.StatusUnprocessableEntity},
-		{"blank name", "/auth/register", map[string]string{"name": "  ", "email": "blank@example.com", "password": testPassword}, http.StatusUnprocessableEntity},
-		{"invalid email", "/auth/register", registration("invalid"), http.StatusUnprocessableEntity},
-		{"unknown user", "/auth/login", credentials("unknown@example.com"), http.StatusUnauthorized},
-		{"wrong password", "/auth/login", map[string]string{"email": "validation@example.com", "password": "incorrect password"}, http.StatusUnauthorized},
-		{"empty password", "/auth/login", map[string]string{"email": "validation@example.com", "password": ""}, http.StatusUnauthorized},
+		{"duplicate", "/api/v1/auth/register", registration("VALIDATION@example.com"), http.StatusConflict},
+		{"padded duplicate", "/api/v1/auth/register", registration(" validation@example.com\t"), http.StatusConflict},
+		{"missing password", "/api/v1/auth/register", map[string]string{"name": "Test", "email": "missing@example.com"}, http.StatusUnprocessableEntity},
+		{"missing name", "/api/v1/auth/register", credentials("missing-name@example.com"), http.StatusUnprocessableEntity},
+		{"missing email", "/api/v1/auth/login", map[string]string{"password": testPassword}, http.StatusUnprocessableEntity},
+		{"short password", "/api/v1/auth/register", map[string]string{"name": "Test", "email": "short@example.com", "password": "secret"}, http.StatusUnprocessableEntity},
+		{"long password", "/api/v1/auth/register", map[string]string{"name": "Test", "email": "long@example.com", "password": strings.Repeat("x", 1025)}, http.StatusUnprocessableEntity},
+		{"blank name", "/api/v1/auth/register", map[string]string{"name": "  ", "email": "blank@example.com", "password": testPassword}, http.StatusUnprocessableEntity},
+		{"invalid email", "/api/v1/auth/register", registration("invalid"), http.StatusUnprocessableEntity},
+		{"unknown user", "/api/v1/auth/login", credentials("unknown@example.com"), http.StatusUnauthorized},
+		{"wrong password", "/api/v1/auth/login", map[string]string{"email": "validation@example.com", "password": "incorrect password"}, http.StatusUnauthorized},
+		{"empty password", "/api/v1/auth/login", map[string]string{"email": "validation@example.com", "password": ""}, http.StatusUnauthorized},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, api, _ := newTestAPI(t, pool, false)
@@ -246,14 +246,14 @@ func testInvalidRequests(t *testing.T, pool *pgxpool.Pool) {
 		}
 	}
 	for _, token := range []string{"", "bad", strings.Repeat("z", 64), strings.Repeat("a", 64)} {
-		requireStatus(t, api.GetCtx(t.Context(), "/auth/me", "Cookie: "+CookieName+"="+token), http.StatusUnauthorized)
+		requireStatus(t, api.GetCtx(t.Context(), "/api/v1/auth/me", "Cookie: "+CookieName+"="+token), http.StatusUnauthorized)
 	}
 }
 
 func testExpiredSessions(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
 	_, api, _ := newTestAPI(t, pool, true)
-	response := api.PostCtx(t.Context(), "/auth/register", registration("expired@example.com"))
+	response := api.PostCtx(t.Context(), "/api/v1/auth/register", registration("expired@example.com"))
 	requireStatus(t, response, http.StatusCreated)
 	cookie := responseCookie(t, response)
 	queries := db.New(pool)
@@ -271,10 +271,10 @@ func testExpiredSessions(t *testing.T, pool *pgxpool.Pool) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	requireStatus(t, api.GetCtx(t.Context(), "/auth/me", "Cookie: "+cookie.String()), http.StatusUnauthorized)
-	requireStatus(t, api.PostCtx(t.Context(), "/auth/logout", "Cookie: "+cookie.String()), http.StatusNoContent)
+	requireStatus(t, api.GetCtx(t.Context(), "/api/v1/auth/me", "Cookie: "+cookie.String()), http.StatusUnauthorized)
+	requireStatus(t, api.PostCtx(t.Context(), "/api/v1/auth/logout", "Cookie: "+cookie.String()), http.StatusNoContent)
 
-	response = api.PostCtx(t.Context(), "/auth/login", credentials("expired@example.com"))
+	response = api.PostCtx(t.Context(), "/api/v1/auth/login", credentials("expired@example.com"))
 	requireStatus(t, response, http.StatusOK)
 	if sessions := listSessions(t, api, responseCookie(t, response)); len(sessions) != 1 || !sessions[0].Current {
 		t.Fatalf("expired session is listed: %+v", sessions)
@@ -283,7 +283,7 @@ func testExpiredSessions(t *testing.T, pool *pgxpool.Pool) {
 
 func listSessions(t *testing.T, api humatest.TestAPI, cookie *http.Cookie) []Session {
 	t.Helper()
-	response := api.GetCtx(t.Context(), "/auth/sessions", "Cookie: "+cookie.String())
+	response := api.GetCtx(t.Context(), "/api/v1/auth/sessions", "Cookie: "+cookie.String())
 	requireStatus(t, response, http.StatusOK)
 	var sessions []Session
 	if err := json.Unmarshal(response.Body.Bytes(), &sessions); err != nil {
@@ -298,7 +298,7 @@ func testSessions(t *testing.T, pool *pgxpool.Pool) {
 	signIn := func(path string, body map[string]string, userAgent string) *http.Cookie {
 		t.Helper()
 		response := api.PostCtx(t.Context(), path, body, "User-Agent: "+userAgent)
-		if path == "/auth/register" {
+		if path == "/api/v1/auth/register" {
 			requireStatus(t, response, http.StatusCreated)
 		} else {
 			requireStatus(t, response, http.StatusOK)
@@ -307,13 +307,13 @@ func testSessions(t *testing.T, pool *pgxpool.Pool) {
 	}
 	authenticated := func(cookie *http.Cookie) bool {
 		t.Helper()
-		return api.GetCtx(t.Context(), "/auth/me", "Cookie: "+cookie.String()).Code == http.StatusOK
+		return api.GetCtx(t.Context(), "/api/v1/auth/me", "Cookie: "+cookie.String()).Code == http.StatusOK
 	}
-	desktop := signIn("/auth/register", registration("sessions@example.com"), "desktop-agent")
-	phone := signIn("/auth/login", credentials("sessions@example.com"), "phone-agent")
-	other := signIn("/auth/register", registration("other-sessions@example.com"), "other-agent")
+	desktop := signIn("/api/v1/auth/register", registration("sessions@example.com"), "desktop-agent")
+	phone := signIn("/api/v1/auth/login", credentials("sessions@example.com"), "phone-agent")
+	other := signIn("/api/v1/auth/register", registration("other-sessions@example.com"), "other-agent")
 
-	response := api.GetCtx(t.Context(), "/auth/sessions", "Cookie: "+desktop.String())
+	response := api.GetCtx(t.Context(), "/api/v1/auth/sessions", "Cookie: "+desktop.String())
 	requireStatus(t, response, http.StatusOK)
 	if response.Header().Get("Cache-Control") != "no-store" {
 		t.Fatal("session list can be cached")
@@ -343,13 +343,13 @@ func testSessions(t *testing.T, pool *pgxpool.Pool) {
 
 	otherID := listSessions(t, api, other)[0].ID
 	for _, sessionID := range []string{otherID, id.New(id.Session), "invalid"} {
-		requireStatus(t, api.DeleteCtx(t.Context(), "/auth/sessions/"+sessionID, "Cookie: "+desktop.String()), http.StatusNotFound)
+		requireStatus(t, api.DeleteCtx(t.Context(), "/api/v1/auth/sessions/"+sessionID, "Cookie: "+desktop.String()), http.StatusNotFound)
 	}
 	if !authenticated(other) {
 		t.Fatal("user revoked a session of another user")
 	}
 
-	response = api.DeleteCtx(t.Context(), "/auth/sessions/"+sessions[1].ID, "Cookie: "+desktop.String())
+	response = api.DeleteCtx(t.Context(), "/api/v1/auth/sessions/"+sessions[1].ID, "Cookie: "+desktop.String())
 	requireStatus(t, response, http.StatusNoContent)
 	if response.Header().Get("Set-Cookie") != "" {
 		t.Fatal("revoking another session changed the cookie")
@@ -358,9 +358,9 @@ func testSessions(t *testing.T, pool *pgxpool.Pool) {
 		t.Fatal("revoke did not affect only the selected session")
 	}
 
-	tablet := signIn("/auth/login", credentials("sessions@example.com"), "tablet-agent")
-	laptop := signIn("/auth/login", credentials("sessions@example.com"), "laptop-agent")
-	response = api.DeleteCtx(t.Context(), "/auth/sessions", "Cookie: "+desktop.String())
+	tablet := signIn("/api/v1/auth/login", credentials("sessions@example.com"), "tablet-agent")
+	laptop := signIn("/api/v1/auth/login", credentials("sessions@example.com"), "laptop-agent")
+	response = api.DeleteCtx(t.Context(), "/api/v1/auth/sessions", "Cookie: "+desktop.String())
 	requireStatus(t, response, http.StatusNoContent)
 	if response.Header().Get("Set-Cookie") != "" {
 		t.Fatal("revoking other sessions changed the cookie")
@@ -373,7 +373,7 @@ func testSessions(t *testing.T, pool *pgxpool.Pool) {
 		t.Fatalf("unexpected sessions after revoke others: %+v", sessions)
 	}
 
-	response = api.DeleteCtx(t.Context(), "/auth/sessions/"+sessions[0].ID, "Cookie: "+desktop.String())
+	response = api.DeleteCtx(t.Context(), "/api/v1/auth/sessions/"+sessions[0].ID, "Cookie: "+desktop.String())
 	requireStatus(t, response, http.StatusNoContent)
 	if cleared := responseCookie(t, response); cleared.Value != "" || cleared.MaxAge != -1 {
 		t.Fatalf("revoking the current session did not clear the cookie: %s", cleared)
@@ -382,23 +382,23 @@ func testSessions(t *testing.T, pool *pgxpool.Pool) {
 		t.Fatal("current session was not revoked")
 	}
 	for _, method := range []string{http.MethodGet, http.MethodDelete} {
-		requireStatus(t, api.DoCtx(t.Context(), method, "/auth/sessions"), http.StatusUnauthorized)
+		requireStatus(t, api.DoCtx(t.Context(), method, "/api/v1/auth/sessions"), http.StatusUnauthorized)
 	}
 }
 
 func testAccount(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
 	_, api, _ := newTestAPI(t, pool, true)
-	response := api.PostCtx(t.Context(), "/auth/register", registration("account@example.com"))
+	response := api.PostCtx(t.Context(), "/api/v1/auth/register", registration("account@example.com"))
 	requireStatus(t, response, http.StatusCreated)
 	current := responseCookie(t, response)
-	response = api.PostCtx(t.Context(), "/auth/login", credentials("account@example.com"))
+	response = api.PostCtx(t.Context(), "/api/v1/auth/login", credentials("account@example.com"))
 	requireStatus(t, response, http.StatusOK)
 	otherSession := responseCookie(t, response)
-	response = api.PostCtx(t.Context(), "/auth/register", registration("taken@example.com"))
+	response = api.PostCtx(t.Context(), "/api/v1/auth/register", registration("taken@example.com"))
 	requireStatus(t, response, http.StatusCreated)
 
-	response = api.PatchCtx(t.Context(), "/auth/account", map[string]string{
+	response = api.PatchCtx(t.Context(), "/api/v1/auth/account", map[string]string{
 		"name": "  Updated User  ", "email": " UPDATED@example.com ",
 	}, "Cookie: "+current.String())
 	requireStatus(t, response, http.StatusOK)
@@ -409,7 +409,7 @@ func testAccount(t *testing.T, pool *pgxpool.Pool) {
 	if updated.Name != "Updated User" || updated.Email != "updated@example.com" {
 		t.Fatalf("name = %q, want Updated User", updated.Name)
 	}
-	response = api.PatchCtx(t.Context(), "/auth/account", map[string]string{
+	response = api.PatchCtx(t.Context(), "/api/v1/auth/account", map[string]string{
 		"name": "Other Name", "email": "taken@example.com",
 	}, "Cookie: "+current.String())
 	requireStatus(t, response, http.StatusConflict)
@@ -428,13 +428,13 @@ func testAccount(t *testing.T, pool *pgxpool.Pool) {
 		{"short new password", testPassword, "too short", http.StatusUnprocessableEntity},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			response := api.PutCtx(t.Context(), "/auth/password", map[string]string{
+			response := api.PutCtx(t.Context(), "/api/v1/auth/password", map[string]string{
 				"current_password": tc.currentPassword, "new_password": tc.newPassword,
 			}, "Cookie: "+current.String())
 			requireStatus(t, response, tc.status)
 		})
 	}
-	response = api.PutCtx(t.Context(), "/auth/password", map[string]string{
+	response = api.PutCtx(t.Context(), "/api/v1/auth/password", map[string]string{
 		"current_password": testPassword, "new_password": newPassword,
 	}, "Cookie: "+current.String())
 	requireStatus(t, response, http.StatusNoContent)
@@ -445,10 +445,10 @@ func testAccount(t *testing.T, pool *pgxpool.Pool) {
 	if err != nil || !verifyPassword(newPassword, stored.PasswordHash) || verifyPassword(testPassword, stored.PasswordHash) {
 		t.Fatalf("password change was not stored: %v", err)
 	}
-	requireStatus(t, api.GetCtx(t.Context(), "/auth/me", "Cookie: "+current.String()), http.StatusOK)
-	requireStatus(t, api.GetCtx(t.Context(), "/auth/me", "Cookie: "+otherSession.String()), http.StatusUnauthorized)
-	requireStatus(t, api.PostCtx(t.Context(), "/auth/login", credentials("updated@example.com")), http.StatusUnauthorized)
-	response = api.PostCtx(t.Context(), "/auth/login", map[string]string{
+	requireStatus(t, api.GetCtx(t.Context(), "/api/v1/auth/me", "Cookie: "+current.String()), http.StatusOK)
+	requireStatus(t, api.GetCtx(t.Context(), "/api/v1/auth/me", "Cookie: "+otherSession.String()), http.StatusUnauthorized)
+	requireStatus(t, api.PostCtx(t.Context(), "/api/v1/auth/login", credentials("updated@example.com")), http.StatusUnauthorized)
+	response = api.PostCtx(t.Context(), "/api/v1/auth/login", map[string]string{
 		"email": "updated@example.com", "password": newPassword,
 	})
 	requireStatus(t, response, http.StatusOK)
@@ -457,7 +457,7 @@ func testAccount(t *testing.T, pool *pgxpool.Pool) {
 func testUserAgent(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
 	router, _, _ := newTestAPI(t, pool, true)
-	request := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/auth/register",
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/auth/register",
 		strings.NewReader(`{"name":"Test User","email":"agent@example.com","password":"`+testPassword+`"}`))
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("User-Agent", "\xff"+strings.Repeat("é", 1000))
@@ -497,7 +497,7 @@ func testConcurrentRegistration(t *testing.T, pool *pgxpool.Pool) {
 	statuses := make(chan int, 2)
 	for range 2 {
 		go func() {
-			request := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/auth/register",
+			request := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/auth/register",
 				strings.NewReader(`{"name":"Test User","email":"race@example.com","password":"`+testPassword+`"}`))
 			request.Header.Set("Content-Type", "application/json")
 			response := httptest.NewRecorder()
@@ -518,9 +518,9 @@ func TestOpenAPI(t *testing.T) {
 	group := service.Protected(api, "/private")
 	huma.Register(group, huma.Operation{OperationID: "private", Method: http.MethodGet, Path: "/check"},
 		func(context.Context, *struct{}) (*struct{}, error) { return &struct{}{}, nil })
-	public := []string{"/auth/register", "/auth/login", "/auth/logout"}
+	public := []string{"/api/v1/auth/register", "/api/v1/auth/login", "/api/v1/auth/logout"}
 	for path, item := range api.OpenAPI().Paths {
-		if !strings.HasPrefix(path, "/auth/") && path != "/private/check" {
+		if !strings.HasPrefix(path, "/api/v1/auth/") && path != "/private/check" {
 			continue
 		}
 		for _, op := range []*huma.Operation{item.Get, item.Post, item.Put, item.Patch, item.Delete} {
@@ -528,7 +528,7 @@ func TestOpenAPI(t *testing.T) {
 				continue
 			}
 			route := op.Method + " " + path
-			if strings.HasPrefix(path, "/auth/") && (len(op.Tags) != 1 || op.Tags[0] != "Auth") {
+			if strings.HasPrefix(path, "/api/v1/auth/") && (len(op.Tags) != 1 || op.Tags[0] != "Auth") {
 				t.Errorf("route %s lacks the Auth tag", route)
 			}
 			if response := op.Responses["429"]; response == nil || response.Headers["Retry-After"] == nil || response.Content[apierr.ContentType] == nil {
@@ -559,7 +559,7 @@ func TestOpenAPI(t *testing.T) {
 
 func TestRequestBodyLimit(t *testing.T) {
 	_, api, _ := newTestAPI(t, nil, true)
-	for _, path := range []string{"/auth/register", "/auth/login"} {
+	for _, path := range []string{"/api/v1/auth/register", "/api/v1/auth/login"} {
 		t.Run(path, func(t *testing.T) {
 			body := strings.NewReader(`{"password":"` + strings.Repeat("x", 8192) + `"}`)
 			requireStatus(t, api.PostCtx(t.Context(), path, "Content-Type: application/json", body), http.StatusRequestEntityTooLarge)

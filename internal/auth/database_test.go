@@ -24,13 +24,13 @@ func testDatabaseFailure(t *testing.T, pool *pgxpool.Pool) {
 		method, path string
 		body         any
 	}{
-		{http.MethodPost, "/auth/register", registration("unavailable@example.com")},
-		{http.MethodPost, "/auth/login", credentials("user@example.com")},
-		{http.MethodGet, "/auth/me", nil},
-		{http.MethodPost, "/auth/logout", nil},
-		{http.MethodGet, "/auth/sessions", nil},
-		{http.MethodDelete, "/auth/sessions", nil},
-		{http.MethodDelete, "/auth/sessions/ses_01K4W9T5V8QK3M7ZB0YHXC2FNE", nil},
+		{http.MethodPost, "/api/v1/auth/register", registration("unavailable@example.com")},
+		{http.MethodPost, "/api/v1/auth/login", credentials("user@example.com")},
+		{http.MethodGet, "/api/v1/auth/me", nil},
+		{http.MethodPost, "/api/v1/auth/logout", nil},
+		{http.MethodGet, "/api/v1/auth/sessions", nil},
+		{http.MethodDelete, "/api/v1/auth/sessions", nil},
+		{http.MethodDelete, "/api/v1/auth/sessions/ses_01K4W9T5V8QK3M7ZB0YHXC2FNE", nil},
 	} {
 		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
 			args := []any{"Cookie: " + CookieName + "=" + strings.Repeat("a", 64)}

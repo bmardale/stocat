@@ -15,12 +15,12 @@ describe("apiFetch", () => {
   it("adds the API prefix and returns the JSON body", async () => {
     const fetch = stubFetch(Response.json({ status: "ok" }));
     await expect(apiFetch("/healthz", { method: "GET" })).resolves.toEqual({ status: "ok" });
-    expect(fetch).toHaveBeenCalledWith("/api/healthz", { method: "GET" });
+    expect(fetch).toHaveBeenCalledWith("/healthz", { method: "GET" });
   });
 
   it("returns undefined for an empty body", async () => {
     stubFetch(new Response(null, { status: 204 }));
-    await expect(apiFetch("/auth/logout")).resolves.toBeUndefined();
+    await expect(apiFetch("/api/v1/auth/logout")).resolves.toBeUndefined();
   });
 
   it.each([
@@ -38,7 +38,7 @@ describe("apiFetch", () => {
     },
   ])("throws ApiError for $name", async ({ response, status, message }) => {
     stubFetch(response);
-    const error = await apiFetch("/auth/me").catch((error: unknown) => error);
+    const error = await apiFetch("/api/v1/auth/me").catch((error: unknown) => error);
     expect(error).toBeInstanceOf(ApiError);
     expect(error).toMatchObject({ status, message });
   });
