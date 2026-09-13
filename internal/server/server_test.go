@@ -66,7 +66,7 @@ func TestShutdown(t *testing.T) {
 					}
 				}),
 			}}
-			listener, err := net.Listen("tcp", "127.0.0.1:0")
+			listener, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -128,7 +128,7 @@ func TestShutdown(t *testing.T) {
 }
 
 func TestReadinessUnavailable(t *testing.T) {
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,7 +157,7 @@ func TestRouterAddsRequestID(t *testing.T) {
 	}, nil)
 
 	recorder := httptest.NewRecorder()
-	s.httpServer.Handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	s.httpServer.Handler.ServeHTTP(recorder, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/healthz", nil))
 
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200: %s", recorder.Code, recorder.Body.String())
@@ -194,7 +194,7 @@ func TestErrorEnvelope(t *testing.T) {
 		{name: "wrong method", method: http.MethodDelete, path: "/healthz", status: http.StatusMethodNotAllowed},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			request := httptest.NewRequest(tc.method, tc.path, strings.NewReader("{"))
+			request := httptest.NewRequestWithContext(t.Context(), tc.method, tc.path, strings.NewReader("{"))
 			request.Header.Set("Content-Type", "application/json")
 			if tc.origin != "" {
 				request.Header.Set("Origin", tc.origin)
