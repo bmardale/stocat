@@ -10,6 +10,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/bmardale/stocat/internal/apierr"
+	"github.com/bmardale/stocat/internal/platform/o11y"
 	"github.com/bmardale/stocat/internal/platform/version"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
@@ -43,13 +45,20 @@ func New(cfg Config, pool *pgxpool.Pool) *Server {
 	}
 
 	protection := http.NewCrossOriginProtection()
+	protection.SetDenyHandler(apierr.Handler(http.StatusForbidden, "The request comes from another origin."))
 
 	router := chi.NewRouter()
+	router.Use(o11y.RequestID)
+	router.Use(o11y.AccessLog(log))
+	router.Use(apierr.Recoverer(log))
 	router.Use(protection.Handler)
+	router.NotFound(apierr.Handler(http.StatusNotFound, "This path does not exist."))
+	router.MethodNotAllowed(apierr.MethodNotAllowed(router))
 
 	humaCfg := huma.DefaultConfig("stocat", version.API)
 	humaCfg.DocsRenderer = huma.DocsRendererScalar
 	humaCfg.CreateHooks = nil // omit $schema and Link on responses
+	apierr.Install(&humaCfg)
 	api := humachi.New(router, humaCfg)
 
 	s := &Server{api: api, log: log, httpServer: &http.Server{
