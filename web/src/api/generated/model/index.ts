@@ -10,4 +10,5 @@ export * from "./loginInputBody.ts";
 export * from "./probeOutputBody.ts";
 export * from "./problem.ts";
 export * from "./registerInputBody.ts";
+export * from "./session.ts";
 export * from "./user.ts";

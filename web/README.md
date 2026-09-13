@@ -35,6 +35,9 @@ A folder name that starts with `_` adds a layout. It does not change the URL.
 - `__root.tsx` loads the current user. It provides the theme and auth contexts.
 - `_auth` contains the sign-in and registration pages. It sends signed-in users to `/`.
 - `_app` contains the pages that require a session. It adds the site header and sends guests to sign in.
+- `_app/settings/sessions.tsx` lists the sessions of the user. It revokes one session or all other sessions.
+
+`parseUserAgent()` in `src/lib/user-agent.ts` uses Bowser to get the browser, operating system, and device type.
 
 Read the user with `useAuth()`. Build forms with `useAppForm()` from `src/components/form.tsx`.
 The router tools load only during development.
