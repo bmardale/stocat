@@ -102,22 +102,18 @@ components:
     User:
       additionalProperties: false
       properties:
-        created_at:
-          format: date-time
-          type: string
         email:
+          type: string
+        id:
           type: string
         is_admin:
           type: boolean
         name:
           type: string
-        public_id:
-          type: string
       required:
-        - public_id
+        - id
         - name
         - email
-        - created_at
         - is_admin
       type: object
   securitySchemes:

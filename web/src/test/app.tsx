@@ -6,11 +6,10 @@ import type { User } from "@/api/generated/model";
 import { createAppRouter } from "@/router";
 
 export const testUser: User = {
-  public_id: "usr_test",
+  id: "usr_test",
   name: "Ada Lovelace",
   email: "ada@example.com",
   is_admin: false,
-  created_at: "2026-01-01T00:00:00Z",
 };
 
 export function jsonResponse(status: number, body?: unknown) {

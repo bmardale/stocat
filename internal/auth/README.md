@@ -15,7 +15,7 @@ Registration stores email addresses in lowercase.
 Passwords require at least 15 characters and at most 1024 bytes. Passwords retain spaces and case.
 Argon2id uses 19 MiB, two iterations, one thread, and a random 16-byte salt.
 
-User responses contain `public_id`, `name`, `email`, `created_at`, and `is_admin`.
+User responses contain `id`, `name`, `email`, and `is_admin`. The `id` field contains the public user ID.
 Responses omit the internal user ID and password hash.
 
 The `stocat_session` cookie contains a random 256-bit token.

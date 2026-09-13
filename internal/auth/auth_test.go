@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -82,10 +84,8 @@ func assertUser(t *testing.T, response *httptest.ResponseRecorder, email string)
 	if err := json.Unmarshal(response.Body.Bytes(), &fields); err != nil {
 		t.Fatal(err)
 	}
-	for _, key := range []string{"id", "password", "password_hash", "token", "token_hash"} {
-		if _, ok := fields[key]; ok {
-			t.Errorf("response exposes %s", key)
-		}
+	if keys, want := slices.Sorted(maps.Keys(fields)), []string{"email", "id", "is_admin", "name"}; !slices.Equal(keys, want) {
+		t.Errorf("response fields = %v, want %v", keys, want)
 	}
 	var user User
 	if err := json.Unmarshal(response.Body.Bytes(), &user); err != nil {
@@ -364,8 +364,12 @@ func TestOpenAPI(t *testing.T) {
 		t.Fatalf("incorrect security scheme: %+v", scheme)
 	}
 	schema := api.OpenAPI().Components.Schemas.Map()["User"]
-	if schema == nil || schema.Properties["id"] != nil || schema.Properties["password_hash"] != nil {
-		t.Fatal("user schema is missing or exposes private fields")
+	if schema == nil {
+		t.Fatal("user schema is missing")
+	}
+	fields := slices.Sorted(maps.Keys(schema.Properties))
+	if want := []string{"email", "id", "is_admin", "name"}; !slices.Equal(fields, want) {
+		t.Fatalf("user schema fields = %v, want %v", fields, want)
 	}
 }
 

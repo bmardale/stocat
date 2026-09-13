@@ -55,12 +55,11 @@ type Service struct {
 }
 
 type User struct {
-	ID        int64     `json:"-"`
-	PublicID  string    `json:"public_id"`
-	Name      string    `json:"name"`
-	Email     string    `json:"email"`
-	CreatedAt time.Time `json:"created_at"`
-	IsAdmin   bool      `json:"is_admin"`
+	ID       int64  `json:"-"`
+	PublicID string `json:"id"`
+	Name     string `json:"name"`
+	Email    string `json:"email"`
+	IsAdmin  bool   `json:"is_admin"`
 }
 
 type userKey struct{}
@@ -168,8 +167,7 @@ func (s *Service) writeAuthError(api huma.API, ctx huma.Context, status int, mes
 }
 
 func publicUser(user db.User) User {
-	return User{ID: user.ID, PublicID: user.PublicID, Name: user.Name, Email: user.Email,
-		CreatedAt: user.CreatedAt.Time, IsAdmin: user.IsAdmin}
+	return User{ID: user.ID, PublicID: user.PublicID, Name: user.Name, Email: user.Email, IsAdmin: user.IsAdmin}
 }
 
 func captureMetadata(ctx huma.Context, next func(huma.Context)) {
