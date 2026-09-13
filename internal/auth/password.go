@@ -5,11 +5,16 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"strings"
+	"unicode/utf8"
 
 	"golang.org/x/crypto/argon2"
 )
 
 const passwordPrefix = "$argon2id$v=19$m=19456,t=2,p=1$"
+
+func validNewPassword(password string) bool {
+	return utf8.RuneCountInString(password) >= 15 && len(password) <= 1024
+}
 
 func hashPassword(password string) string {
 	salt := make([]byte, 16)

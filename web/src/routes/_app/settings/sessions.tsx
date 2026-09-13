@@ -51,10 +51,10 @@ function Sessions() {
   const error = revoke.error ?? revokeOthers.error;
 
   return (
-    <section className="flex max-w-3xl flex-col gap-6">
-      <div className="flex flex-col gap-2">
-        <h1 className="font-heading text-4xl font-bold tracking-tighter">Sessions</h1>
-        <p className="leading-relaxed text-muted-foreground">
+    <section className="flex flex-col gap-6">
+      <div className="flex flex-col gap-1">
+        <h2 className="font-heading text-2xl font-semibold tracking-tight">Sessions</h2>
+        <p className="text-sm text-muted-foreground">
           These devices are signed in to your account. Revoke a session that you do not recognize.
         </p>
       </div>

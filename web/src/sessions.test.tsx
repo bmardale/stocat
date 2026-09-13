@@ -50,11 +50,14 @@ const sessionItems = () =>
   within(screen.getByRole("list", { name: "Active sessions" })).getAllByRole("listitem");
 
 describe("sessions", () => {
-  it("opens the session list from the user menu", async () => {
+  it("opens settings from the user menu and navigates to sessions", async () => {
     stubSessions([currentSession]);
     const router = await renderApp("/");
     fireEvent.click(await screen.findByRole("button", { name: /Ada Lovelace/ }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Sessions" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Settings" }));
+    expect(await screen.findByRole("heading", { name: "Account" })).toBeDefined();
+    expect(router.state.location.pathname).toBe("/settings");
+    fireEvent.click(screen.getByRole("link", { name: "Sessions" }));
     expect(await screen.findByRole("heading", { name: "Sessions" })).toBeDefined();
     expect(router.state.location.pathname).toBe("/settings/sessions");
   });

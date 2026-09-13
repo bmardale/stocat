@@ -5,7 +5,6 @@ import (
 	"errors"
 	"net/http"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/bmardale/stocat/internal/apierr"
 	"github.com/bmardale/stocat/internal/db"
@@ -44,6 +43,8 @@ type logoutOutput struct {
 	SetCookie http.Cookie `header:"Set-Cookie"`
 }
 
+var errInvalidCredentials = errors.New("invalid credentials")
+
 func (s *Service) Register(api huma.API) {
 	group := huma.NewGroup(api, "/auth")
 	group.UseSimpleModifier(func(op *huma.Operation) {
@@ -78,6 +79,16 @@ func (s *Service) Register(api huma.API) {
 		user, _ := UserFromContext(ctx)
 		return &userOutput{Body: user}, nil
 	})
+	huma.Register(protected, huma.Operation{
+		OperationID: "auth-account-update", Method: http.MethodPatch, Path: "/account",
+		Summary: "Update the current account", MaxBodyBytes: 8192,
+		Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity},
+	}, s.updateAccount)
+	huma.Register(protected, huma.Operation{
+		OperationID: "auth-password-change", Method: http.MethodPut, Path: "/password",
+		Summary: "Change the current account password", DefaultStatus: http.StatusNoContent,
+		MaxBodyBytes: 4096, Errors: []int{http.StatusUnprocessableEntity},
+	}, s.changePassword)
 	huma.Register(protected, huma.Operation{
 		OperationID: "auth-sessions-list", Method: http.MethodGet, Path: "/sessions",
 		Summary: "List the active sessions of the current user",
@@ -114,7 +125,7 @@ func (s *Service) register(ctx context.Context, input *registerInput) (*sessionO
 		return nil, huma.Error422UnprocessableEntity("Enter a name.")
 	}
 	// Validate password length here to keep the password out of validation errors.
-	if utf8.RuneCountInString(input.Body.Password) < 15 || len(input.Body.Password) > 1024 {
+	if !validNewPassword(input.Body.Password) {
 		return nil, huma.Error422UnprocessableEntity("Use a password with at least 15 characters and at most 1024 bytes.")
 	}
 	if delay := s.registerEmail.Allow(normalizeEmail(input.Body.Email)); delay > 0 {
@@ -135,9 +146,7 @@ func (s *Service) register(ctx context.Context, input *registerInput) (*sessionO
 		return err
 	})
 	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" &&
-			(pgErr.ConstraintName == "users_email_key" || pgErr.ConstraintName == "users_email_lower_key") {
+		if isEmailConflict(err) {
 			return nil, huma.Error409Conflict("An account with this email already exists.")
 		}
 		return nil, s.internalError(ctx, "register user", err)
@@ -161,26 +170,29 @@ func (s *Service) login(ctx context.Context, input *loginInput) (*sessionOutput,
 	if input.Body.Password == "" || len(input.Body.Password) > 1024 {
 		return nil, huma.Error401Unauthorized("The email or password is incorrect.")
 	}
-	user, err := s.queries.GetUserByEmail(ctx, normalizeEmail(input.Body.Email))
-	if errors.Is(err, pgx.ErrNoRows) {
-		// Perform the same password work when the email does not exist.
-		_ = passwordKey(input.Body.Password, make([]byte, 16))
-		return nil, huma.Error401Unauthorized("The email or password is incorrect.")
-	}
-	if err != nil {
-		return nil, s.internalError(ctx, "load login user", err)
-	}
-	if !verifyPassword(input.Body.Password, user.PasswordHash) {
-		return nil, huma.Error401Unauthorized("The email or password is incorrect.")
-	}
-	output := &sessionOutput{Body: publicUser(user)}
-	err = db.InTx(ctx, s.pool, func(queries *db.Queries) error {
-		var err error
+	output := &sessionOutput{}
+	err := db.InTx(ctx, s.pool, func(queries *db.Queries) error {
+		user, err := queries.GetUserByEmailForUpdate(ctx, email)
+		if errors.Is(err, pgx.ErrNoRows) {
+			// Perform the same password work when the email does not exist.
+			_ = passwordKey(input.Body.Password, make([]byte, 16))
+			return errInvalidCredentials
+		}
+		if err != nil {
+			return err
+		}
+		if !verifyPassword(input.Body.Password, user.PasswordHash) {
+			return errInvalidCredentials
+		}
+		output.Body = publicUser(user)
 		output.SetCookie, err = s.createSession(ctx, queries, user.ID)
 		return err
 	})
+	if errors.Is(err, errInvalidCredentials) {
+		return nil, huma.Error401Unauthorized("The email or password is incorrect.")
+	}
 	if err != nil {
-		return nil, s.internalError(ctx, "create login session", err)
+		return nil, s.internalError(ctx, "login user", err)
 	}
 	return output, nil
 }
@@ -198,6 +210,12 @@ func (s *Service) logout(ctx context.Context, _ *struct{}) (*logoutOutput, error
 // The email format validation accepts leading and trailing spaces.
 func normalizeEmail(email string) string {
 	return strings.ToLower(strings.TrimSpace(email))
+}
+
+func isEmailConflict(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505" &&
+		(pgErr.ConstraintName == "users_email_key" || pgErr.ConstraintName == "users_email_lower_key")
 }
 
 func (s *Service) internalError(ctx context.Context, operation string, err error) error {

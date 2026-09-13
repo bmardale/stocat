@@ -5,10 +5,12 @@
  * OpenAPI spec version: 0.0.1
  */
 
+export * from "./changePasswordInputBody.ts";
 export * from "./errorDetail.ts";
 export * from "./loginInputBody.ts";
 export * from "./probeOutputBody.ts";
 export * from "./problem.ts";
 export * from "./registerInputBody.ts";
 export * from "./session.ts";
+export * from "./updateAccountInputBody.ts";
 export * from "./user.ts";
