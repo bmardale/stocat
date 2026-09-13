@@ -11,6 +11,7 @@ import (
 	"github.com/bmardale/stocat/internal/apierr"
 	"github.com/bmardale/stocat/internal/db"
 	"github.com/bmardale/stocat/internal/platform/id"
+	"github.com/bmardale/stocat/internal/platform/ratelimit"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -48,17 +49,20 @@ func (s *Service) Register(api huma.API) {
 	group := huma.NewGroup(api, "/auth")
 	group.UseSimpleModifier(func(op *huma.Operation) {
 		op.Tags = []string{"Auth"}
+		ratelimit.Document(api, op)
 	})
 	group.UseMiddleware(captureMetadata)
 	group.UseTransformer(redactErrorValues)
 	huma.Register(group, huma.Operation{
 		OperationID: "auth-register", Method: http.MethodPost, Path: "/register",
-		Summary: "Create an account and sign in", DefaultStatus: http.StatusCreated,
+		Middlewares: huma.Middlewares{s.limitCredentials(api, s.authIP, s.registerIP)},
+		Summary:     "Create an account and sign in", DefaultStatus: http.StatusCreated,
 		MaxBodyBytes: 8192,
 		Errors:       []int{http.StatusConflict, http.StatusUnprocessableEntity, http.StatusInternalServerError},
 	}, s.register)
 	huma.Register(group, huma.Operation{
 		OperationID: "auth-login", Method: http.MethodPost, Path: "/login",
+		Middlewares:  huma.Middlewares{s.limitCredentials(api, s.authIP)},
 		MaxBodyBytes: 8192,
 		Summary:      "Sign in", Errors: []int{http.StatusUnauthorized, http.StatusUnprocessableEntity, http.StatusInternalServerError},
 	}, s.login)
@@ -100,6 +104,9 @@ func (s *Service) register(ctx context.Context, input *registerInput) (*sessionO
 	if utf8.RuneCountInString(input.Body.Password) < 15 || len(input.Body.Password) > 1024 {
 		return nil, huma.Error422UnprocessableEntity("Use a password with at least 15 characters and at most 1024 bytes.")
 	}
+	if delay := s.registerEmail.Allow(normalizeEmail(input.Body.Email)); delay > 0 {
+		return nil, ratelimit.Error(delay)
+	}
 	passwordHash := hashPassword(input.Body.Password)
 	output := &sessionOutput{}
 	err := db.InTx(ctx, s.pool, func(queries *db.Queries) error {
@@ -126,6 +133,18 @@ func (s *Service) register(ctx context.Context, input *registerInput) (*sessionO
 }
 
 func (s *Service) login(ctx context.Context, input *loginInput) (*sessionOutput, error) {
+	meta, _ := ctx.Value(metadataKey{}).(requestMetadata)
+	remote := ""
+	if meta.ip != nil {
+		remote = meta.ip.String()
+	}
+	email := normalizeEmail(input.Body.Email)
+	if delay := ratelimit.AllowAll(
+		ratelimit.Check{Limiter: s.loginEmailIP, Key: email + "\x00" + ratelimit.IPKey(remote)},
+		ratelimit.Check{Limiter: s.loginEmail, Key: email},
+	); delay > 0 {
+		return nil, ratelimit.Error(delay)
+	}
 	if input.Body.Password == "" || len(input.Body.Password) > 1024 {
 		return nil, huma.Error401Unauthorized("The email or password is incorrect.")
 	}

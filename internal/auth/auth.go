@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/bmardale/stocat/internal/apierr"
 	"github.com/bmardale/stocat/internal/db"
+	"github.com/bmardale/stocat/internal/platform/ratelimit"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -35,6 +37,8 @@ const (
 type Config struct {
 	SecureCookies bool
 	Logger        *slog.Logger
+	// RateLimitClock defaults to time.Now. It does not control session expiry.
+	RateLimitClock func() time.Time
 }
 
 type Service struct {
@@ -42,6 +46,12 @@ type Service struct {
 	queries       *db.Queries
 	secureCookies bool
 	log           *slog.Logger
+	authIP        *ratelimit.Limiter
+	registerIP    *ratelimit.Limiter
+	loginEmail    *ratelimit.Limiter
+	loginEmailIP  *ratelimit.Limiter
+	registerEmail *ratelimit.Limiter
+	userLimit     *ratelimit.Limiter
 }
 
 type User struct {
@@ -62,12 +72,32 @@ type requestMetadata struct {
 	token     string
 }
 
-func New(pool *pgxpool.Pool, cfg Config) *Service {
+func New(pool *pgxpool.Pool, cfg Config) (*Service, error) {
 	log := cfg.Logger
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Service{pool: pool, queries: db.New(pool), secureCookies: cfg.SecureCookies, log: log}
+	s := &Service{
+		pool: pool, queries: db.New(pool), secureCookies: cfg.SecureCookies, log: log,
+	}
+	for _, limit := range []struct {
+		target **ratelimit.Limiter
+		policy ratelimit.Policy
+	}{
+		{&s.authIP, ratelimit.Policy{Interval: 3 * time.Second, Burst: 10}},
+		{&s.registerIP, ratelimit.Policy{Interval: 12 * time.Second, Burst: 3}},
+		{&s.loginEmailIP, ratelimit.Policy{Interval: 12 * time.Second, Burst: 5}},
+		{&s.loginEmail, ratelimit.Policy{Interval: 2 * time.Second, Burst: 15}},
+		{&s.registerEmail, ratelimit.Policy{Interval: time.Minute, Burst: 2}},
+		{&s.userLimit, ratelimit.Policy{Interval: time.Second / 2, Burst: 30}},
+	} {
+		limiter, err := ratelimit.New(limit.policy, cfg.RateLimitClock)
+		if err != nil {
+			return nil, fmt.Errorf("create authentication limiter: %w", err)
+		}
+		*limit.target = limiter
+	}
+	return s, nil
 }
 
 func UserFromContext(ctx context.Context) (User, bool) {
@@ -86,6 +116,7 @@ func (s *Service) Protected(api huma.API, prefixes ...string) *huma.Group {
 	}
 	group := huma.NewGroup(api, prefixes...)
 	group.UseSimpleModifier(func(op *huma.Operation) {
+		ratelimit.Document(api, op)
 		op.Security = []map[string][]string{{securityScheme: {}}}
 		for _, status := range []int{http.StatusUnauthorized, http.StatusInternalServerError} {
 			op.Responses[strconv.Itoa(status)] = &huma.Response{
@@ -98,6 +129,10 @@ func (s *Service) Protected(api huma.API, prefixes ...string) *huma.Group {
 	})
 	group.UseMiddleware(func(ctx huma.Context, next func(huma.Context)) {
 		ctx.SetHeader("Cache-Control", "no-store")
+		if _, ok := UserFromContext(ctx.Context()); ok {
+			next(ctx)
+			return
+		}
 		cookie, err := huma.ReadCookie(ctx, CookieName)
 		var hash []byte
 		if err == nil {
@@ -115,6 +150,10 @@ func (s *Service) Protected(api huma.API, prefixes ...string) *huma.Group {
 		if err != nil {
 			s.log.ErrorContext(ctx.Context(), "load session", "error", err)
 			s.writeAuthError(api, ctx, http.StatusInternalServerError, "Authentication is unavailable.")
+			return
+		}
+		if delay := s.userLimit.Allow(strconv.FormatInt(user.ID, 10)); delay > 0 {
+			s.writeRateLimitError(api, ctx, delay)
 			return
 		}
 		next(huma.WithValue(ctx, userKey{}, publicUser(user)))

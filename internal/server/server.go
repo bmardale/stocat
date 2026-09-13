@@ -13,6 +13,7 @@ import (
 	"github.com/bmardale/stocat/internal/apierr"
 	"github.com/bmardale/stocat/internal/auth"
 	"github.com/bmardale/stocat/internal/platform/o11y"
+	"github.com/bmardale/stocat/internal/platform/ratelimit"
 	"github.com/bmardale/stocat/internal/platform/version"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
@@ -30,6 +31,8 @@ type Config struct {
 	Addr          string
 	SecureCookies bool
 	Logger        *slog.Logger
+	// RateLimitClock defaults to time.Now. It controls all request limiters.
+	RateLimitClock func() time.Time
 }
 
 type Server struct {
@@ -39,10 +42,14 @@ type Server struct {
 	log        *slog.Logger
 }
 
-func New(cfg Config, pool *pgxpool.Pool) *Server {
+func New(cfg Config, pool *pgxpool.Pool) (*Server, error) {
 	log := cfg.Logger
 	if log == nil {
 		log = slog.Default()
+	}
+	limiter, err := ratelimit.New(ratelimit.Policy{Interval: time.Second / 5, Burst: 60}, cfg.RateLimitClock)
+	if err != nil {
+		return nil, fmt.Errorf("create request limiter: %w", err)
 	}
 
 	protection := http.NewCrossOriginProtection()
@@ -52,6 +59,7 @@ func New(cfg Config, pool *pgxpool.Pool) *Server {
 	router.Use(o11y.RequestID)
 	router.Use(o11y.AccessLog(log))
 	router.Use(apierr.Recoverer(log))
+	router.Use(limitRequests(limiter))
 	router.Use(protection.Handler)
 	router.NotFound(apierr.Handler(http.StatusNotFound, "This path does not exist."))
 	router.MethodNotAllowed(apierr.MethodNotAllowed(router))
@@ -61,7 +69,10 @@ func New(cfg Config, pool *pgxpool.Pool) *Server {
 	humaCfg.CreateHooks = nil // omit $schema and Link on responses
 	apierr.Install(&humaCfg)
 	api := humachi.New(router, humaCfg)
-	authService := auth.New(pool, auth.Config{SecureCookies: cfg.SecureCookies, Logger: log})
+	authService, err := auth.New(pool, auth.Config{SecureCookies: cfg.SecureCookies, Logger: log, RateLimitClock: cfg.RateLimitClock})
+	if err != nil {
+		return nil, fmt.Errorf("create authentication service: %w", err)
+	}
 	authService.Register(api)
 
 	s := &Server{api: api, log: log, httpServer: &http.Server{
@@ -94,7 +105,7 @@ func New(cfg Config, pool *pgxpool.Pool) *Server {
 		return probeOK(), nil
 	})
 
-	return s
+	return s, nil
 }
 
 // OpenAPI returns the OpenAPI document of the API in YAML format.

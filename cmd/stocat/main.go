@@ -60,11 +60,14 @@ func run() error {
 		"log_level", cfg.LogLevel,
 	)
 
-	srv := server.New(server.Config{
+	srv, err := server.New(server.Config{
 		Addr:          cfg.Addr,
 		SecureCookies: cfg.SessionCookieSecure,
 		Logger:        log,
 	}, pool)
+	if err != nil {
+		return fmt.Errorf("create server: %w", err)
+	}
 
 	return srv.Run(ctx, cfg.ShutdownTimeout)
 }

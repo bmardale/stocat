@@ -25,13 +25,21 @@ import (
 
 const testPassword = "correct horse battery staple"
 
-func newTestAPI(t *testing.T, pool *pgxpool.Pool, secure bool) (http.Handler, humatest.TestAPI, *Service) {
+func newTestAPI(t *testing.T, pool *pgxpool.Pool, secure bool, clocks ...func() time.Time) (http.Handler, humatest.TestAPI, *Service) {
 	t.Helper()
 	cfg := huma.DefaultConfig("test", "1")
 	cfg.CreateHooks = nil
 	apierr.Install(&cfg)
 	router, api := humatest.New(t, cfg)
-	service := New(pool, Config{SecureCookies: secure, Logger: slog.New(slog.DiscardHandler)})
+	now := time.Now()
+	clock := func() time.Time { return now }
+	if len(clocks) > 0 {
+		clock = clocks[0]
+	}
+	service, err := New(pool, Config{SecureCookies: secure, Logger: slog.New(slog.DiscardHandler), RateLimitClock: clock})
+	if err != nil {
+		t.Fatal(err)
+	}
 	service.Register(api)
 	return router, api, service
 }
@@ -218,6 +226,7 @@ func testInvalidRequests(t *testing.T, pool *pgxpool.Pool) {
 		{"empty password", "/auth/login", map[string]string{"email": "validation@example.com", "password": ""}, http.StatusUnauthorized},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			_, api, _ := newTestAPI(t, pool, false)
 			response := api.PostCtx(t.Context(), tc.path, tc.body)
 			requireStatus(t, response, tc.status)
 			if response.Header().Get("Set-Cookie") != "" {
@@ -338,6 +347,9 @@ func TestOpenAPI(t *testing.T) {
 		}
 		if strings.HasPrefix(path, "/auth/") && (len(op.Tags) != 1 || op.Tags[0] != "Auth") {
 			t.Errorf("route %s lacks the Auth tag", path)
+		}
+		if response := op.Responses["429"]; response == nil || response.Headers["Retry-After"] == nil || response.Content[apierr.ContentType] == nil {
+			t.Errorf("route %s lacks the rate limit response", path)
 		}
 		if path == "/auth/me" || path == "/private/check" {
 			if len(op.Security) != 1 || op.Security[0][securityScheme] == nil || op.Responses["401"] == nil {

@@ -30,13 +30,76 @@ Logout preserves sessions from other devices.
 Cookies use `HttpOnly`, `SameSite=Lax`, and `Path=/`. The server configuration controls `Secure`.
 The server rejects cross-origin write requests through `http.CrossOriginProtection`.
 
+## Rate limits
+
+The server uses token buckets. Each bucket starts full and restores tokens continuously.
+Each accepted request consumes one token. Rejected requests do not extend the bucket's recovery time.
+
+| Requests | Identity | Tokens per minute | Burst |
+| --- | --- | --- | --- |
+| All requests except GET health probes | Connection IP | 300 | 60 |
+| Login and registration, combined | Connection IP | 20 | 10 |
+| Registration | Connection IP | 5 | 3 |
+| Login | Normalized email and connection IP | 5 | 5 |
+| Login | Normalized email across all IPs | 30 | 15 |
+| Registration | Normalized email | 1 | 2 |
+| Protected routes, combined | Verified user ID | 120 | 30 |
+
+All applicable limits must allow the request. Burst capacity specifies how many requests can arrive together.
+The rates specify continuous token recovery. They do not specify fixed windows.
+Auth policies live in `internal/auth/auth.go`. The general IP policy lives in `internal/server/server.go`.
+Each policy specifies a token interval and burst capacity. Invalid values cause a startup error.
+
+IP checks run before body parsing, session queries, and password hashing.
+Malformed login and registration requests consume IP tokens.
+Email checks run after schema validation and before database queries or password hashing.
+Registration also validates the name and password length before it consumes an email token.
+These checks count successful and failed attempts. They also count attempts for email addresses without accounts.
+Login and registration use separate email buckets. These buckets store hashes of normalized email addresses.
+Login checks the email-and-IP bucket and the shared email bucket together.
+One IP cannot consume shared email tokens faster than the shared bucket restores them.
+Clients on the same IP or IPv6 /64 share the stricter bucket for each email.
+Distributed attackers can still exhaust the shared email budget and prevent login while they sustain the attack.
+Rejected attempts do not revoke existing sessions.
+
+Protected routes share each user's limit across sessions, IP addresses, and child groups.
+Repeated `Protected` calls within nested groups reuse the verified user and consume one user token per request.
+The server uses the verified user ID because an email address can change.
+The general IP limit also applies to authenticated requests and invalid session tokens.
+`/auth/me` uses the general IP and user limits. Logout uses only the general IP limit.
+Login throttling does not prevent logout unless the general IP limit also rejects the request.
+
+The server returns status 429 with the standard problem body and a `Retry-After` header in seconds.
+These responses prohibit caching. Auth and protected routes document this response in OpenAPI.
+Buckets checked together consume tokens only when all of them allow the request.
+The retry delay is the longest delay among these rejecting buckets. Other traffic or a later check can require a longer delay.
+
+The server groups IPv6 addresses by /64. IPv4 and IPv4-mapped IPv6 addresses share the same identity.
+Unavailable connection addresses share one fallback bucket.
+The server ignores `Forwarded`, `X-Forwarded-For`, and `X-Real-IP`.
+Clients behind one reverse proxy share its connection IP limit.
+Before deployment behind a proxy, configure verified client addresses at the edge or add explicit trusted-proxy support.
+Do not trust client-supplied forwarding headers.
+
+Each bucket table holds at most 50,000 identities. Each request removes entries whose tokens have fully recovered.
+A heap orders entries by recovery time. A full table evicts the earliest entry to admit a new identity.
+This prevents table capacity from blocking every new client. It also removes the shared cleanup countdown.
+An evicted identity starts with a full bucket when it returns. Sustained identity rotation can therefore weaken rate enforcement.
+Later recovery times preserve heavily used identities longer. This policy favors client access when the table fills.
+Each server process owns its tables; restarts clear them.
+Before running multiple replicas, replace the tables with shared atomic counters or enforce equivalent limits at the edge.
+Tests inject `RateLimitClock` through auth and server configuration. Production uses `time.Now` when this field is nil.
+
 ## Protect other routes
 
 Create one auth service when you build the server. Register public routes on `api`.
 Register private routes on a group from `Protected`:
 
 ```go
-authService := auth.New(pool, auth.Config{SecureCookies: true, Logger: log})
+authService, err := auth.New(pool, auth.Config{SecureCookies: true, Logger: log})
+if err != nil {
+    return err
+}
 authService.Register(api)
 
 private := authService.Protected(api)
