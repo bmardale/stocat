@@ -1,14 +1,6 @@
 import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vite-plus/test";
-import {
-  jsonResponse,
-  noLibraries,
-  renderApp,
-  serverVersion,
-  stubApi,
-  testUser,
-  unauthorized,
-} from "@/test/app";
+import { jsonResponse, noLibraries, renderApp, stubApi, testUser, unauthorized } from "@/test/app";
 
 describe("routing", () => {
   it("renders the files route for a signed-in user", async () => {
@@ -39,7 +31,6 @@ describe("routing", () => {
     stubApi({
       "GET /api/v1/auth/me": () =>
         available ? unauthorized() : jsonResponse(502, { detail: "The server is unavailable." }),
-      "GET /api/v1/version": serverVersion,
     });
     await renderApp("/");
     expect(

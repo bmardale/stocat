@@ -63,7 +63,6 @@ describe("passkey sign-in", () => {
     let body: unknown;
     stubApi({
       "GET /api/v1/auth/me": unauthorized,
-      "GET /api/v1/version": serverVersion,
       "GET /api/v1/libraries": noLibraries,
       "POST /api/v1/auth/passkeys/login/options": () => jsonResponse(200, { challenge: "abc" }),
       "POST /api/v1/auth/passkeys/login": (init) => {
@@ -84,7 +83,6 @@ describe("passkey sign-in", () => {
     credentials.get.mockRejectedValue(new DOMException("Cancelled", "NotAllowedError"));
     stubApi({
       "GET /api/v1/auth/me": unauthorized,
-      "GET /api/v1/version": serverVersion,
       "POST /api/v1/auth/passkeys/login/options": () => jsonResponse(200, { challenge: "abc" }),
     });
     await renderApp("/login");
@@ -95,10 +93,7 @@ describe("passkey sign-in", () => {
   });
 
   it("hides passkey sign-in when the browser does not support passkeys", async () => {
-    stubApi({
-      "GET /api/v1/auth/me": unauthorized,
-      "GET /api/v1/version": serverVersion,
-    });
+    stubApi({ "GET /api/v1/auth/me": unauthorized });
     await renderApp("/login");
     expect(await screen.findByRole("button", { name: "Sign in" })).toBeDefined();
     expect(screen.queryByRole("button", { name: "Sign in with a passkey" })).toBeNull();
