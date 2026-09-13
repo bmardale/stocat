@@ -5,6 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Stocat: a little home for your files." />
     <title>Stocat</title>
+    <script>
+      // Apply the theme before first paint to prevent a flash of the wrong theme.
+      (() => {
+        let theme = "system";
+        try {
+          theme = localStorage.getItem("vite-ui-theme") || theme;
+        } catch {}
+        if (theme === "system") {
+          theme = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        }
+        document.documentElement.classList.add(theme === "dark" ? "dark" : "light");
+      })();
+    </script>
   </head>
   <body>
     <div id="app"></div>
