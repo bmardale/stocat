@@ -7,6 +7,7 @@
 
 export * from "./backend.ts";
 export * from "./backendType.ts";
+export * from "./changePasswordInputBody.ts";
 export * from "./checkSettingsInputBody.ts";
 export * from "./checkSettingsInputBodyType.ts";
 export * from "./connectionCheck.ts";
@@ -21,5 +22,6 @@ export * from "./registerInputBody.ts";
 export * from "./s3Config.ts";
 export * from "./s3Input.ts";
 export * from "./session.ts";
+export * from "./updateAccountInputBody.ts";
 export * from "./updateBackendInputBody.ts";
 export * from "./user.ts";

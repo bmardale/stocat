@@ -12,6 +12,7 @@ export default defineConfig({
     },
   },
   server: {
+    allowedHosts: [".onamp.dev"],
     proxy: {
       "/api": {
         target: "http://localhost:8080",

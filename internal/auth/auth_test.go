@@ -106,6 +106,7 @@ func TestAuth(t *testing.T) {
 	t.Run("invalid requests", func(t *testing.T) { testInvalidRequests(t, pool) })
 	t.Run("expired and revoked sessions", func(t *testing.T) { testExpiredSessions(t, pool) })
 	t.Run("session management", func(t *testing.T) { testSessions(t, pool) })
+	t.Run("account management", func(t *testing.T) { testAccount(t, pool) })
 	t.Run("user agent", func(t *testing.T) { testUserAgent(t, pool) })
 	t.Run("concurrent registration", func(t *testing.T) { testConcurrentRegistration(t, pool) })
 	t.Run("database failure", func(t *testing.T) { testDatabaseFailure(t, pool) })
@@ -385,6 +386,74 @@ func testSessions(t *testing.T, pool *pgxpool.Pool) {
 	}
 }
 
+func testAccount(t *testing.T, pool *pgxpool.Pool) {
+	t.Helper()
+	_, api, _ := newTestAPI(t, pool, true)
+	response := api.PostCtx(t.Context(), "/auth/register", registration("account@example.com"))
+	requireStatus(t, response, http.StatusCreated)
+	current := responseCookie(t, response)
+	response = api.PostCtx(t.Context(), "/auth/login", credentials("account@example.com"))
+	requireStatus(t, response, http.StatusOK)
+	otherSession := responseCookie(t, response)
+	response = api.PostCtx(t.Context(), "/auth/register", registration("taken@example.com"))
+	requireStatus(t, response, http.StatusCreated)
+
+	response = api.PatchCtx(t.Context(), "/auth/account", map[string]string{
+		"name": "  Updated User  ", "email": " UPDATED@example.com ",
+	}, "Cookie: "+current.String())
+	requireStatus(t, response, http.StatusOK)
+	var updated User
+	if err := json.Unmarshal(response.Body.Bytes(), &updated); err != nil {
+		t.Fatal(err)
+	}
+	if updated.Name != "Updated User" || updated.Email != "updated@example.com" {
+		t.Fatalf("name = %q, want Updated User", updated.Name)
+	}
+	response = api.PatchCtx(t.Context(), "/auth/account", map[string]string{
+		"name": "Other Name", "email": "taken@example.com",
+	}, "Cookie: "+current.String())
+	requireStatus(t, response, http.StatusConflict)
+	stored, err := db.New(pool).GetUserByEmail(t.Context(), "updated@example.com")
+	if err != nil || stored.Name != "Updated User" {
+		t.Fatalf("account update was not stored: %+v, %v", stored, err)
+	}
+
+	newPassword := "a different secure password"
+	for _, tc := range []struct {
+		name, currentPassword, newPassword string
+		status                             int
+	}{
+		{"wrong current password", "wrong password", newPassword, http.StatusUnprocessableEntity},
+		{"unchanged password", testPassword, testPassword, http.StatusUnprocessableEntity},
+		{"short new password", testPassword, "too short", http.StatusUnprocessableEntity},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			response := api.PutCtx(t.Context(), "/auth/password", map[string]string{
+				"current_password": tc.currentPassword, "new_password": tc.newPassword,
+			}, "Cookie: "+current.String())
+			requireStatus(t, response, tc.status)
+		})
+	}
+	response = api.PutCtx(t.Context(), "/auth/password", map[string]string{
+		"current_password": testPassword, "new_password": newPassword,
+	}, "Cookie: "+current.String())
+	requireStatus(t, response, http.StatusNoContent)
+	if response.Body.Len() != 0 {
+		t.Fatal("password change returned a body")
+	}
+	stored, err = db.New(pool).GetUserByEmail(t.Context(), "updated@example.com")
+	if err != nil || !verifyPassword(newPassword, stored.PasswordHash) || verifyPassword(testPassword, stored.PasswordHash) {
+		t.Fatalf("password change was not stored: %v", err)
+	}
+	requireStatus(t, api.GetCtx(t.Context(), "/auth/me", "Cookie: "+current.String()), http.StatusOK)
+	requireStatus(t, api.GetCtx(t.Context(), "/auth/me", "Cookie: "+otherSession.String()), http.StatusUnauthorized)
+	requireStatus(t, api.PostCtx(t.Context(), "/auth/login", credentials("updated@example.com")), http.StatusUnauthorized)
+	response = api.PostCtx(t.Context(), "/auth/login", map[string]string{
+		"email": "updated@example.com", "password": newPassword,
+	})
+	requireStatus(t, response, http.StatusOK)
+}
+
 func testUserAgent(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
 	router, _, _ := newTestAPI(t, pool, true)
@@ -454,7 +523,7 @@ func TestOpenAPI(t *testing.T) {
 		if !strings.HasPrefix(path, "/auth/") && path != "/private/check" {
 			continue
 		}
-		for _, op := range []*huma.Operation{item.Get, item.Post, item.Delete} {
+		for _, op := range []*huma.Operation{item.Get, item.Post, item.Put, item.Patch, item.Delete} {
 			if op == nil {
 				continue
 			}

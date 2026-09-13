@@ -20,7 +20,15 @@ import type {
   UseQueryResult,
 } from "@tanstack/react-query";
 
-import type { LoginInputBody, Problem, RegisterInputBody, Session, User } from "../model";
+import type {
+  ChangePasswordInputBody,
+  LoginInputBody,
+  Problem,
+  RegisterInputBody,
+  Session,
+  UpdateAccountInputBody,
+  User,
+} from "../model";
 
 import { apiFetch } from "../../fetcher.ts";
 import type { ErrorType, BodyType } from "../../fetcher.ts";
@@ -42,6 +50,111 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
   return result;
 };
 
+export const getAuthAccountUpdateUrl = () => {
+  return `/auth/account`;
+};
+
+/**
+ * @summary Update the current account
+ */
+export const authAccountUpdate = async (
+  updateAccountInputBody: UpdateAccountInputBody,
+  options?: Parameters<typeof apiFetch>[1],
+): Promise<User> => {
+  const getHeaders = (
+    h?: NonNullable<RequestInit["headers"]>,
+  ): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(
+          h as Iterable<Iterable<string>>,
+          (entry) => Array.from(entry) as [string, string],
+        ),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+  return apiFetch<User>(getAuthAccountUpdateUrl(), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...getHeaders(options?.headers) },
+    body: JSON.stringify(updateAccountInputBody),
+  });
+};
+
+export const getAuthAccountUpdateMutationKey = () => ["authAccountUpdate"] as const;
+
+export const getAuthAccountUpdateMutationOptions = <
+  TError = ErrorType<Problem>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof authAccountUpdate>>,
+    TError,
+    AuthAccountUpdateMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof apiFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof authAccountUpdate>>,
+  TError,
+  AuthAccountUpdateMutationVariables,
+  TContext
+> => {
+  const mutationKey = getAuthAccountUpdateMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof authAccountUpdate>>,
+    AuthAccountUpdateMutationVariables
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return authAccountUpdate(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AuthAccountUpdateMutationResult = NonNullable<
+  Awaited<ReturnType<typeof authAccountUpdate>>
+>;
+export type AuthAccountUpdateMutationBody = BodyType<UpdateAccountInputBody>;
+export type AuthAccountUpdateMutationError = ErrorType<Problem>;
+export type AuthAccountUpdateMutationVariables = { data: BodyType<UpdateAccountInputBody> };
+
+/**
+ * @summary Update the current account
+ */
+export const useAuthAccountUpdate = <TError = ErrorType<Problem>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof authAccountUpdate>>,
+      TError,
+      AuthAccountUpdateMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof authAccountUpdate>>,
+  TError,
+  AuthAccountUpdateMutationVariables,
+  TContext
+> => {
+  return useMutation(getAuthAccountUpdateMutationOptions(options), queryClient);
+};
 export const getAuthLoginUrl = () => {
   return `/auth/login`;
 };
@@ -297,6 +410,111 @@ export function useAuthMe<TData = Awaited<ReturnType<typeof authMe>>, TError = E
   return withQueryKey(query, queryOptions.queryKey);
 }
 
+export const getAuthPasswordChangeUrl = () => {
+  return `/auth/password`;
+};
+
+/**
+ * @summary Change the current account password
+ */
+export const authPasswordChange = async (
+  changePasswordInputBody: ChangePasswordInputBody,
+  options?: Parameters<typeof apiFetch>[1],
+): Promise<void> => {
+  const getHeaders = (
+    h?: NonNullable<RequestInit["headers"]>,
+  ): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(
+          h as Iterable<Iterable<string>>,
+          (entry) => Array.from(entry) as [string, string],
+        ),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+  return apiFetch<void>(getAuthPasswordChangeUrl(), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...getHeaders(options?.headers) },
+    body: JSON.stringify(changePasswordInputBody),
+  });
+};
+
+export const getAuthPasswordChangeMutationKey = () => ["authPasswordChange"] as const;
+
+export const getAuthPasswordChangeMutationOptions = <
+  TError = ErrorType<Problem>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof authPasswordChange>>,
+    TError,
+    AuthPasswordChangeMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof apiFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof authPasswordChange>>,
+  TError,
+  AuthPasswordChangeMutationVariables,
+  TContext
+> => {
+  const mutationKey = getAuthPasswordChangeMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof authPasswordChange>>,
+    AuthPasswordChangeMutationVariables
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return authPasswordChange(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AuthPasswordChangeMutationResult = NonNullable<
+  Awaited<ReturnType<typeof authPasswordChange>>
+>;
+export type AuthPasswordChangeMutationBody = BodyType<ChangePasswordInputBody>;
+export type AuthPasswordChangeMutationError = ErrorType<Problem>;
+export type AuthPasswordChangeMutationVariables = { data: BodyType<ChangePasswordInputBody> };
+
+/**
+ * @summary Change the current account password
+ */
+export const useAuthPasswordChange = <TError = ErrorType<Problem>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof authPasswordChange>>,
+      TError,
+      AuthPasswordChangeMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof authPasswordChange>>,
+  TError,
+  AuthPasswordChangeMutationVariables,
+  TContext
+> => {
+  return useMutation(getAuthPasswordChangeMutationOptions(options), queryClient);
+};
 export const getAuthRegisterUrl = () => {
   return `/auth/register`;
 };
