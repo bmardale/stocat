@@ -20,7 +20,7 @@ const ContentType = "application/problem+json"
 // Problem is the body of every failed request. It follows RFC 9457.
 type Problem struct {
 	huma.ErrorModel
-	RequestID string `json:"request_id,omitempty" doc:"Identifier of the request. Give this value to support." example:"MJQXE43UNFWWK"`
+	RequestID string `json:"request_id,omitempty" doc:"Identifier of the request. Give this value to support." example:"req_01K4W9T5V8QK3M7ZB0YHXC2FNE"`
 }
 
 // New builds a problem for a status code. Each error in errs becomes an

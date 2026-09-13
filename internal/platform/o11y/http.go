@@ -2,12 +2,12 @@ package o11y
 
 import (
 	"context"
-	"crypto/rand"
 	"log/slog"
 	"net"
 	"net/http"
 	"time"
 
+	"github.com/bmardale/stocat/internal/platform/id"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )
@@ -27,13 +27,13 @@ type requestIDKey struct{}
 // It also starts the log scope for the request.
 func RequestID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		id := cleanRequestID(r.Header.Get(RequestIDHeader))
-		if id == "" {
-			id = rand.Text()
+		requestID := cleanRequestID(r.Header.Get(RequestIDHeader))
+		if requestID == "" {
+			requestID = id.New(id.Request)
 		}
-		w.Header().Set(RequestIDHeader, id)
-		ctx := context.WithValue(r.Context(), requestIDKey{}, id)
-		ctx = With(NewScope(ctx), slog.String("request_id", id))
+		w.Header().Set(RequestIDHeader, requestID)
+		ctx := context.WithValue(r.Context(), requestIDKey{}, requestID)
+		ctx = With(NewScope(ctx), slog.String("request_id", requestID))
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

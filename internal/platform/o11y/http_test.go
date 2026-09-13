@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bmardale/stocat/internal/platform/id"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -61,6 +62,9 @@ func TestRequestIDHeader(t *testing.T) {
 
 			if got == "" {
 				t.Fatal("no request identifier in the context")
+			}
+			if tc.sent == "" && !id.Valid(id.Request, got) {
+				t.Errorf("request identifier = %q, want a prefixed ULID", got)
 			}
 			if header := recorder.Header().Get(RequestIDHeader); header != got {
 				t.Errorf("response header = %q, want %q", header, got)

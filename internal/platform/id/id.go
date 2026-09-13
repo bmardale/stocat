@@ -33,6 +33,8 @@ const (
 	BlobLocation = "loc"
 	// FileVersion is the prefix of file version identifiers.
 	FileVersion = "ver"
+	// Request is the prefix of request identifiers.
+	Request = "req"
 )
 
 const separator = "_"

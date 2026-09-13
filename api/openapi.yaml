@@ -384,7 +384,7 @@ components:
         request_id:
           description: Identifier of the request. Give this value to support.
           examples:
-            - MJQXE43UNFWWK
+            - req_01K4W9T5V8QK3M7ZB0YHXC2FNE
           type: string
         status:
           description: HTTP status code
