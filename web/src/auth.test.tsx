@@ -52,7 +52,7 @@ describe("auth", () => {
     fill("Email", "ada@example.com");
     fill("Password", "correct horse battery staple");
     fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
-    expect(await screen.findByRole("button", { name: "Sign out" })).toBeDefined();
+    expect(await screen.findByRole("button", { name: /Ada Lovelace/ })).toBeDefined();
     expect(router.state.location.pathname).toBe("/");
     expect(body).toEqual({ email: "ada@example.com", password: "correct horse battery staple" });
   });
@@ -101,7 +101,8 @@ describe("auth", () => {
       "POST /api/auth/logout": () => jsonResponse(204),
     });
     const router = await renderApp("/");
-    fireEvent.click(await screen.findByRole("button", { name: "Sign out" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Ada Lovelace/ }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Sign out" }));
     expect(await screen.findByRole("button", { name: "Sign in" })).toBeDefined();
     await waitFor(() => expect(router.state.location.pathname).toBe("/login"));
   });
