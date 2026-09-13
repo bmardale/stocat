@@ -21,7 +21,7 @@ describe("account settings", () => {
     fill("Name", "  Grace Hopper  ");
     fill("Email", " GRACE@example.com ");
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
-    expect((await screen.findByRole("status")).textContent).toBe("Account details saved.");
+    expect(await screen.findByText("Account details saved.")).toBeDefined();
     expect(body).toEqual({ name: "Grace Hopper", email: "GRACE@example.com" });
     expect((screen.getByLabelText("Name") as HTMLInputElement).value).toBe("Grace Hopper");
     expect((screen.getByLabelText("Email") as HTMLInputElement).value).toBe("grace@example.com");
@@ -53,9 +53,9 @@ describe("account settings", () => {
     fill("New password", "a different secure password");
     fill("Confirm new password", "a different secure password");
     fireEvent.click(screen.getByRole("button", { name: "Change password" }));
-    expect((await screen.findByRole("status")).textContent).toBe(
-      "Password changed. Other devices are signed out.",
-    );
+    expect(
+      await screen.findByText("Password changed. Other devices are signed out."),
+    ).toBeDefined();
     expect(body).toEqual({
       current_password: "correct horse battery staple",
       new_password: "a different secure password",

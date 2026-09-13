@@ -92,7 +92,7 @@ describe("files", () => {
     expect(localStorage.getItem("stocat.last-library")).toBe("lib_private");
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(document.querySelector('[data-slot="dialog-content"]')).toBeNull());
     expect(screen.getByText("Private is locked")).toBeDefined();
   });
 
@@ -146,7 +146,7 @@ describe("files", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Create folder" }));
     expect(await screen.findByRole("link", { name: "2026" })).toBeDefined();
     expect(body).toEqual({ parent_id: "nod_photos", name: "2026" });
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(document.querySelector('[data-slot="dialog-content"]')).toBeNull());
 
     fireEvent.click(within(folderPath()).getByRole("link", { name: "Documents" }));
     expect(await screen.findByRole("link", { name: "Photos" })).toBeDefined();
@@ -240,7 +240,7 @@ describe("files", () => {
     fill(dialog, "Passphrase", passphrase);
     fireEvent.click(within(dialog).getByRole("button", { name: "Unlock" }));
     expect(await screen.findByRole("link", { name: "Tax returns" })).toBeDefined();
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(document.querySelector('[data-slot="dialog-content"]')).toBeNull());
 
     fireEvent.click(screen.getByRole("button", { name: "New folder" }));
     const folderDialog = await screen.findByRole("dialog");
@@ -252,7 +252,7 @@ describe("files", () => {
     expect(fromBase64(body?.name_token ?? "")).toHaveLength(32);
     expect(body?.name_token).toBe(await nameToken(keys, library.root_node_id, "Receipts"));
     expect(body?.encrypted_name).not.toContain("Receipts");
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(document.querySelector('[data-slot="dialog-content"]')).toBeNull());
 
     fireEvent.click(screen.getByRole("button", { name: "Lock" }));
     expect(await screen.findByText("Private is locked")).toBeDefined();
@@ -331,7 +331,7 @@ describe("library setup", () => {
     fill(dialog, "Name", "  Documents ");
     fireEvent.click(within(dialog).getByRole("button", { name: "Create library" }));
     expect(await screen.findByRole("table", { name: "Libraries" })).toBeDefined();
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(document.querySelector('[data-slot="dialog-content"]')).toBeNull());
     expect(router.state.location.pathname).toBe("/libraries");
     expect(body).toEqual({ name: "Documents", backend_id: "stb_local", encryption_mode: "none" });
   });

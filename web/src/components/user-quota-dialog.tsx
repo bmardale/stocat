@@ -14,13 +14,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  FieldDescription,
-  FieldError,
-  FieldGroup,
-  FieldLegend,
-  FieldSet,
-} from "@/components/ui/field";
+import { FieldDescription, FieldGroup, FieldLegend, FieldSet } from "@/components/ui/field";
+import { toast } from "@/components/ui/toast";
 
 const quota = z
   .string()
@@ -71,14 +66,12 @@ export function UserQuotaDialog({
 function UserQuotaForm({ user, onSaved }: { user: AdminUser; onSaved: () => void }) {
   const queryClient = useQueryClient();
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string>();
   const setUserQuota = useAdminUsersQuotaSet();
   const form = useAppForm({
     defaultValues: formValues(user),
     validators: { onSubmit: quotaSchema },
     onSubmit: async ({ value }) => {
       setSaving(true);
-      setError(undefined);
       try {
         await setUserQuota.mutateAsync({
           id: user.id,
@@ -91,9 +84,13 @@ function UserQuotaForm({ user, onSaved }: { user: AdminUser; onSaved: () => void
           },
         });
         await queryClient.invalidateQueries({ queryKey: getAdminUsersListQueryKey() });
+        toast.add({ type: "success", description: "Quotas saved." });
         onSaved();
       } catch (cause) {
-        setError(cause instanceof Error ? cause.message : "The quotas were not saved.");
+        toast.add({
+          type: "error",
+          description: cause instanceof Error ? cause.message : "The quotas were not saved.",
+        });
       } finally {
         setSaving(false);
       }
@@ -153,7 +150,6 @@ function UserQuotaForm({ user, onSaved }: { user: AdminUser; onSaved: () => void
               ))}
             </FieldSet>
           )}
-          {error && <FieldError>{error}</FieldError>}
         </FieldGroup>
       </form>
       <DialogFooter>

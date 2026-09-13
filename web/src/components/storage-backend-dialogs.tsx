@@ -1,12 +1,9 @@
-import { AlertCircleIcon, CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
-import { HugeiconsIcon } from "@hugeicons/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useId } from "react";
 import { z } from "zod";
 import type {
   Backend,
   CheckSettingsInputBody,
-  ConnectionCheck,
   CreateBackendInputBody,
   UpdateBackendInputBody,
 } from "@/api/generated/model";
@@ -28,7 +25,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -51,6 +47,7 @@ import {
   FieldTitle,
 } from "@/components/ui/field";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { toast } from "@/components/ui/toast";
 
 type BackendType = Backend["type"];
 
@@ -143,16 +140,6 @@ function checkBody(values: FormValues, backend?: Backend): CheckSettingsInputBod
   return { id: backend?.id, type: values.type, local, s3 };
 }
 
-export function ConnectionResult({ result }: { result: ConnectionCheck }) {
-  return (
-    <Alert variant={result.ok ? "default" : "destructive"}>
-      <HugeiconsIcon icon={result.ok ? CheckmarkCircle02Icon : AlertCircleIcon} strokeWidth={2} />
-      <AlertTitle>{result.ok ? "Connection works" : "Connection failed"}</AlertTitle>
-      <AlertDescription>{result.message}</AlertDescription>
-    </Alert>
-  );
-}
-
 export function StorageBackendDialog({
   open,
   backend,
@@ -178,15 +165,27 @@ function StorageBackendForm({ backend, onSaved }: { backend?: Backend; onSaved: 
   // Keep the mutation pending until the list shows the result.
   const refresh = () =>
     queryClient.invalidateQueries({ queryKey: getStorageBackendsListQueryKey() });
-  const create = useStorageBackendsCreate({ mutation: { onSuccess: refresh } });
-  const update = useStorageBackendsUpdate({ mutation: { onSuccess: refresh } });
+  const create = useStorageBackendsCreate({
+    mutation: {
+      onSuccess: async () => {
+        toast.add({ type: "success", description: "Backend added." });
+        await refresh();
+      },
+    },
+  });
+  const update = useStorageBackendsUpdate({
+    mutation: {
+      onSuccess: async () => {
+        toast.add({ type: "success", description: "Changes saved." });
+        await refresh();
+      },
+    },
+  });
   const mutation = editing ? update : create;
   const check = useStorageBackendsCheckSettings();
   const form = useAppForm({
     defaultValues: formValues(backend),
     validators: { onSubmit: backendSchema(editing) },
-    // A result describes the settings at the time of the check.
-    listeners: { onChange: () => check.reset() },
     onSubmit: ({ value }) => {
       if (backend) {
         update.mutate({ id: backend.id, data: requestBody(value) }, { onSuccess: onSaved });
@@ -196,6 +195,24 @@ function StorageBackendForm({ backend, onSaved }: { backend?: Backend; onSaved: 
       create.mutate({ data }, { onSuccess: onSaved });
     },
   });
+  const testConnection = () => {
+    void toast
+      .promise(
+        check.mutateAsync({ data: checkBody(form.state.values, backend) }).then((result) => {
+          if (!result.ok) {
+            throw new Error(result.message);
+          }
+          return result;
+        }),
+        {
+          loading: "Testing the connection…",
+          success: "The connection works.",
+          error: (error: unknown) =>
+            error instanceof Error ? error.message : "The connection failed.",
+        },
+      )
+      .catch(() => {});
+  };
 
   return (
     <>
@@ -344,8 +361,6 @@ function StorageBackendForm({ backend, onSaved }: { backend?: Backend; onSaved: 
               />
             )}
           </form.AppField>
-          {check.data && <ConnectionResult result={check.data} />}
-          {check.error && <ConnectionResult result={{ ok: false, message: check.error.message }} />}
           {mutation.error && <FieldError>{mutation.error.message}</FieldError>}
         </FieldGroup>
       </form>
@@ -355,7 +370,7 @@ function StorageBackendForm({ backend, onSaved }: { backend?: Backend; onSaved: 
           variant="outline"
           className="sm:mr-auto"
           disabled={check.isPending}
-          onClick={() => check.mutate({ data: checkBody(form.state.values, backend) })}
+          onClick={testConnection}
         >
           {check.isPending ? "Testing…" : "Test connection"}
         </Button>
@@ -380,8 +395,10 @@ export function DeleteStorageBackendDialog({
   const queryClient = useQueryClient();
   const remove = useStorageBackendsDelete({
     mutation: {
-      onSuccess: () =>
-        queryClient.invalidateQueries({ queryKey: getStorageBackendsListQueryKey() }),
+      onSuccess: async () => {
+        toast.add({ type: "success", description: "Backend deleted." });
+        await queryClient.invalidateQueries({ queryKey: getStorageBackendsListQueryKey() });
+      },
     },
   });
 

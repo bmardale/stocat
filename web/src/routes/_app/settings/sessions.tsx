@@ -18,7 +18,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { FieldError } from "@/components/ui/field";
+import { toast } from "@/components/ui/toast";
 import { type DeviceType, parseUserAgent } from "@/lib/user-agent";
 
 const sessionsQueryOptions = queryOptions({
@@ -45,10 +45,25 @@ function Sessions() {
   const { data: sessions } = useSuspenseQuery(sessionsQueryOptions);
   // Keep the mutation pending until the list shows the result.
   const refresh = () => queryClient.invalidateQueries({ queryKey: sessionsQueryOptions.queryKey });
-  const revoke = useAuthSessionsRevoke({ mutation: { onSuccess: refresh } });
-  const revokeOthers = useAuthSessionsRevokeOthers({ mutation: { onSuccess: refresh } });
+  const revoke = useAuthSessionsRevoke({
+    mutation: {
+      onSuccess: () => {
+        toast.add({ type: "success", description: "Session revoked." });
+        return refresh();
+      },
+      onError: (error) => toast.add({ type: "error", description: error.message }),
+    },
+  });
+  const revokeOthers = useAuthSessionsRevokeOthers({
+    mutation: {
+      onSuccess: () => {
+        toast.add({ type: "success", description: "Other sessions signed out." });
+        return refresh();
+      },
+      onError: (error) => toast.add({ type: "error", description: error.message }),
+    },
+  });
   const otherCount = sessions.filter((session) => !session.current).length;
-  const error = revoke.error ?? revokeOthers.error;
 
   return (
     <section className="flex flex-col gap-6">
@@ -87,7 +102,6 @@ function Sessions() {
           </ul>
         </CardContent>
       </Card>
-      {error && <FieldError>{error.message}</FieldError>}
     </section>
   );
 }
