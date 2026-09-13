@@ -7,6 +7,7 @@ import {
   useAuthPasswordChange,
 } from "@/api/generated/auth/auth";
 import { useAuth } from "@/components/auth-provider";
+import { AppVersion } from "@/components/app-version";
 import { useAppForm } from "@/components/form";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -55,6 +56,7 @@ function Account() {
       </div>
       <ProfileForm name={user.name} email={user.email} />
       <PasswordForm />
+      <AppVersion />
     </div>
   );
 }

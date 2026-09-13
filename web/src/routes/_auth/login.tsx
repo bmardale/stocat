@@ -4,6 +4,7 @@ import { z } from "zod";
 import { useAuthLogin } from "@/api/generated/auth/auth";
 import type { User } from "@/api/generated/model";
 import { useAuth } from "@/components/auth-provider";
+import { AppVersion } from "@/components/app-version";
 import { useAppForm } from "@/components/form";
 import { Button } from "@/components/ui/button";
 import {
@@ -90,6 +91,7 @@ function Login() {
           Create one
         </Link>
       </CardFooter>
+      <AppVersion className="text-center" />
     </>
   );
 }

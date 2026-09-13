@@ -24,6 +24,8 @@ export const unauthorized = () =>
 
 export const noLibraries = () => jsonResponse(200, []);
 
+export const serverVersion = () => jsonResponse(200, { version: "v0.0.1-test" });
+
 type Handler = (init: RequestInit | undefined) => Response | Promise<Response>;
 
 // Keys use the form "METHOD /api/path". An unknown request fails the test.

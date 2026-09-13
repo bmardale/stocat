@@ -35,6 +35,12 @@ type probeOutput struct {
 	}
 }
 
+type versionOutput struct {
+	Body struct {
+		Version string `json:"version"`
+	}
+}
+
 type Config struct {
 	Addr          string
 	SecureCookies bool
@@ -146,6 +152,15 @@ func New(cfg Config, pool *pgxpool.Pool) (*Server, error) {
 			return nil, huma.Error503ServiceUnavailable("Database is unavailable")
 		}
 		return probeOK(), nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "version", Method: http.MethodGet, Path: "/api/v1/version",
+		Summary: "Get the server version",
+	}, func(context.Context, *struct{}) (*versionOutput, error) {
+		output := &versionOutput{}
+		output.Body.Version = version.Build()
+		return output, nil
 	})
 
 	return s, nil

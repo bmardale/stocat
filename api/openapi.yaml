@@ -798,6 +798,14 @@ components:
         - email
         - is_admin
       type: object
+    VersionOutputBody:
+      additionalProperties: false
+      properties:
+        version:
+          type: string
+      required:
+        - version
+      type: object
   securitySchemes:
     session:
       in: cookie
@@ -3159,6 +3167,23 @@ paths:
       summary: Complete an upload transfer
       tags:
         - Uploads
+  /api/v1/version:
+    get:
+      operationId: version
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersionOutputBody"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Error
+      summary: Get the server version
   /healthz:
     get:
       operationId: health
