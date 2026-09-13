@@ -3,10 +3,12 @@ import {
   Logout03Icon,
   Moon02Icon,
   PaintBoardIcon,
+  SecurityLockIcon,
   Sun03Icon,
   UnfoldMoreIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { Link } from "@tanstack/react-router";
 import type { User } from "@/api/generated/model";
 import { useAuth } from "@/components/auth-provider";
 import { type Theme, useTheme } from "@/components/theme-provider";
@@ -58,7 +60,7 @@ function UserSummary({ user }: { user: User }) {
 export function NavUser({ user }: { user: User }) {
   const { logout } = useAuth();
   const { theme, setTheme } = useTheme();
-  const { isMobile } = useSidebar();
+  const { isMobile, setOpenMobile } = useSidebar();
 
   return (
     <SidebarMenu>
@@ -112,6 +114,12 @@ export function NavUser({ user }: { user: User }) {
                 </DropdownMenuRadioGroup>
               </DropdownMenuSubContent>
             </DropdownMenuSub>
+            <DropdownMenuItem
+              render={<Link to="/settings/sessions" onClick={() => setOpenMobile(false)} />}
+            >
+              <HugeiconsIcon icon={SecurityLockIcon} strokeWidth={2} />
+              Sessions
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => void logout()}>
               <HugeiconsIcon icon={Logout03Icon} strokeWidth={2} />
