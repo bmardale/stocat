@@ -33,9 +33,8 @@ Add pages in `src/routes`. Group related routes in folders.
 A folder name that starts with `_` adds a layout. It does not change the URL.
 
 - `__root.tsx` loads the current user. It provides the theme and auth contexts.
-- `_auth` contains the sign-in and registration pages. It sends signed-in users to the dashboard.
-- `_app` contains the pages with the site header.
-- `_app/_authenticated` contains the pages that require a session. It sends guests to sign in.
+- `_auth` contains the sign-in and registration pages. It sends signed-in users to `/`.
+- `_app` contains the pages that require a session. It adds the site header and sends guests to sign in.
 
 Read the user with `useAuth()`. Build forms with `useAppForm()` from `src/components/form.tsx`.
 The router tools load only during development.
