@@ -23,6 +23,7 @@ export * from "./libraryBackend.ts";
 export * from "./libraryBackendType.ts";
 export * from "./libraryEncryptionMode.ts";
 export * from "./libraryQuota.ts";
+export * from "./libraryQuotaInput.ts";
 export * from "./localConfig.ts";
 export * from "./loginInputBody.ts";
 export * from "./node.ts";

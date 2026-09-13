@@ -542,3 +542,37 @@ func (q *Queries) UpdateLibraryQuota(ctx context.Context, arg UpdateLibraryQuota
 	)
 	return i, err
 }
+
+const updateLibraryQuotaForOwner = `-- name: UpdateLibraryQuotaForOwner :one
+UPDATE libraries
+SET quota_mb = $1
+WHERE public_id = $2 AND owner_id = $3
+RETURNING id, public_id, owner_id, name, quota_mb
+`
+
+type UpdateLibraryQuotaForOwnerParams struct {
+	QuotaMb  pgtype.Int8
+	PublicID string
+	OwnerID  int64
+}
+
+type UpdateLibraryQuotaForOwnerRow struct {
+	ID       int64
+	PublicID string
+	OwnerID  int64
+	Name     string
+	QuotaMb  pgtype.Int8
+}
+
+func (q *Queries) UpdateLibraryQuotaForOwner(ctx context.Context, arg UpdateLibraryQuotaForOwnerParams) (UpdateLibraryQuotaForOwnerRow, error) {
+	row := q.db.QueryRow(ctx, updateLibraryQuotaForOwner, arg.QuotaMb, arg.PublicID, arg.OwnerID)
+	var i UpdateLibraryQuotaForOwnerRow
+	err := row.Scan(
+		&i.ID,
+		&i.PublicID,
+		&i.OwnerID,
+		&i.Name,
+		&i.QuotaMb,
+	)
+	return i, err
+}

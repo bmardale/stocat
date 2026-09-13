@@ -64,6 +64,12 @@ SET quota_mb = sqlc.arg(quota_mb)
 WHERE public_id = sqlc.arg(public_id)
 RETURNING id, public_id, owner_id, name, quota_mb;
 
+-- name: UpdateLibraryQuotaForOwner :one
+UPDATE libraries
+SET quota_mb = sqlc.arg(quota_mb)
+WHERE public_id = sqlc.arg(public_id) AND owner_id = sqlc.arg(owner_id)
+RETURNING id, public_id, owner_id, name, quota_mb;
+
 -- name: ListChildNodes :many
 SELECT * FROM nodes
 WHERE library_id = sqlc.arg(library_id) AND parent_id = sqlc.arg(parent_id)

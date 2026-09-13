@@ -275,7 +275,7 @@ export const getAdminUsersQuotaSetUrl = (id: string) => {
 };
 
 /**
- * @summary Set the default quota of a user
+ * @summary Set user and library quotas
  */
 export const adminUsersQuotaSet = async (
   id: string,
@@ -358,7 +358,7 @@ export type AdminUsersQuotaSetMutationVariables = {
 };
 
 /**
- * @summary Set the default quota of a user
+ * @summary Set user and library quotas
  */
 export const useAdminUsersQuotaSet = <TError = ErrorType<Problem>, TContext = unknown>(
   options?: {
