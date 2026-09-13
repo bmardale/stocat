@@ -319,12 +319,16 @@ func testMigrationRollback(t *testing.T, pool *pgxpool.Pool) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	latest, err := provider.GetDBVersion(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
 	result, err := provider.Down(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Source.Version != 7 {
-		t.Fatalf("rolled back migration %d, want 7", result.Source.Version)
+	if result.Source.Version != latest {
+		t.Fatalf("rolled back migration %d, want %d", result.Source.Version, latest)
 	}
 	if _, err := provider.Up(t.Context()); err != nil {
 		t.Fatalf("reapply migration: %v", err)

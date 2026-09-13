@@ -71,6 +71,22 @@ func (s *Service) Register(api huma.API) {
 		Summary: "Revoke the current session", DefaultStatus: http.StatusNoContent,
 		Errors: []int{http.StatusInternalServerError},
 	}, s.logout)
+	huma.Register(group, huma.Operation{
+		OperationID: "auth-passkey-login-options", Method: http.MethodPost, Path: "/passkeys/login/options",
+		Middlewares: huma.Middlewares{s.limitCredentials(api, s.authIP)},
+		Summary:     "Start a passkey sign-in",
+		Description: "Return PublicKeyCredentialRequestOptionsJSON. The options expire after 5 minutes.",
+		Errors:      []int{http.StatusInternalServerError, http.StatusServiceUnavailable},
+	}, s.passkeyLoginOptions)
+	huma.Register(group, huma.Operation{
+		OperationID: "auth-passkey-login", Method: http.MethodPost, Path: "/passkeys/login",
+		Middlewares:  huma.Middlewares{s.limitCredentials(api, s.authIP)},
+		MaxBodyBytes: 16384,
+		Summary:      "Sign in with a passkey",
+		Description:  "Send the AuthenticationResponseJSON value from PublicKeyCredential.toJSON().",
+		Errors: []int{http.StatusUnauthorized, http.StatusUnprocessableEntity, http.StatusInternalServerError,
+			http.StatusServiceUnavailable},
+	}, s.passkeyLogin)
 	protected := s.Protected(group)
 	huma.Register(protected, huma.Operation{
 		OperationID: "auth-me", Method: http.MethodGet, Path: "/me",
@@ -102,6 +118,31 @@ func (s *Service) Register(api huma.API) {
 		Summary: "Revoke a session", DefaultStatus: http.StatusNoContent,
 		Errors: []int{http.StatusNotFound},
 	}, s.revokeSession)
+	huma.Register(protected, huma.Operation{
+		OperationID: "auth-passkeys-list", Method: http.MethodGet, Path: "/passkeys",
+		Summary: "List the passkeys of the current user",
+	}, s.listPasskeys)
+	huma.Register(protected, huma.Operation{
+		OperationID: "auth-passkey-registration-options", Method: http.MethodPost, Path: "/passkeys/registration/options",
+		Summary:      "Start a passkey registration",
+		Description:  "Return PublicKeyCredentialCreationOptionsJSON. The options expire after 5 minutes.",
+		MaxBodyBytes: 4096, Errors: []int{http.StatusUnprocessableEntity, http.StatusServiceUnavailable},
+	}, s.passkeyRegistrationOptions)
+	huma.Register(protected, huma.Operation{
+		OperationID: "auth-passkey-create", Method: http.MethodPost, Path: "/passkeys",
+		Summary: "Register a passkey", DefaultStatus: http.StatusCreated, MaxBodyBytes: 65536,
+		Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity, http.StatusServiceUnavailable},
+	}, s.createPasskey)
+	huma.Register(protected, huma.Operation{
+		OperationID: "auth-passkey-rename", Method: http.MethodPatch, Path: "/passkeys/{id}",
+		Summary: "Rename a passkey", MaxBodyBytes: 4096,
+		Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity},
+	}, s.renamePasskey)
+	huma.Register(protected, huma.Operation{
+		OperationID: "auth-passkey-delete", Method: http.MethodDelete, Path: "/passkeys/{id}",
+		Summary: "Delete a passkey", DefaultStatus: http.StatusNoContent,
+		Errors: []int{http.StatusNotFound},
+	}, s.deletePasskey)
 }
 
 func (s *Service) register(ctx context.Context, input *registerInput) (*sessionOutput, error) {

@@ -78,6 +78,32 @@ type Node struct {
 	UpdatedAt        pgtype.Timestamptz
 }
 
+type Passkey struct {
+	ID                int64
+	PublicID          string
+	UserID            int64
+	RpID              string
+	CredentialID      []byte
+	Name              string
+	PublicKey         []byte
+	AttestationType   string
+	AttestationFormat string
+	Attestation       []byte
+	Extensions        []byte
+	Transports        []string
+	Aaguid            []byte
+	Attachment        string
+	SignCount         int64
+	Flags             int16
+	CreatedAt         pgtype.Timestamptz
+	LastUsedAt        pgtype.Timestamptz
+}
+
+type PasskeyUser struct {
+	UserID int64
+	Handle []byte
+}
+
 type Session struct {
 	TokenHash []byte
 	PublicID  string
@@ -151,4 +177,12 @@ type UserKeyBundle struct {
 	MasterEncryptedRecoveryKey []byte
 	CreatedAt                  pgtype.Timestamptz
 	UpdatedAt                  pgtype.Timestamptz
+}
+
+type WebauthnCeremony struct {
+	Challenge   string
+	Kind        string
+	UserID      pgtype.Int8
+	SessionData []byte
+	ExpiresAt   pgtype.Timestamptz
 }

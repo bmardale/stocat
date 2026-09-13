@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/bmardale/stocat/internal/auth"
 	"github.com/bmardale/stocat/internal/db"
 	"github.com/bmardale/stocat/internal/platform/config"
 	"github.com/bmardale/stocat/internal/platform/crypt"
@@ -67,8 +68,11 @@ func run() error {
 	)
 
 	srv, err := server.New(server.Config{
-		Addr:                  cfg.Addr,
-		SecureCookies:         cfg.SessionCookieSecure,
+		Addr:          cfg.Addr,
+		SecureCookies: cfg.SessionCookieSecure,
+		WebAuthn: auth.WebAuthnConfig{
+			RPID: cfg.WebAuthnRPID, RPName: cfg.WebAuthnRPName, Origins: cfg.WebAuthnRPOrigins,
+		},
 		Logger:                log,
 		Encrypter:             encrypter,
 		UploadStagingDir:      cfg.UploadStagingDir,

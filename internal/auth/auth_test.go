@@ -25,7 +25,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-const testPassword = "correct horse battery staple"
+const (
+	testPassword = "correct horse battery staple"
+	testOrigin   = "http://localhost:5173"
+)
 
 func newTestAPI(t *testing.T, pool *pgxpool.Pool, secure bool, clocks ...func() time.Time) (http.Handler, humatest.TestAPI, *Service) {
 	t.Helper()
@@ -38,7 +41,10 @@ func newTestAPI(t *testing.T, pool *pgxpool.Pool, secure bool, clocks ...func() 
 	if len(clocks) > 0 {
 		clock = clocks[0]
 	}
-	service, err := New(pool, Config{SecureCookies: secure, Logger: slog.New(slog.DiscardHandler), RateLimitClock: clock})
+	service, err := New(pool, Config{
+		SecureCookies: secure, Logger: slog.New(slog.DiscardHandler), RateLimitClock: clock,
+		WebAuthn: WebAuthnConfig{RPID: "localhost", RPName: "Stocat", Origins: []string{testOrigin}},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,6 +114,7 @@ func TestAuth(t *testing.T) {
 	t.Run("session management", func(t *testing.T) { testSessions(t, pool) })
 	t.Run("account management", func(t *testing.T) { testAccount(t, pool) })
 	t.Run("user agent", func(t *testing.T) { testUserAgent(t, pool) })
+	t.Run("passkeys", func(t *testing.T) { testPasskeys(t, pool) })
 	t.Run("concurrent registration", func(t *testing.T) { testConcurrentRegistration(t, pool) })
 	t.Run("database failure", func(t *testing.T) { testDatabaseFailure(t, pool) })
 	t.Run("migration rollback", func(t *testing.T) { testMigrationRollback(t, pool) })
@@ -518,7 +525,10 @@ func TestOpenAPI(t *testing.T) {
 	group := service.Protected(api, "/private")
 	huma.Register(group, huma.Operation{OperationID: "private", Method: http.MethodGet, Path: "/check"},
 		func(context.Context, *struct{}) (*struct{}, error) { return &struct{}{}, nil })
-	public := []string{"/api/v1/auth/register", "/api/v1/auth/login", "/api/v1/auth/logout"}
+	public := []string{
+		"/api/v1/auth/register", "/api/v1/auth/login", "/api/v1/auth/logout",
+		"/api/v1/auth/passkeys/login/options", "/api/v1/auth/passkeys/login",
+	}
 	for path, item := range api.OpenAPI().Paths {
 		if !strings.HasPrefix(path, "/api/v1/auth/") && path != "/private/check" {
 			continue

@@ -38,6 +38,7 @@ type probeOutput struct {
 type Config struct {
 	Addr          string
 	SecureCookies bool
+	WebAuthn      auth.WebAuthnConfig
 	Logger        *slog.Logger
 	Encrypter     *crypt.Encrypter
 	// RateLimitClock defaults to time.Now. It controls all request limiters.
@@ -84,7 +85,9 @@ func New(cfg Config, pool *pgxpool.Pool) (*Server, error) {
 	humaCfg.CreateHooks = nil // omit $schema and Link on responses
 	apierr.Install(&humaCfg)
 	api := humachi.New(router, humaCfg)
-	authService, err := auth.New(pool, auth.Config{SecureCookies: cfg.SecureCookies, Logger: log, RateLimitClock: cfg.RateLimitClock})
+	authService, err := auth.New(pool, auth.Config{
+		SecureCookies: cfg.SecureCookies, WebAuthn: cfg.WebAuthn, Logger: log, RateLimitClock: cfg.RateLimitClock,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("create authentication service: %w", err)
 	}

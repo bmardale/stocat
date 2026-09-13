@@ -1,6 +1,8 @@
+import { useMutation } from "@tanstack/react-query";
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { z } from "zod";
 import { useAuthLogin } from "@/api/generated/auth/auth";
+import type { User } from "@/api/generated/model";
 import { useAuth } from "@/components/auth-provider";
 import { useAppForm } from "@/components/form";
 import { Button } from "@/components/ui/button";
@@ -11,7 +13,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { FieldError, FieldGroup } from "@/components/ui/field";
+import { FieldError, FieldGroup, FieldSeparator } from "@/components/ui/field";
+import { passkeysSupported, signInWithPasskey } from "@/lib/passkeys";
 
 export const Route = createFileRoute("/_auth/login")({ component: Login });
 
@@ -24,14 +27,12 @@ function Login() {
   const { redirect } = Route.useSearch();
   const router = useRouter();
   const { setUser } = useAuth();
-  const login = useAuthLogin({
-    mutation: {
-      onSuccess: (user) => {
-        setUser(user);
-        router.history.push(redirect ?? "/");
-      },
-    },
-  });
+  const onSuccess = (user: User) => {
+    setUser(user);
+    router.history.push(redirect ?? "/");
+  };
+  const login = useAuthLogin({ mutation: { onSuccess } });
+  const passkeyLogin = useMutation({ mutationFn: signInWithPasskey, onSuccess });
   const form = useAppForm({
     defaultValues: { email: "", password: "" },
     validators: { onSubmit: loginSchema },
@@ -62,9 +63,24 @@ function Login() {
               )}
             </form.AppField>
             {login.error && <FieldError>{login.error.message}</FieldError>}
-            <Button type="submit" size="lg" disabled={login.isPending}>
+            <Button type="submit" size="lg" disabled={login.isPending || passkeyLogin.isPending}>
               Sign in
             </Button>
+            {passkeysSupported() && (
+              <>
+                <FieldSeparator>Or</FieldSeparator>
+                {passkeyLogin.error && <FieldError>{passkeyLogin.error.message}</FieldError>}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="lg"
+                  disabled={login.isPending || passkeyLogin.isPending}
+                  onClick={() => passkeyLogin.mutate()}
+                >
+                  Sign in with a passkey
+                </Button>
+              </>
+            )}
           </FieldGroup>
         </form>
       </CardContent>

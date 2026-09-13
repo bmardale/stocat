@@ -37,6 +37,8 @@ const (
 	Upload = "upl"
 	// Request is the prefix of request identifiers.
 	Request = "req"
+	// Passkey is the prefix of passkey identifiers.
+	Passkey = "pky"
 )
 
 const separator = "_"

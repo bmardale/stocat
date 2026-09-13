@@ -199,6 +199,19 @@ components:
         - backend_id
         - encryption_mode
       type: object
+    CreatePasskeyInputBody:
+      additionalProperties: false
+      properties:
+        credential:
+          description: The RegistrationResponseJSON value from PublicKeyCredential.toJSON().
+        name:
+          maxLength: 100
+          minLength: 1
+          type: string
+      required:
+        - name
+        - credential
+      type: object
     ErrorDetail:
       additionalProperties: false
       properties:
@@ -432,6 +445,40 @@ components:
       required:
         - items
       type: object
+    Passkey:
+      additionalProperties: false
+      properties:
+        created_at:
+          format: date-time
+          type: string
+        id:
+          type: string
+        last_used_at:
+          format: date-time
+          type:
+            - string
+            - "null"
+        name:
+          type: string
+        synced:
+          description: The authenticator backs up the passkey, for example to a cloud account.
+          type: boolean
+      required:
+        - id
+        - name
+        - created_at
+        - last_used_at
+        - synced
+      type: object
+    PasskeyRegistrationOptionsInputBody:
+      additionalProperties: false
+      properties:
+        password:
+          type: string
+          writeOnly: true
+      required:
+        - password
+      type: object
     ProbeOutputBody:
       additionalProperties: false
       properties:
@@ -517,6 +564,16 @@ components:
         name_token:
           contentEncoding: base64
           type: string
+      type: object
+    RenamePasskeyInputBody:
+      additionalProperties: false
+      properties:
+        name:
+          maxLength: 100
+          minLength: 1
+          type: string
+      required:
+        - name
       type: object
     S3Config:
       additionalProperties: false
@@ -1577,6 +1634,385 @@ paths:
       security:
         - session: []
       summary: Get the current user
+      tags:
+        - Auth
+  /api/v1/auth/passkeys:
+    get:
+      operationId: auth-passkeys-list
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/Passkey"
+                type: array
+          description: OK
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Error
+      security:
+        - session: []
+      summary: List the passkeys of the current user
+      tags:
+        - Auth
+    post:
+      operationId: auth-passkey-create
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePasskeyInputBody"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Passkey"
+          description: Created
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Conflict
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
+      security:
+        - session: []
+      summary: Register a passkey
+      tags:
+        - Auth
+  /api/v1/auth/passkeys/login:
+    post:
+      description: Send the AuthenticationResponseJSON value from PublicKeyCredential.toJSON().
+      operationId: auth-passkey-login
+      requestBody:
+        content:
+          application/json:
+            schema: {}
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+          description: OK
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
+      summary: Sign in with a passkey
+      tags:
+        - Auth
+  /api/v1/auth/passkeys/login/options:
+    post:
+      description: Return PublicKeyCredentialRequestOptionsJSON. The options expire after 5 minutes.
+      operationId: auth-passkey-login-options
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: {}
+          description: OK
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
+      summary: Start a passkey sign-in
+      tags:
+        - Auth
+  /api/v1/auth/passkeys/registration/options:
+    post:
+      description: Return PublicKeyCredentialCreationOptionsJSON. The options expire after 5 minutes.
+      operationId: auth-passkey-registration-options
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasskeyRegistrationOptionsInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: {}
+          description: OK
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
+      security:
+        - session: []
+      summary: Start a passkey registration
+      tags:
+        - Auth
+  /api/v1/auth/passkeys/{id}:
+    delete:
+      operationId: auth-passkey-delete
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      responses:
+        "204":
+          description: No Content
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+      security:
+        - session: []
+      summary: Delete a passkey
+      tags:
+        - Auth
+    patch:
+      operationId: auth-passkey-rename
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RenamePasskeyInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Passkey"
+          description: OK
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+      security:
+        - session: []
+      summary: Rename a passkey
       tags:
         - Auth
   /api/v1/auth/password:
