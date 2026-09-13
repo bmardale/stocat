@@ -22,3 +22,52 @@ JOIN blob_locations bl ON bl.blob_id = b.id AND bl.backend_id = l.backend_id AND
 JOIN storage_backends sb ON sb.id = bl.backend_id
 WHERE n.public_id = sqlc.arg(node_public_id) AND n.kind = 'file' AND n.trashed_at IS NULL
   AND l.owner_id = sqlc.arg(owner_id);
+
+-- name: GetFileNodeByPublicIDAndOwner :one
+SELECT n.id, n.library_id, l.public_id AS library_public_id, l.encryption_mode,
+       parent.public_id AS parent_public_id
+FROM nodes n
+JOIN libraries l ON l.id = n.library_id
+JOIN nodes parent ON parent.id = n.parent_id
+WHERE n.public_id = sqlc.arg(node_public_id) AND n.kind = 'file' AND n.trashed_at IS NULL
+  AND l.owner_id = sqlc.arg(owner_id);
+
+-- name: RenameFileNode :one
+UPDATE nodes
+SET name = $2, encrypted_name = $3, name_token = $4, updated_at = now()
+WHERE id = $1 AND kind = 'file' AND trashed_at IS NULL
+RETURNING *;
+
+-- name: DetachUploadSessionsFromNode :exec
+UPDATE upload_sessions
+SET target_node_id = CASE WHEN target_node_id = sqlc.arg(node_id) THEN NULL ELSE target_node_id END,
+    published_node_id = CASE WHEN published_node_id = sqlc.arg(node_id) THEN NULL ELSE published_node_id END,
+    published_version_id = CASE WHEN published_node_id = sqlc.arg(node_id) THEN NULL ELSE published_version_id END,
+    updated_at = now()
+WHERE target_node_id = sqlc.arg(node_id) OR published_node_id = sqlc.arg(node_id);
+
+-- name: DeleteFileVersions :many
+DELETE FROM file_versions WHERE node_id = $1
+RETURNING blob_id;
+
+-- name: DeleteFileNode :execrows
+DELETE FROM nodes WHERE id = $1 AND kind = 'file';
+
+-- name: DeleteUnreferencedBlobLocations :many
+WITH deleted AS (
+    DELETE FROM blob_locations bl
+    WHERE bl.blob_id = ANY(sqlc.arg(blob_ids)::bigint[])
+      AND NOT EXISTS (SELECT 1 FROM file_versions v WHERE v.blob_id = bl.blob_id)
+    RETURNING bl.backend_id, bl.object_key
+)
+SELECT sb.public_id AS backend_public_id, deleted.object_key
+FROM deleted
+JOIN storage_backends sb ON sb.id = deleted.backend_id;
+
+-- name: DeleteUnreferencedBlobs :exec
+DELETE FROM blobs b
+WHERE b.id = ANY(sqlc.arg(blob_ids)::bigint[])
+  AND NOT EXISTS (SELECT 1 FROM file_versions v WHERE v.blob_id = b.id);
+
+-- name: ClearFileCurrentVersion :exec
+UPDATE nodes SET current_version_id = NULL WHERE id = $1 AND kind = 'file';

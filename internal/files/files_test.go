@@ -2,13 +2,16 @@ package files
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bmardale/stocat/internal/apierr"
 	"github.com/bmardale/stocat/internal/auth"
@@ -20,102 +23,15 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/riverqueue/river"
+	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 )
 
 func TestFileMetadataAndContent(t *testing.T) {
-	pool := testutil.NewPostgres(t)
-	root := t.TempDir()
-	log := slog.New(slog.DiscardHandler)
-	cfg := huma.DefaultConfig("test", "1")
-	cfg.CreateHooks = nil
-	apierr.Install(&cfg)
-	_, api := humatest.New(t, cfg)
-	authService, err := auth.New(pool, auth.Config{Logger: log})
-	if err != nil {
-		t.Fatal(err)
-	}
-	authService.Register(api)
-	protected := authService.Protected(api, "/api/v1")
-	libraries.New(pool, log).Register(protected)
-	stores := storage.New(pool, storage.Config{Logger: log})
-	New(pool, stores, log).Register(protected)
-
-	queries := db.New(pool)
-	backendID := id.New(id.StorageBackend)
-	if _, err := queries.CreateStorageBackend(t.Context(), db.CreateStorageBackendParams{
-		PublicID: backendID, Name: "Local", Type: storage.TypeLocal,
-		Config: []byte(`{"root":` + quote(root) + `}`), EncryptedSecrets: "test", Enabled: true,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	cookie, email := register(t, api)
-	owner, err := queries.GetUserByEmail(t.Context(), email)
-	if err != nil {
-		t.Fatal(err)
-	}
-	libraryResponse := api.Post("/api/v1/libraries", cookie, map[string]any{
-		"name": "Documents", "backend_id": backendID, "encryption_mode": libraries.EncryptionNone,
-	})
-	requireFileStatus(t, libraryResponse, http.StatusCreated)
-	var library libraries.Library
-	decodeFile(t, libraryResponse, &library)
-	libraryRow, err := queries.GetLibraryByPublicIDAndOwner(t.Context(), db.GetLibraryByPublicIDAndOwnerParams{
-		PublicID: library.ID, OwnerID: owner.ID,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
+	f := newFixture(t)
+	api, cookie := f.api, f.cookie
 	content := []byte("stream this content")
-	checksum := sha256.Sum256(content)
-	objectKey := "blobs/test/content"
-	store, err := stores.ObjectStore(t.Context(), backendID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.Put(t.Context(), objectKey, bytes.NewReader(content), int64(len(content))); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.Close(); err != nil {
-		t.Fatal(err)
-	}
-	blob, err := queries.CreateBlob(t.Context(), db.CreateBlobParams{
-		PublicID: id.New(id.Blob), LibraryID: libraryRow.ID, SizeBytes: int64(len(content)),
-		CiphertextSha256: checksum[:], DedupFingerprint: checksum[:],
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	location, err := queries.CreateBlobLocation(t.Context(), db.CreateBlobLocationParams{
-		PublicID: id.New(id.BlobLocation), BlobID: blob.ID, LibraryID: libraryRow.ID,
-		BackendID: libraryRow.BackendID, ObjectKey: objectKey,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := queries.MarkBlobLocationAvailable(t.Context(), location.ID); err != nil {
-		t.Fatal(err)
-	}
-	node, err := queries.CreateUploadFileNode(t.Context(), db.CreateUploadFileNodeParams{
-		PublicID: id.New(id.Node), LibraryID: libraryRow.ID,
-		ParentID: pgtype.Int8{Int64: libraryRow.RootNodeID, Valid: true},
-		Name:     pgtype.Text{String: "notes.txt", Valid: true},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	version, err := queries.CreateFileVersion(t.Context(), db.CreateFileVersionParams{
-		PublicID: id.New(id.FileVersion), NodeID: node.ID, LibraryID: libraryRow.ID,
-		Ordinal: 1, BlobID: blob.ID, SizeBytes: int64(len(content)), ContentSha256: checksum[:],
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := queries.UpdateNodeCurrentVersion(t.Context(), db.UpdateNodeCurrentVersionParams{
-		ID: node.ID, CurrentVersionID: pgtype.Int8{Int64: version.ID, Valid: true},
-	}); err != nil {
-		t.Fatal(err)
-	}
+	node, version := f.createFile(t, "notes.txt", f.storeBlob(t, "blobs/test/content", content))
 
 	requireFileStatus(t, api.Get("/api/v1/files/"+node.PublicID), http.StatusUnauthorized)
 	metadataResponse := api.Get("/api/v1/files/"+node.PublicID, cookie)
@@ -152,6 +68,96 @@ func TestFileMetadataAndContent(t *testing.T) {
 	requireFileStatus(t, response, http.StatusRequestedRangeNotSatisfiable)
 	if got := response.Header().Get("Content-Range"); got != "bytes */19" {
 		t.Fatalf("unsatisfiable content range = %q", got)
+	}
+}
+
+func TestRenameFile(t *testing.T) {
+	f := newFixture(t)
+	blob := f.storeBlob(t, "blobs/test/rename", []byte("rename"))
+	first, _ := f.createFile(t, "first.txt", blob)
+	second, _ := f.createFile(t, "second.txt", blob)
+
+	response := f.api.Patch("/api/v1/files/"+first.PublicID, f.cookie, map[string]any{"name": " renamed.txt "})
+	requireFileStatus(t, response, http.StatusOK)
+	var renamed libraries.Node
+	decodeFile(t, response, &renamed)
+	if renamed.ID != first.PublicID || renamed.Name != "renamed.txt" || renamed.ParentID != f.library.RootNodePublicID || renamed.LibraryID != f.library.PublicID {
+		t.Fatalf("renamed = %+v", renamed)
+	}
+
+	tests := []struct {
+		name   string
+		fileID string
+		cookie bool
+		body   map[string]any
+		status int
+	}{
+		{name: "anonymous", fileID: first.PublicID, body: map[string]any{"name": "other.txt"}, status: http.StatusUnauthorized},
+		{name: "duplicate", fileID: second.PublicID, cookie: true, body: map[string]any{"name": "renamed.txt"}, status: http.StatusConflict},
+		{name: "separator", fileID: first.PublicID, cookie: true, body: map[string]any{"name": "a/b"}, status: http.StatusUnprocessableEntity},
+		{
+			name: "encrypted name", fileID: first.PublicID, cookie: true,
+			body:   map[string]any{"encrypted_name": []byte("name"), "name_token": make([]byte, 32)},
+			status: http.StatusUnprocessableEntity,
+		},
+		{name: "missing", fileID: id.New(id.Node), cookie: true, body: map[string]any{"name": "other.txt"}, status: http.StatusNotFound},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			args := []any{test.body}
+			if test.cookie {
+				args = []any{f.cookie, test.body}
+			}
+			requireFileStatus(t, f.api.Patch("/api/v1/files/"+test.fileID, args...), test.status)
+		})
+	}
+}
+
+func TestDeleteFile(t *testing.T) {
+	f := newFixture(t)
+	const sharedKey = "blobs/test/shared"
+	shared := f.storeBlob(t, sharedKey, []byte("shared content"))
+	first, _ := f.createFile(t, "first.txt", shared)
+	second, secondVersion := f.createFile(t, "second.txt", shared)
+	replacement := f.createUploadSession(t, pgtype.Int8{Int64: second.ID, Valid: true})
+	published := f.createUploadSession(t, pgtype.Int8{})
+	if err := f.queries.SetZeroLengthUploadReady(t.Context(), published.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.queries.SetPlainUploadFinalizing(t.Context(), published.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.queries.CompleteUploadSession(t.Context(), db.CompleteUploadSessionParams{
+		ID:                 published.ID,
+		PublishedNodeID:    pgtype.Int8{Int64: second.ID, Valid: true},
+		PublishedVersionID: pgtype.Int8{Int64: secondVersion.ID, Valid: true},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	requireFileStatus(t, f.api.Delete("/api/v1/files/"+first.PublicID), http.StatusUnauthorized)
+	requireFileStatus(t, f.api.Delete("/api/v1/files/"+first.PublicID, f.cookie), http.StatusNoContent)
+	requireFileStatus(t, f.api.Get("/api/v1/files/"+first.PublicID, f.cookie), http.StatusNotFound)
+	requireFileStatus(t, f.api.Delete("/api/v1/files/"+first.PublicID, f.cookie), http.StatusNotFound)
+	if stored := f.storedBytes(t); stored != shared.SizeBytes {
+		t.Fatalf("stored bytes after the first deletion = %d, want %d", stored, shared.SizeBytes)
+	}
+
+	requireFileStatus(t, f.api.Delete("/api/v1/files/"+second.PublicID, f.cookie), http.StatusNoContent)
+	if stored := f.storedBytes(t); stored != 0 {
+		t.Fatalf("stored bytes after the last deletion = %d", stored)
+	}
+	f.waitForObjectDeletion(t, sharedKey)
+	for _, session := range []db.UploadSession{replacement, published} {
+		row, err := f.queries.GetUploadSessionByPublicIDAndOwner(t.Context(), db.GetUploadSessionByPublicIDAndOwnerParams{
+			PublicID: session.PublicID, OwnerID: f.ownerID,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if row.TargetNodeID.Valid || row.PublishedNodeID.Valid || row.PublishedVersionID.Valid || row.ExpectedRevision != session.ExpectedRevision {
+			t.Fatalf("upload session = %+v", row)
+		}
 	}
 }
 
@@ -223,6 +229,195 @@ func TestParseRange(t *testing.T) {
 				t.Fatalf("range = %+v, want offset %d and length %d", got, test.offset, test.length)
 			}
 		})
+	}
+}
+
+type fixture struct {
+	api       humatest.TestAPI
+	cookie    string
+	queries   *db.Queries
+	stores    *storage.Service
+	backendID string
+	ownerID   int64
+	library   db.GetLibraryByPublicIDAndOwnerRow
+}
+
+func newFixture(t *testing.T) fixture {
+	t.Helper()
+	pool := testutil.NewPostgres(t)
+	root := t.TempDir()
+	log := slog.New(slog.DiscardHandler)
+	cfg := huma.DefaultConfig("test", "1")
+	cfg.CreateHooks = nil
+	apierr.Install(&cfg)
+	_, api := humatest.New(t, cfg)
+	authService, err := auth.New(pool, auth.Config{Logger: log})
+	if err != nil {
+		t.Fatal(err)
+	}
+	authService.Register(api)
+	protected := authService.Protected(api, "/api/v1")
+	libraries.New(pool, log).Register(protected)
+	stores := storage.New(pool, storage.Config{Logger: log})
+	service := New(pool, stores, log)
+	service.Register(protected)
+	workers := river.NewWorkers()
+	service.AddWorkers(workers)
+	queue, err := river.NewClient(riverpgxv5.New(pool), &river.Config{
+		Logger: log, Workers: workers, Queues: map[string]river.QueueConfig{"maintenance": {MaxWorkers: 1}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.UseQueue(queue)
+	if err := queue.Start(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := queue.Stop(stopCtx); err != nil {
+			t.Errorf("stop River: %v", err)
+		}
+	})
+
+	queries := db.New(pool)
+	backendID := id.New(id.StorageBackend)
+	if _, err := queries.CreateStorageBackend(t.Context(), db.CreateStorageBackendParams{
+		PublicID: backendID, Name: "Local", Type: storage.TypeLocal,
+		Config: []byte(`{"root":` + quote(root) + `}`), EncryptedSecrets: "test", Enabled: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cookie, email := register(t, api)
+	owner, err := queries.GetUserByEmail(t.Context(), email)
+	if err != nil {
+		t.Fatal(err)
+	}
+	libraryResponse := api.Post("/api/v1/libraries", cookie, map[string]any{
+		"name": "Documents", "backend_id": backendID, "encryption_mode": libraries.EncryptionNone,
+	})
+	requireFileStatus(t, libraryResponse, http.StatusCreated)
+	var library libraries.Library
+	decodeFile(t, libraryResponse, &library)
+	libraryRow, err := queries.GetLibraryByPublicIDAndOwner(t.Context(), db.GetLibraryByPublicIDAndOwnerParams{
+		PublicID: library.ID, OwnerID: owner.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return fixture{
+		api: api, cookie: cookie, queries: queries, stores: stores,
+		backendID: backendID, ownerID: owner.ID, library: libraryRow,
+	}
+}
+
+func (f fixture) storeBlob(t *testing.T, objectKey string, content []byte) db.Blob {
+	t.Helper()
+	checksum := sha256.Sum256(content)
+	store, err := f.stores.ObjectStore(t.Context(), f.backendID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Put(t.Context(), objectKey, bytes.NewReader(content), int64(len(content))); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	blob, err := f.queries.CreateBlob(t.Context(), db.CreateBlobParams{
+		PublicID: id.New(id.Blob), LibraryID: f.library.ID, SizeBytes: int64(len(content)),
+		CiphertextSha256: checksum[:], DedupFingerprint: checksum[:],
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	location, err := f.queries.CreateBlobLocation(t.Context(), db.CreateBlobLocationParams{
+		PublicID: id.New(id.BlobLocation), BlobID: blob.ID, LibraryID: f.library.ID,
+		BackendID: f.library.BackendID, ObjectKey: objectKey,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.queries.MarkBlobLocationAvailable(t.Context(), location.ID); err != nil {
+		t.Fatal(err)
+	}
+	return blob
+}
+
+func (f fixture) createFile(t *testing.T, name string, blob db.Blob) (db.Node, db.FileVersion) {
+	t.Helper()
+	node, err := f.queries.CreateUploadFileNode(t.Context(), db.CreateUploadFileNodeParams{
+		PublicID: id.New(id.Node), LibraryID: f.library.ID,
+		ParentID: pgtype.Int8{Int64: f.library.RootNodeID, Valid: true},
+		Name:     pgtype.Text{String: name, Valid: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	version, err := f.queries.CreateFileVersion(t.Context(), db.CreateFileVersionParams{
+		PublicID: id.New(id.FileVersion), NodeID: node.ID, LibraryID: f.library.ID,
+		Ordinal: 1, BlobID: blob.ID, SizeBytes: blob.SizeBytes, ContentSha256: blob.CiphertextSha256,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.queries.UpdateNodeCurrentVersion(t.Context(), db.UpdateNodeCurrentVersionParams{
+		ID: node.ID, CurrentVersionID: pgtype.Int8{Int64: version.ID, Valid: true},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return node, version
+}
+
+func (f fixture) createUploadSession(t *testing.T, target pgtype.Int8) db.UploadSession {
+	t.Helper()
+	publicID := id.New(id.Upload)
+	params := db.CreateUploadSessionParams{
+		PublicID: publicID, OwnerID: f.ownerID, LibraryID: f.library.ID, ParentID: f.library.RootNodeID,
+		TargetNodeID: target, Name: pgtype.Text{String: "upload.txt", Valid: true},
+		StagingKey: publicID + ".part", DestinationKey: "objects/" + f.library.PublicID + "/" + publicID,
+		ExpiresAt: pgtype.Timestamptz{Time: time.Now().Add(time.Hour), Valid: true},
+	}
+	if target.Valid {
+		params.ExpectedRevision = pgtype.Int8{Int64: 2, Valid: true}
+	}
+	session, err := f.queries.CreateUploadSession(t.Context(), params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return session
+}
+
+func (f fixture) storedBytes(t *testing.T) int64 {
+	t.Helper()
+	stored, err := f.queries.SumLibraryStoredBytes(t.Context(), f.library.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return stored
+}
+
+func (f fixture) waitForObjectDeletion(t *testing.T, key string) {
+	t.Helper()
+	store, err := f.stores.ObjectStore(t.Context(), f.backendID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = store.Close() }()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		_, err := store.Stat(t.Context(), key)
+		if errors.Is(err, storage.ErrMissing) {
+			return
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("object %s still exists", key)
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }
 

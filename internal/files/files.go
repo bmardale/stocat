@@ -22,6 +22,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/riverqueue/river"
 )
 
 const writeIdleTimeout = 30 * time.Second
@@ -62,8 +63,10 @@ type FileDetails struct {
 }
 
 type Service struct {
+	pool    *pgxpool.Pool
 	queries *db.Queries
 	stores  *storage.Service
+	queue   *river.Client[pgx.Tx]
 	log     *slog.Logger
 }
 
@@ -83,7 +86,7 @@ func New(pool *pgxpool.Pool, stores *storage.Service, logger *slog.Logger) *Serv
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Service{queries: db.New(pool), stores: stores, log: logger}
+	return &Service{pool: pool, queries: db.New(pool), stores: stores, log: logger}
 }
 
 func (s *Service) Register(api huma.API) {
@@ -93,6 +96,15 @@ func (s *Service) Register(api huma.API) {
 		OperationID: "files-get", Method: http.MethodGet, Path: "/{id}", Summary: "Get file metadata",
 		Errors: []int{http.StatusNotFound},
 	}, s.get)
+	huma.Register(group, huma.Operation{
+		OperationID: "files-rename", Method: http.MethodPatch, Path: "/{id}", Summary: "Rename a file",
+		MaxBodyBytes: 65536, Errors: []int{http.StatusConflict, http.StatusNotFound, http.StatusUnprocessableEntity},
+	}, s.rename)
+	huma.Register(group, huma.Operation{
+		OperationID: "files-delete", Method: http.MethodDelete, Path: "/{id}", Summary: "Delete a file",
+		DefaultStatus: http.StatusNoContent,
+		Errors:        []int{http.StatusConflict, http.StatusNotFound, http.StatusServiceUnavailable},
+	}, s.remove)
 	huma.Register(group, huma.Operation{
 		OperationID: "files-content", Method: http.MethodGet, Path: "/{id}/content", Summary: "Stream file content",
 		Errors: []int{http.StatusNotFound, http.StatusRequestedRangeNotSatisfiable, http.StatusServiceUnavailable},
@@ -170,11 +182,10 @@ func (s *Service) load(ctx context.Context, publicID string) (db.GetCurrentFileB
 		OwnerID:      user.ID,
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return row, huma.Error404NotFound("The file does not exist.")
+		return row, fileNotFound()
 	}
 	if err != nil {
-		s.log.ErrorContext(ctx, "load file", "error", err)
-		return row, huma.Error500InternalServerError("File storage is unavailable.")
+		return row, s.internalError(ctx, "load file", err)
 	}
 	return row, nil
 }
@@ -209,6 +220,13 @@ func presentation(name pgtype.Text, requested string) (filename, contentType, di
 func mediaType(contentType string) string {
 	value, _, _ := mime.ParseMediaType(contentType)
 	return value
+}
+
+func fileNotFound() error { return huma.Error404NotFound("The file does not exist.") }
+
+func (s *Service) internalError(ctx context.Context, operation string, err error) error {
+	s.log.ErrorContext(ctx, operation, "error", err)
+	return huma.Error500InternalServerError("File storage is unavailable.")
 }
 
 func (s *Service) storageError(ctx context.Context, operation string, err error) error {

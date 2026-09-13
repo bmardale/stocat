@@ -67,10 +67,14 @@ func (w *finalizeWorker) Work(ctx context.Context, job *river.Job[FinalizeArgs])
 	return err
 }
 
-func (s *Service) ConfigureQueue(stores *storage.Service) (*river.Client[pgx.Tx], error) {
+// ConfigureQueue creates the River client. Each register function adds the workers of another service.
+func (s *Service) ConfigureQueue(stores *storage.Service, register ...func(*river.Workers)) (*river.Client[pgx.Tx], error) {
 	workers := river.NewWorkers()
 	river.AddWorker(workers, &finalizeWorker{service: s, stores: stores})
 	river.AddWorker(workers, &expireWorker{service: s})
+	for _, add := range register {
+		add(workers)
+	}
 	client, err := river.NewClient(riverpgxv5.New(s.pool), &river.Config{
 		Logger: s.log, Workers: workers, JobTimeout: -1,
 		SoftStopTimeout: 30 * time.Second,
@@ -139,7 +143,7 @@ func (s *Service) finalize(ctx context.Context, stores *storage.Service, uploadI
 	} else if blob.SizeBytes != upload.DeclaredSize {
 		return s.finishUpload(ctx, upload.ID, "failed", "fingerprint_conflict", "The file fingerprint matches content with another size.")
 	}
-	_, _, reused, err := s.publish(ctx, upload, fingerprint, checksum, contentSize)
+	_, _, reused, err := s.publish(ctx, upload, fingerprint, checksum, contentSize, newObject)
 	if errors.Is(err, errPublishConflict) {
 		if newObject {
 			_ = store.Delete(ctx, upload.DestinationKey)
@@ -220,7 +224,7 @@ func (s *Service) verifyStoredObject(ctx context.Context, store storage.ObjectSt
 	return nil
 }
 
-func (s *Service) publish(ctx context.Context, upload db.GetUploadPublicationRow, fingerprint []byte, checksum [sha256.Size]byte, contentSize int64) (int64, int64, bool, error) {
+func (s *Service) publish(ctx context.Context, upload db.GetUploadPublicationRow, fingerprint []byte, checksum [sha256.Size]byte, contentSize int64, newObject bool) (int64, int64, bool, error) {
 	var nodeID, versionID int64
 	var reused bool
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
@@ -232,6 +236,10 @@ func (s *Service) publish(ctx context.Context, upload db.GetUploadPublicationRow
 			}
 			return err
 		}
+		// A file deletion clears the target of a replacement upload and keeps the expected revision.
+		if current.ExpectedRevision.Valid && !current.TargetNodeID.Valid {
+			return errPublishConflict
+		}
 		if err := q.LockLibraryByID(ctx, upload.LibraryID); err != nil {
 			return err
 		}
@@ -239,6 +247,10 @@ func (s *Service) publish(ctx context.Context, upload db.GetUploadPublicationRow
 			LibraryID: upload.LibraryID, DedupFingerprint: fingerprint,
 		})
 		if errors.Is(err, pgx.ErrNoRows) {
+			// A file deletion removed the matching blob after the first lookup, so the object was not stored.
+			if !newObject {
+				return errBlobDeleted
+			}
 			blob, err = q.CreateBlob(ctx, db.CreateBlobParams{
 				PublicID: id.New(id.Blob), LibraryID: upload.LibraryID, SizeBytes: upload.DeclaredSize,
 				CiphertextSha256: checksum[:], DedupFingerprint: fingerprint,
@@ -332,7 +344,10 @@ func equalHash(left, right []byte) bool {
 	return difference == 0
 }
 
-var errPublishConflict = errors.New("upload publication conflict")
+var (
+	errPublishConflict = errors.New("upload publication conflict")
+	errBlobDeleted     = errors.New("deduplicated blob was deleted before publication")
+)
 
 var _ river.JobArgsWithInsertOpts = FinalizeArgs{}
 var _ river.Worker[FinalizeArgs] = (*finalizeWorker)(nil)

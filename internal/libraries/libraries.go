@@ -255,7 +255,7 @@ func (s *Service) createFolder(ctx context.Context, input *folderInput) (*nodeOu
 		}
 		parentID, parentPublicID = parent.ID, parent.PublicID
 	}
-	name, encryptedName, nameToken, err := validateNodeName(library.EncryptionMode, input.Body.Name, input.Body.EncryptedName, input.Body.NameToken)
+	name, encryptedName, nameToken, err := ValidateNodeName(library.EncryptionMode, input.Body.Name, input.Body.EncryptedName, input.Body.NameToken)
 	if err != nil {
 		return nil, err
 	}
@@ -269,7 +269,7 @@ func (s *Service) createFolder(ctx context.Context, input *folderInput) (*nodeOu
 	if err != nil {
 		return nil, s.internalError(ctx, "create folder", err)
 	}
-	return &nodeOutput{Body: nodeFromRow(row, library.PublicID, parentPublicID)}, nil
+	return &nodeOutput{Body: NodeFromRow(row, library.PublicID, parentPublicID)}, nil
 }
 
 func (s *Service) listNodes(ctx context.Context, input *listNodesInput) (*nodesOutput, error) {
@@ -325,7 +325,7 @@ func (s *Service) listNodes(ctx context.Context, input *listNodesInput) (*nodesO
 		rows = rows[:limit]
 	}
 	for _, row := range rows {
-		output.Body.Items = append(output.Body.Items, nodeFromRow(row, library.PublicID, parentPublicID))
+		output.Body.Items = append(output.Body.Items, NodeFromRow(row, library.PublicID, parentPublicID))
 	}
 	return output, nil
 }
@@ -346,7 +346,7 @@ func validateEncryption(mode string, keyEnvelope []byte) error {
 	return nil
 }
 
-func validateNodeName(mode, plain string, encrypted, token []byte) (pgtype.Text, []byte, []byte, error) {
+func ValidateNodeName(mode, plain string, encrypted, token []byte) (pgtype.Text, []byte, []byte, error) {
 	if mode == EncryptionE2EE {
 		if plain != "" || len(encrypted) == 0 || len(token) != 32 {
 			return pgtype.Text{}, nil, nil, huma.Error422UnprocessableEntity("Send an encrypted name and a 32-byte name token.")
@@ -391,7 +391,7 @@ func quotaPtr(value pgtype.Int8) *int64 {
 	return &quota
 }
 
-func nodeFromRow(row db.Node, libraryID, parentID string) Node {
+func NodeFromRow(row db.Node, libraryID, parentID string) Node {
 	node := Node{
 		ID: row.PublicID, LibraryID: libraryID, ParentID: parentID, Kind: row.Kind,
 		EncryptedName: row.EncryptedName, NameToken: row.NameToken, Revision: row.Revision,

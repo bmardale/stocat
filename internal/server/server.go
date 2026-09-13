@@ -95,7 +95,8 @@ func New(cfg Config, pool *pgxpool.Pool) (*Server, error) {
 	admin.New(pool, log).Register(adminGroup)
 	protected := authService.Protected(api, "/api/v1")
 	libraries.New(pool, log).Register(protected)
-	files.New(pool, storageService, log).Register(protected)
+	fileService := files.New(pool, storageService, log)
+	fileService.Register(protected)
 	uploadService, err := uploads.New(pool, nil, uploads.Config{
 		StagingDir: cfg.UploadStagingDir, MaxUploadSize: cfg.MaxUploadSize,
 		StagingCapacity: cfg.UploadStagingCapacity, SessionLifetime: cfg.UploadSessionLifetime, Logger: log,
@@ -105,11 +106,12 @@ func New(cfg Config, pool *pgxpool.Pool) (*Server, error) {
 	}
 	var queue *river.Client[pgx.Tx]
 	if pool != nil {
-		queue, err = uploadService.ConfigureQueue(storageService)
+		queue, err = uploadService.ConfigureQueue(storageService, fileService.AddWorkers)
 		if err != nil {
 			_ = uploadService.Close()
 			return nil, err
 		}
+		fileService.UseQueue(queue)
 	}
 	uploadService.Register(protected)
 
