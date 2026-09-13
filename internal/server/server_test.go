@@ -42,6 +42,23 @@ func TestProbes(t *testing.T) {
 	}
 }
 
+func TestAuthCrossOriginProtection(t *testing.T) {
+	s := New(Config{SecureCookies: true, Logger: slog.New(slog.DiscardHandler)}, nil)
+	for _, path := range []string{"/auth/register", "/auth/login", "/auth/logout"} {
+		t.Run(path, func(t *testing.T) {
+			request := httptest.NewRequestWithContext(t.Context(), http.MethodPost, path, strings.NewReader("{}"))
+			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set("Origin", "https://attacker.example")
+			request.Header.Set("Sec-Fetch-Site", "cross-site")
+			response := httptest.NewRecorder()
+			s.httpServer.Handler.ServeHTTP(response, request)
+			if response.Code != http.StatusForbidden || response.Header().Get("Set-Cookie") != "" {
+				t.Fatalf("cross-origin request was not rejected: %d %s", response.Code, response.Body)
+			}
+		})
+	}
+}
+
 func TestShutdown(t *testing.T) {
 	for _, tc := range []struct {
 		name    string

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/bmardale/stocat/internal/apierr"
+	"github.com/bmardale/stocat/internal/auth"
 	"github.com/bmardale/stocat/internal/platform/o11y"
 	"github.com/bmardale/stocat/internal/platform/version"
 	"github.com/danielgtaylor/huma/v2"
@@ -60,6 +61,8 @@ func New(cfg Config, pool *pgxpool.Pool) *Server {
 	humaCfg.CreateHooks = nil // omit $schema and Link on responses
 	apierr.Install(&humaCfg)
 	api := humachi.New(router, humaCfg)
+	authService := auth.New(pool, auth.Config{SecureCookies: cfg.SecureCookies, Logger: log})
+	authService.Register(api)
 
 	s := &Server{api: api, log: log, httpServer: &http.Server{
 		Addr: cfg.Addr, Handler: router,
