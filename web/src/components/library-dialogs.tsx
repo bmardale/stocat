@@ -321,17 +321,18 @@ function CreateLibraryForm({
   );
 }
 
-const folderSchema = z.object({
-  name: z
+export const nodeNameSchema = (required: string) =>
+  z
     .string()
     .trim()
-    .min(1, "Enter a folder name.")
+    .min(1, required)
     .max(255, "Use 255 characters or fewer.")
     .refine(
       (name) => name !== "." && name !== ".." && !/[/\\\0]/.test(name),
       "Do not use slashes, NUL, dot, or dot-dot.",
-    ),
-});
+    );
+
+const folderSchema = z.object({ name: nodeNameSchema("Enter a folder name.") });
 
 type FolderTarget = { library: Library; parentId?: string; keys?: LibraryKeys };
 

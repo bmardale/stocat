@@ -1,11 +1,13 @@
 import {
   ArrowDown01Icon,
+  Delete02Icon,
   Download04Icon,
   File01Icon,
   Folder01Icon,
   FolderAddIcon,
   LibraryIcon,
   MoreVerticalIcon,
+  PencilEdit02Icon,
   Settings01Icon,
   SquareLock02Icon,
   Upload01Icon,
@@ -38,6 +40,11 @@ import {
   type FileTarget,
   type PreviewState,
 } from "@/components/file-preview";
+import {
+  DeleteFileDialog,
+  RenameFileDialog,
+  type FileDialogState,
+} from "@/components/file-dialogs";
 import { useLibraryKeys } from "@/components/library-keys";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -296,6 +303,8 @@ function FileBrowser({
   const path = useFolderPath(library, locked ? undefined : folder);
   const [creating, setCreating] = useState(false);
   const [previewing, setPreviewing] = useState<PreviewState>({ open: false });
+  const [renaming, setRenaming] = useState<FileDialogState>({ open: false });
+  const [deleting, setDeleting] = useState<FileDialogState>({ open: false });
   const downloads = useFileDownload(keys);
   const uploads = useFileUploads({
     library,
@@ -393,6 +402,8 @@ function FileBrowser({
             keys={keys}
             onPreview={(file) => setPreviewing({ open: true, file })}
             onDownload={(file) => void downloads.download(file)}
+            onRename={(file) => setRenaming({ open: true, file })}
+            onDelete={(file) => setDeleting({ open: true, file })}
           />
         </div>
       )}
@@ -417,6 +428,17 @@ function FileBrowser({
         parentId={folder}
         keys={keys}
       />
+      <RenameFileDialog
+        state={renaming}
+        onOpenChange={(open) => setRenaming((state) => ({ ...state, open }))}
+        library={library}
+        keys={keys}
+      />
+      <DeleteFileDialog
+        state={deleting}
+        onOpenChange={(open) => setDeleting((state) => ({ ...state, open }))}
+        library={library}
+      />
     </>
   );
 }
@@ -429,12 +451,16 @@ function FolderContents({
   keys,
   onPreview,
   onDownload,
+  onRename,
+  onDelete,
 }: {
   library: Library;
   folder?: string;
   keys?: LibraryKeys;
   onPreview: (file: FileTarget) => void;
   onDownload: (file: FileTarget) => void;
+  onRename: (file: FileTarget) => void;
+  onDelete: (file: FileTarget) => void;
 }) {
   const nodes = useInfiniteQuery(nodesQueryOptions(library, folder, keys));
 
@@ -492,9 +518,11 @@ function FolderContents({
                 <TableCell className="pr-2 text-right">
                   {node.kind === "file" && node.displayName !== undefined && (
                     <FileActions
-                      file={{ id: node.id, name: node.displayName }}
+                      file={{ id: node.id, name: node.displayName, parentId: node.parent_id }}
                       onPreview={onPreview}
                       onDownload={onDownload}
+                      onRename={onRename}
+                      onDelete={onDelete}
                     />
                   )}
                 </TableCell>
@@ -569,10 +597,14 @@ function FileActions({
   file,
   onPreview,
   onDownload,
+  onRename,
+  onDelete,
 }: {
   file: FileTarget;
   onPreview: (file: FileTarget) => void;
   onDownload: (file: FileTarget) => void;
+  onRename: (file: FileTarget) => void;
+  onDelete: (file: FileTarget) => void;
 }) {
   return (
     <DropdownMenu>
@@ -589,6 +621,15 @@ function FileActions({
         <DropdownMenuItem onClick={() => onDownload(file)}>
           <HugeiconsIcon icon={Download04Icon} strokeWidth={2} />
           Download
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => onRename(file)}>
+          <HugeiconsIcon icon={PencilEdit02Icon} strokeWidth={2} />
+          Rename
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem variant="destructive" onClick={() => onDelete(file)}>
+          <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} />
+          Delete
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

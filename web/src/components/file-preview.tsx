@@ -29,7 +29,7 @@ import { toast } from "@/components/ui/toast";
 import type { LibraryKeys } from "@/lib/library-crypto";
 import { formatBytes } from "@/lib/utils";
 
-export type FileTarget = { id: string; name: string };
+export type FileTarget = { id: string; name: string; parentId?: string };
 
 // The dialog keeps the file while it closes, so the content does not change during the animation.
 export type PreviewState = { open: boolean; file?: FileTarget };

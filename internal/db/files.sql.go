@@ -11,6 +11,114 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const clearFileCurrentVersion = `-- name: ClearFileCurrentVersion :exec
+UPDATE nodes SET current_version_id = NULL WHERE id = $1 AND kind = 'file'
+`
+
+func (q *Queries) ClearFileCurrentVersion(ctx context.Context, id int64) error {
+	_, err := q.db.Exec(ctx, clearFileCurrentVersion, id)
+	return err
+}
+
+const deleteFileNode = `-- name: DeleteFileNode :execrows
+DELETE FROM nodes WHERE id = $1 AND kind = 'file'
+`
+
+func (q *Queries) DeleteFileNode(ctx context.Context, id int64) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteFileNode, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const deleteFileVersions = `-- name: DeleteFileVersions :many
+DELETE FROM file_versions WHERE node_id = $1
+RETURNING blob_id
+`
+
+func (q *Queries) DeleteFileVersions(ctx context.Context, nodeID int64) ([]int64, error) {
+	rows, err := q.db.Query(ctx, deleteFileVersions, nodeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var blob_id int64
+		if err := rows.Scan(&blob_id); err != nil {
+			return nil, err
+		}
+		items = append(items, blob_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const deleteUnreferencedBlobLocations = `-- name: DeleteUnreferencedBlobLocations :many
+WITH deleted AS (
+    DELETE FROM blob_locations bl
+    WHERE bl.blob_id = ANY($1::bigint[])
+      AND NOT EXISTS (SELECT 1 FROM file_versions v WHERE v.blob_id = bl.blob_id)
+    RETURNING bl.backend_id, bl.object_key
+)
+SELECT sb.public_id AS backend_public_id, deleted.object_key
+FROM deleted
+JOIN storage_backends sb ON sb.id = deleted.backend_id
+`
+
+type DeleteUnreferencedBlobLocationsRow struct {
+	BackendPublicID string
+	ObjectKey       string
+}
+
+func (q *Queries) DeleteUnreferencedBlobLocations(ctx context.Context, blobIds []int64) ([]DeleteUnreferencedBlobLocationsRow, error) {
+	rows, err := q.db.Query(ctx, deleteUnreferencedBlobLocations, blobIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DeleteUnreferencedBlobLocationsRow
+	for rows.Next() {
+		var i DeleteUnreferencedBlobLocationsRow
+		if err := rows.Scan(&i.BackendPublicID, &i.ObjectKey); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const deleteUnreferencedBlobs = `-- name: DeleteUnreferencedBlobs :exec
+DELETE FROM blobs b
+WHERE b.id = ANY($1::bigint[])
+  AND NOT EXISTS (SELECT 1 FROM file_versions v WHERE v.blob_id = b.id)
+`
+
+func (q *Queries) DeleteUnreferencedBlobs(ctx context.Context, blobIds []int64) error {
+	_, err := q.db.Exec(ctx, deleteUnreferencedBlobs, blobIds)
+	return err
+}
+
+const detachUploadSessionsFromNode = `-- name: DetachUploadSessionsFromNode :exec
+UPDATE upload_sessions
+SET target_node_id = CASE WHEN target_node_id = $1 THEN NULL ELSE target_node_id END,
+    published_node_id = CASE WHEN published_node_id = $1 THEN NULL ELSE published_node_id END,
+    published_version_id = CASE WHEN published_node_id = $1 THEN NULL ELSE published_version_id END,
+    updated_at = now()
+WHERE target_node_id = $1 OR published_node_id = $1
+`
+
+func (q *Queries) DetachUploadSessionsFromNode(ctx context.Context, nodeID pgtype.Int8) error {
+	_, err := q.db.Exec(ctx, detachUploadSessionsFromNode, nodeID)
+	return err
+}
+
 const getCurrentFileByPublicIDAndOwner = `-- name: GetCurrentFileByPublicIDAndOwner :one
 SELECT
     n.public_id AS node_public_id,
@@ -77,6 +185,82 @@ func (q *Queries) GetCurrentFileByPublicIDAndOwner(ctx context.Context, arg GetC
 		&i.EncryptedFileKey,
 		&i.BackendPublicID,
 		&i.ObjectKey,
+	)
+	return i, err
+}
+
+const getFileNodeByPublicIDAndOwner = `-- name: GetFileNodeByPublicIDAndOwner :one
+SELECT n.id, n.library_id, l.public_id AS library_public_id, l.encryption_mode,
+       parent.public_id AS parent_public_id
+FROM nodes n
+JOIN libraries l ON l.id = n.library_id
+JOIN nodes parent ON parent.id = n.parent_id
+WHERE n.public_id = $1 AND n.kind = 'file' AND n.trashed_at IS NULL
+  AND l.owner_id = $2
+`
+
+type GetFileNodeByPublicIDAndOwnerParams struct {
+	NodePublicID string
+	OwnerID      int64
+}
+
+type GetFileNodeByPublicIDAndOwnerRow struct {
+	ID              int64
+	LibraryID       int64
+	LibraryPublicID string
+	EncryptionMode  string
+	ParentPublicID  string
+}
+
+func (q *Queries) GetFileNodeByPublicIDAndOwner(ctx context.Context, arg GetFileNodeByPublicIDAndOwnerParams) (GetFileNodeByPublicIDAndOwnerRow, error) {
+	row := q.db.QueryRow(ctx, getFileNodeByPublicIDAndOwner, arg.NodePublicID, arg.OwnerID)
+	var i GetFileNodeByPublicIDAndOwnerRow
+	err := row.Scan(
+		&i.ID,
+		&i.LibraryID,
+		&i.LibraryPublicID,
+		&i.EncryptionMode,
+		&i.ParentPublicID,
+	)
+	return i, err
+}
+
+const renameFileNode = `-- name: RenameFileNode :one
+UPDATE nodes
+SET name = $2, encrypted_name = $3, name_token = $4, updated_at = now()
+WHERE id = $1 AND kind = 'file' AND trashed_at IS NULL
+RETURNING id, public_id, library_id, parent_id, kind, name, encrypted_name, name_token, current_version_id, revision, trashed_at, created_at, updated_at
+`
+
+type RenameFileNodeParams struct {
+	ID            int64
+	Name          pgtype.Text
+	EncryptedName []byte
+	NameToken     []byte
+}
+
+func (q *Queries) RenameFileNode(ctx context.Context, arg RenameFileNodeParams) (Node, error) {
+	row := q.db.QueryRow(ctx, renameFileNode,
+		arg.ID,
+		arg.Name,
+		arg.EncryptedName,
+		arg.NameToken,
+	)
+	var i Node
+	err := row.Scan(
+		&i.ID,
+		&i.PublicID,
+		&i.LibraryID,
+		&i.ParentID,
+		&i.Kind,
+		&i.Name,
+		&i.EncryptedName,
+		&i.NameToken,
+		&i.CurrentVersionID,
+		&i.Revision,
+		&i.TrashedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }

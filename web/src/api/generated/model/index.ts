@@ -38,6 +38,7 @@ export * from "./nodesPage.ts";
 export * from "./probeOutputBody.ts";
 export * from "./problem.ts";
 export * from "./registerInputBody.ts";
+export * from "./renameInputBody.ts";
 export * from "./s3Config.ts";
 export * from "./s3Input.ts";
 export * from "./session.ts";

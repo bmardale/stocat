@@ -4,6 +4,7 @@ import type { FileDetails, Library, LibraryBackend, Node, User } from "@/api/gen
 import { encryptFile } from "@/lib/file-crypto";
 import {
   createKeyEnvelope,
+  decryptName,
   encryptName,
   fromBase64,
   nameToken,
@@ -504,6 +505,82 @@ describe("files", () => {
       await within(dialog).findByText("This file type does not have a preview."),
     ).toBeDefined();
     expect(within(dialog).getByText("2.0 KiB")).toBeDefined();
+  });
+
+  it("renames a file and deletes it after confirmation", async () => {
+    let items: Node[] = [{ ...folder("nod_note", "notes.txt"), kind: "file" }];
+    let renameBody: unknown;
+    let deleted = false;
+    stubApi({
+      "GET /api/v1/auth/me": () => jsonResponse(200, testUser),
+      "GET /api/v1/libraries": () => jsonResponse(200, [documents]),
+      "GET /api/v1/libraries/lib_docs/nodes": () => jsonResponse(200, { items }),
+      "PATCH /api/v1/files/nod_note": (init) => {
+        renameBody = JSON.parse(init?.body as string);
+        items = [{ ...items[0], name: "todo.txt" }];
+        return jsonResponse(200, items[0]);
+      },
+      "DELETE /api/v1/files/nod_note": () => {
+        deleted = true;
+        items = [];
+        return new Response(null, { status: 204 });
+      },
+    });
+    await renderApp("/");
+    fireEvent.click(await screen.findByRole("button", { name: "Actions for notes.txt" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
+    const dialog = await screen.findByRole("dialog");
+    fill(dialog, "Name", "todo.txt");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Rename" }));
+    expect(await screen.findByRole("button", { name: "todo.txt" })).toBeDefined();
+    expect(renameBody).toEqual({ name: "todo.txt" });
+    await waitFor(() => expect(document.querySelector('[data-slot="dialog-content"]')).toBeNull());
+
+    fireEvent.click(screen.getByRole("button", { name: "Actions for todo.txt" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete" }));
+    const confirm = await screen.findByRole("alertdialog");
+    expect(within(confirm).getByText("Delete todo.txt?")).toBeDefined();
+    fireEvent.click(within(confirm).getByRole("button", { name: "Delete" }));
+    expect(await screen.findByText("This folder is empty")).toBeDefined();
+    expect(deleted).toBe(true);
+  });
+
+  it("encrypts the new name of a file in an encrypted library", async () => {
+    const { library, keys } = await encryptedLibrary();
+    const report: Node = {
+      ...folder("nod_report", "", library.root_node_id),
+      library_id: library.id,
+      kind: "file",
+      name: undefined,
+      encrypted_name: await encryptName(keys, "report.txt"),
+    };
+    let body: Record<string, string> | undefined;
+    stubApi({
+      "GET /api/v1/auth/me": () => jsonResponse(200, testUser),
+      "GET /api/v1/libraries": () => jsonResponse(200, [library]),
+      "GET /api/v1/libraries/lib_private/nodes": () => jsonResponse(200, { items: [report] }),
+      "PATCH /api/v1/files/nod_report": (init) => {
+        body = JSON.parse(init?.body as string);
+        return jsonResponse(200, { ...report, ...body });
+      },
+    });
+    await renderApp("/");
+    fireEvent.click(await screen.findByRole("button", { name: "Unlock" }));
+    const unlock = await screen.findByRole("dialog");
+    fill(unlock, "Passphrase", passphrase);
+    fireEvent.click(within(unlock).getByRole("button", { name: "Unlock" }));
+    const actions = await screen.findByRole("button", { name: "Actions for report.txt" });
+    await waitFor(() => expect(document.querySelector('[data-slot="dialog-content"]')).toBeNull());
+
+    fireEvent.click(actions);
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
+    const dialog = await screen.findByRole("dialog");
+    fill(dialog, "Name", "summary.txt");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Rename" }));
+    await waitFor(() => expect(body).toBeDefined());
+    expect(body?.name).toBeUndefined();
+    expect(body?.name_token).toBe(await nameToken(keys, library.root_node_id, "summary.txt"));
+    expect(await decryptName(keys, body?.encrypted_name ?? "")).toBe("summary.txt");
   });
 
   it("decrypts an encrypted file for preview and download", async () => {
