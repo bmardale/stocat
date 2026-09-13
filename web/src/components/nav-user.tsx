@@ -1,9 +1,9 @@
 import {
+  AccountSetting02Icon,
   ComputerIcon,
   Logout03Icon,
   Moon02Icon,
   PaintBoardIcon,
-  SecurityLockIcon,
   Sun03Icon,
   UnfoldMoreIcon,
 } from "@hugeicons/core-free-icons";
@@ -114,11 +114,9 @@ export function NavUser({ user }: { user: User }) {
                 </DropdownMenuRadioGroup>
               </DropdownMenuSubContent>
             </DropdownMenuSub>
-            <DropdownMenuItem
-              render={<Link to="/settings/sessions" onClick={() => setOpenMobile(false)} />}
-            >
-              <HugeiconsIcon icon={SecurityLockIcon} strokeWidth={2} />
-              Sessions
+            <DropdownMenuItem render={<Link to="/settings" onClick={() => setOpenMobile(false)} />}>
+              <HugeiconsIcon icon={AccountSetting02Icon} strokeWidth={2} />
+              Settings
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => void logout()}>

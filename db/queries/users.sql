@@ -11,3 +11,20 @@ SELECT * FROM users WHERE public_id = $1;
 
 -- name: GetUserByEmail :one
 SELECT * FROM users WHERE lower(email) = lower(sqlc.arg(email)::text);
+
+-- name: GetUserByEmailForUpdate :one
+SELECT * FROM users WHERE lower(email) = lower(sqlc.arg(email)::text) FOR UPDATE;
+
+-- name: GetUserByIDForUpdate :one
+SELECT * FROM users WHERE id = $1 FOR UPDATE;
+
+-- name: UpdateUserAccount :one
+UPDATE users
+SET name = $2, email = $3
+WHERE id = $1
+RETURNING *;
+
+-- name: UpdateUserPassword :exec
+UPDATE users
+SET password_hash = $2
+WHERE id = $1;
