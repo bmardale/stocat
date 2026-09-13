@@ -5,6 +5,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	awss3 "github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
@@ -45,5 +48,30 @@ func NewRustFS(t testing.TB) S3 {
 	if server.Endpoint, err = container.PortEndpoint(ctx, "9000/tcp", "http"); err != nil {
 		t.Fatalf("get RustFS address: %v", err)
 	}
+	// The /health endpoint answers before the S3 API accepts requests.
+	waitForS3(t, ctx, server)
 	return server
+}
+
+// waitForS3 blocks until the server accepts signed S3 requests. Without this
+// wait, the first bucket operation can fail with status 503.
+func waitForS3(t testing.TB, ctx context.Context, server S3) {
+	t.Helper()
+	client := awss3.New(awss3.Options{
+		Region:       "us-east-1",
+		Credentials:  credentials.NewStaticCredentialsProvider(server.AccessKeyID, server.SecretAccessKey, ""),
+		UsePathStyle: true,
+		BaseEndpoint: aws.String(server.Endpoint),
+	})
+	var lastErr error
+	for {
+		if _, lastErr = client.ListBuckets(ctx, &awss3.ListBucketsInput{}); lastErr == nil {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatalf("RustFS did not accept S3 requests: %v", lastErr)
+		case <-time.After(200 * time.Millisecond):
+		}
+	}
 }
