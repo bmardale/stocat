@@ -183,6 +183,22 @@ func TestTusUploadsPublishFiles(t *testing.T) {
 	if err != nil || version.SizeBytes != 6 {
 		t.Fatalf("encrypted version = %+v, %v", version, err)
 	}
+
+	cancelLibrary := api.Post("/api/v1/libraries", cookie, map[string]any{
+		"name": "Cancel", "backend_id": backendID, "encryption_mode": EncryptionNone,
+	})
+	requireStatus(t, cancelLibrary, http.StatusCreated)
+	var cancelTarget struct {
+		ID string `json:"id"`
+	}
+	decodeBody(t, cancelLibrary.Body.Bytes(), &cancelTarget)
+	createdUpload = api.Post("/api/v1/uploads", cookie, map[string]any{
+		"library_id": cancelTarget.ID, "name": "cancel.txt", "size": len("cancel me"),
+	})
+	requireStatus(t, createdUpload, http.StatusCreated)
+	decodeBody(t, createdUpload.Body.Bytes(), &upload)
+	response = api.Do(http.MethodDelete, "/api/v1/uploads/"+upload.ID, cookie)
+	requireStatus(t, response, http.StatusNoContent)
 }
 
 func waitForUpload(t *testing.T, queries *db.Queries, ownerID int64, uploadID string) db.UploadSession {
