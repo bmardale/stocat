@@ -19,6 +19,7 @@ import (
 
 	"github.com/bmardale/stocat/internal/apierr"
 	"github.com/bmardale/stocat/internal/db"
+	"github.com/bmardale/stocat/internal/platform/id"
 	"github.com/bmardale/stocat/internal/platform/ratelimit"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/jackc/pgx/v5"
@@ -63,6 +64,7 @@ type User struct {
 }
 
 type userKey struct{}
+type sessionKey struct{}
 type metadataKey struct{}
 
 type requestMetadata struct {
@@ -155,7 +157,8 @@ func (s *Service) Protected(api huma.API, prefixes ...string) *huma.Group {
 			s.writeRateLimitError(api, ctx, delay)
 			return
 		}
-		next(huma.WithValue(ctx, userKey{}, publicUser(user)))
+		ctx = huma.WithValue(ctx, userKey{}, publicUser(user))
+		next(huma.WithValue(ctx, sessionKey{}, hash))
 	})
 	return group
 }
@@ -219,7 +222,8 @@ func (s *Service) createSession(ctx context.Context, queries *db.Queries, userID
 	expires := time.Now().Add(sessionLifetime).Truncate(time.Second)
 	meta, _ := ctx.Value(metadataKey{}).(requestMetadata)
 	err := queries.CreateSession(ctx, db.CreateSessionParams{
-		TokenHash: tokenHash(token), UserID: userID, UserAgent: meta.userAgent, IpAddress: meta.ip,
+		TokenHash: tokenHash(token), PublicID: id.New(id.Session), UserID: userID,
+		UserAgent: meta.userAgent, IpAddress: meta.ip,
 		ExpiresAt: pgtype.Timestamptz{Time: expires, Valid: true},
 	})
 	if err != nil {
@@ -239,4 +243,11 @@ func (s *Service) createSession(ctx context.Context, queries *db.Queries, userID
 func (s *Service) cookie(token string) http.Cookie {
 	return http.Cookie{Name: CookieName, Value: token, Path: "/", HttpOnly: true,
 		Secure: s.secureCookies, SameSite: http.SameSiteLaxMode}
+}
+
+func (s *Service) clearedCookie() http.Cookie {
+	cookie := s.cookie("")
+	cookie.MaxAge = -1
+	cookie.Expires = time.Unix(1, 0).UTC()
+	return cookie
 }

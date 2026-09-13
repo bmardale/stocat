@@ -5,7 +5,6 @@ import (
 	"errors"
 	"net/http"
 	"strings"
-	"time"
 	"unicode/utf8"
 
 	"github.com/bmardale/stocat/internal/apierr"
@@ -71,13 +70,27 @@ func (s *Service) Register(api huma.API) {
 		Summary: "Revoke the current session", DefaultStatus: http.StatusNoContent,
 		Errors: []int{http.StatusInternalServerError},
 	}, s.logout)
-	huma.Register(s.Protected(group), huma.Operation{
+	protected := s.Protected(group)
+	huma.Register(protected, huma.Operation{
 		OperationID: "auth-me", Method: http.MethodGet, Path: "/me",
 		Summary: "Get the current user",
 	}, func(ctx context.Context, _ *struct{}) (*userOutput, error) {
 		user, _ := UserFromContext(ctx)
 		return &userOutput{Body: user}, nil
 	})
+	huma.Register(protected, huma.Operation{
+		OperationID: "auth-sessions-list", Method: http.MethodGet, Path: "/sessions",
+		Summary: "List the active sessions of the current user",
+	}, s.listSessions)
+	huma.Register(protected, huma.Operation{
+		OperationID: "auth-sessions-revoke-others", Method: http.MethodDelete, Path: "/sessions",
+		Summary: "Revoke all sessions except the current session", DefaultStatus: http.StatusNoContent,
+	}, s.revokeOtherSessions)
+	huma.Register(protected, huma.Operation{
+		OperationID: "auth-sessions-revoke", Method: http.MethodDelete, Path: "/sessions/{id}",
+		Summary: "Revoke a session", DefaultStatus: http.StatusNoContent,
+		Errors: []int{http.StatusNotFound},
+	}, s.revokeSession)
 }
 
 func redactErrorValues(_ huma.Context, _ string, value any) (any, error) {
@@ -179,10 +192,7 @@ func (s *Service) logout(ctx context.Context, _ *struct{}) (*logoutOutput, error
 			return nil, s.internalError(ctx, "delete session", err)
 		}
 	}
-	cookie := s.cookie("")
-	cookie.MaxAge = -1
-	cookie.Expires = time.Unix(1, 0).UTC()
-	return &logoutOutput{SetCookie: cookie}, nil
+	return &logoutOutput{SetCookie: s.clearedCookie()}, nil
 }
 
 // The email format validation accepts leading and trailing spaces.

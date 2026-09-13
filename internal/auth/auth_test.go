@@ -105,6 +105,7 @@ func TestAuth(t *testing.T) {
 	t.Run("lifecycle", func(t *testing.T) { testLifecycle(t, pool) })
 	t.Run("invalid requests", func(t *testing.T) { testInvalidRequests(t, pool) })
 	t.Run("expired and revoked sessions", func(t *testing.T) { testExpiredSessions(t, pool) })
+	t.Run("session management", func(t *testing.T) { testSessions(t, pool) })
 	t.Run("user agent", func(t *testing.T) { testUserAgent(t, pool) })
 	t.Run("concurrent registration", func(t *testing.T) { testConcurrentRegistration(t, pool) })
 	t.Run("database failure", func(t *testing.T) { testDatabaseFailure(t, pool) })
@@ -264,13 +265,124 @@ func testExpiredSessions(t *testing.T, pool *pgxpool.Pool) {
 	}
 	addr := netip.MustParseAddr("127.0.0.1")
 	if err := queries.CreateSession(t.Context(), db.CreateSessionParams{
-		TokenHash: session.TokenHash, UserID: session.UserID, UserAgent: "test", IpAddress: &addr,
+		TokenHash: session.TokenHash, PublicID: session.PublicID, UserID: session.UserID, UserAgent: "test", IpAddress: &addr,
 		ExpiresAt: pgtype.Timestamptz{Time: time.Now().Add(-time.Second), Valid: true},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	requireStatus(t, api.GetCtx(t.Context(), "/auth/me", "Cookie: "+cookie.String()), http.StatusUnauthorized)
 	requireStatus(t, api.PostCtx(t.Context(), "/auth/logout", "Cookie: "+cookie.String()), http.StatusNoContent)
+
+	response = api.PostCtx(t.Context(), "/auth/login", credentials("expired@example.com"))
+	requireStatus(t, response, http.StatusOK)
+	if sessions := listSessions(t, api, responseCookie(t, response)); len(sessions) != 1 || !sessions[0].Current {
+		t.Fatalf("expired session is listed: %+v", sessions)
+	}
+}
+
+func listSessions(t *testing.T, api humatest.TestAPI, cookie *http.Cookie) []Session {
+	t.Helper()
+	response := api.GetCtx(t.Context(), "/auth/sessions", "Cookie: "+cookie.String())
+	requireStatus(t, response, http.StatusOK)
+	var sessions []Session
+	if err := json.Unmarshal(response.Body.Bytes(), &sessions); err != nil {
+		t.Fatal(err)
+	}
+	return sessions
+}
+
+func testSessions(t *testing.T, pool *pgxpool.Pool) {
+	t.Helper()
+	_, api, _ := newTestAPI(t, pool, true)
+	signIn := func(path string, body map[string]string, userAgent string) *http.Cookie {
+		t.Helper()
+		response := api.PostCtx(t.Context(), path, body, "User-Agent: "+userAgent)
+		if path == "/auth/register" {
+			requireStatus(t, response, http.StatusCreated)
+		} else {
+			requireStatus(t, response, http.StatusOK)
+		}
+		return responseCookie(t, response)
+	}
+	authenticated := func(cookie *http.Cookie) bool {
+		t.Helper()
+		return api.GetCtx(t.Context(), "/auth/me", "Cookie: "+cookie.String()).Code == http.StatusOK
+	}
+	desktop := signIn("/auth/register", registration("sessions@example.com"), "desktop-agent")
+	phone := signIn("/auth/login", credentials("sessions@example.com"), "phone-agent")
+	other := signIn("/auth/register", registration("other-sessions@example.com"), "other-agent")
+
+	response := api.GetCtx(t.Context(), "/auth/sessions", "Cookie: "+desktop.String())
+	requireStatus(t, response, http.StatusOK)
+	if response.Header().Get("Cache-Control") != "no-store" {
+		t.Fatal("session list can be cached")
+	}
+	var fields []map[string]json.RawMessage
+	if err := json.Unmarshal(response.Body.Bytes(), &fields); err != nil {
+		t.Fatal(err)
+	}
+	for _, session := range fields {
+		if keys, want := slices.Sorted(maps.Keys(session)), []string{"created_at", "current", "id", "ip_address", "user_agent"}; !slices.Equal(keys, want) {
+			t.Fatalf("session fields = %v, want %v", keys, want)
+		}
+	}
+	sessions := listSessions(t, api, desktop)
+	if len(sessions) != 2 || !sessions[0].Current || sessions[1].Current ||
+		sessions[0].UserAgent != "desktop-agent" || sessions[1].UserAgent != "phone-agent" {
+		t.Fatalf("unexpected sessions: %+v", sessions)
+	}
+	for _, session := range sessions {
+		if !id.Valid(id.Session, session.ID) || session.IPAddress == nil || time.Since(session.CreatedAt) > time.Minute {
+			t.Fatalf("unexpected session: %+v", session)
+		}
+	}
+	if phoneSessions := listSessions(t, api, phone); !phoneSessions[0].Current || phoneSessions[0].ID != sessions[1].ID {
+		t.Fatalf("phone does not see its own session first: %+v", phoneSessions)
+	}
+
+	otherID := listSessions(t, api, other)[0].ID
+	for _, sessionID := range []string{otherID, id.New(id.Session), "invalid"} {
+		requireStatus(t, api.DeleteCtx(t.Context(), "/auth/sessions/"+sessionID, "Cookie: "+desktop.String()), http.StatusNotFound)
+	}
+	if !authenticated(other) {
+		t.Fatal("user revoked a session of another user")
+	}
+
+	response = api.DeleteCtx(t.Context(), "/auth/sessions/"+sessions[1].ID, "Cookie: "+desktop.String())
+	requireStatus(t, response, http.StatusNoContent)
+	if response.Header().Get("Set-Cookie") != "" {
+		t.Fatal("revoking another session changed the cookie")
+	}
+	if authenticated(phone) || !authenticated(desktop) {
+		t.Fatal("revoke did not affect only the selected session")
+	}
+
+	tablet := signIn("/auth/login", credentials("sessions@example.com"), "tablet-agent")
+	laptop := signIn("/auth/login", credentials("sessions@example.com"), "laptop-agent")
+	response = api.DeleteCtx(t.Context(), "/auth/sessions", "Cookie: "+desktop.String())
+	requireStatus(t, response, http.StatusNoContent)
+	if response.Header().Get("Set-Cookie") != "" {
+		t.Fatal("revoking other sessions changed the cookie")
+	}
+	if authenticated(tablet) || authenticated(laptop) || !authenticated(desktop) || !authenticated(other) {
+		t.Fatal("revoke others did not keep only the current session and other users")
+	}
+	sessions = listSessions(t, api, desktop)
+	if len(sessions) != 1 || !sessions[0].Current {
+		t.Fatalf("unexpected sessions after revoke others: %+v", sessions)
+	}
+
+	response = api.DeleteCtx(t.Context(), "/auth/sessions/"+sessions[0].ID, "Cookie: "+desktop.String())
+	requireStatus(t, response, http.StatusNoContent)
+	if cleared := responseCookie(t, response); cleared.Value != "" || cleared.MaxAge != -1 {
+		t.Fatalf("revoking the current session did not clear the cookie: %s", cleared)
+	}
+	if authenticated(desktop) {
+		t.Fatal("current session was not revoked")
+	}
+	for _, method := range []string{http.MethodGet, http.MethodDelete} {
+		requireStatus(t, api.DoCtx(t.Context(), method, "/auth/sessions"), http.StatusUnauthorized)
+	}
 }
 
 func testUserAgent(t *testing.T, pool *pgxpool.Pool) {
@@ -337,26 +449,29 @@ func TestOpenAPI(t *testing.T) {
 	group := service.Protected(api, "/private")
 	huma.Register(group, huma.Operation{OperationID: "private", Method: http.MethodGet, Path: "/check"},
 		func(context.Context, *struct{}) (*struct{}, error) { return &struct{}{}, nil })
+	public := []string{"/auth/register", "/auth/login", "/auth/logout"}
 	for path, item := range api.OpenAPI().Paths {
-		op := item.Post
-		if item.Get != nil {
-			op = item.Get
-		}
 		if !strings.HasPrefix(path, "/auth/") && path != "/private/check" {
 			continue
 		}
-		if strings.HasPrefix(path, "/auth/") && (len(op.Tags) != 1 || op.Tags[0] != "Auth") {
-			t.Errorf("route %s lacks the Auth tag", path)
-		}
-		if response := op.Responses["429"]; response == nil || response.Headers["Retry-After"] == nil || response.Content[apierr.ContentType] == nil {
-			t.Errorf("route %s lacks the rate limit response", path)
-		}
-		if path == "/auth/me" || path == "/private/check" {
-			if len(op.Security) != 1 || op.Security[0][securityScheme] == nil || op.Responses["401"] == nil {
-				t.Errorf("route %s lacks session security or the 401 response", path)
+		for _, op := range []*huma.Operation{item.Get, item.Post, item.Delete} {
+			if op == nil {
+				continue
 			}
-		} else if len(op.Security) != 0 {
-			t.Errorf("public route %s requires authentication", path)
+			route := op.Method + " " + path
+			if strings.HasPrefix(path, "/auth/") && (len(op.Tags) != 1 || op.Tags[0] != "Auth") {
+				t.Errorf("route %s lacks the Auth tag", route)
+			}
+			if response := op.Responses["429"]; response == nil || response.Headers["Retry-After"] == nil || response.Content[apierr.ContentType] == nil {
+				t.Errorf("route %s lacks the rate limit response", route)
+			}
+			if !slices.Contains(public, path) {
+				if len(op.Security) != 1 || op.Security[0][securityScheme] == nil || op.Responses["401"] == nil {
+					t.Errorf("route %s lacks session security or the 401 response", route)
+				}
+			} else if len(op.Security) != 0 {
+				t.Errorf("public route %s requires authentication", route)
+			}
 		}
 	}
 	scheme := api.OpenAPI().Components.SecuritySchemes[securityScheme]

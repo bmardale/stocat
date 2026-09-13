@@ -28,8 +28,11 @@ func testDatabaseFailure(t *testing.T, pool *pgxpool.Pool) {
 		{http.MethodPost, "/auth/login", credentials("user@example.com")},
 		{http.MethodGet, "/auth/me", nil},
 		{http.MethodPost, "/auth/logout", nil},
+		{http.MethodGet, "/auth/sessions", nil},
+		{http.MethodDelete, "/auth/sessions", nil},
+		{http.MethodDelete, "/auth/sessions/ses_01K4W9T5V8QK3M7ZB0YHXC2FNE", nil},
 	} {
-		t.Run(tc.path, func(t *testing.T) {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
 			args := []any{"Cookie: " + CookieName + "=" + strings.Repeat("a", 64)}
 			if tc.body != nil {
 				args = append(args, tc.body)
