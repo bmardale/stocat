@@ -52,7 +52,7 @@ func TestRequestIDHeader(t *testing.T) {
 			handler := RequestID(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 				got = RequestIDFrom(r.Context())
 			}))
-			request := httptest.NewRequest(http.MethodGet, "/", nil)
+			request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
 			if tc.sent != "" {
 				request.Header.Set(RequestIDHeader, tc.sent)
 			}
@@ -81,7 +81,7 @@ func TestRequestIDGoesToLogRecords(t *testing.T) {
 	handler := RequestID(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		logger.InfoContext(r.Context(), "in handler")
 	}))
-	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
 	request.Header.Set(RequestIDHeader, "req-1")
 	handler.ServeHTTP(httptest.NewRecorder(), request)
 
@@ -113,7 +113,7 @@ func TestAccessLog(t *testing.T) {
 				w.WriteHeader(tc.status)
 				_, _ = w.Write([]byte("body"))
 			}))
-			request := httptest.NewRequest(http.MethodPost, tc.path, nil)
+			request := httptest.NewRequestWithContext(t.Context(), http.MethodPost, tc.path, nil)
 			request.Header.Set("User-Agent", "probe/1")
 			request.RemoteAddr = "192.0.2.4:5555"
 			handler.ServeHTTP(httptest.NewRecorder(), request)
@@ -149,7 +149,7 @@ func TestAccessLogUsesRoutePattern(t *testing.T) {
 	router := chi.NewRouter()
 	router.Use(AccessLog(newTestLogger(&buf)))
 	router.Get("/users/{id}", func(http.ResponseWriter, *http.Request) {})
-	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/users/42", nil))
+	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/users/42", nil))
 
 	all := records(t, &buf)
 	if len(all) != 1 {
@@ -167,7 +167,7 @@ func TestAccessLogTruncatesLongPath(t *testing.T) {
 	var buf bytes.Buffer
 	handler := AccessLog(newTestLogger(&buf))(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	path := "/" + strings.Repeat("x", 2*maxRouteLen)
-	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, path, nil))
+	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil))
 
 	route, _ := records(t, &buf)[0]["route"].(string)
 	if len(route) != maxRouteLen {
@@ -181,7 +181,7 @@ func TestAccessLogSeesHandlerAttributes(t *testing.T) {
 	handler := RequestID(AccessLog(logger)(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		AddAttrs(r.Context(), slog.String("user_id", "user-7"))
 	})))
-	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil))
+	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil))
 
 	all := records(t, &buf)
 	if len(all) != 1 {

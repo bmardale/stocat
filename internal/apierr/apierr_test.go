@@ -3,6 +3,7 @@ package apierr
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -82,7 +83,7 @@ func TestWriteHoldsRequestID(t *testing.T) {
 	handler := o11y.RequestID(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		Write(w, r, http.StatusConflict, "the thing exists")
 	}))
-	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
 	request.Header.Set(o11y.RequestIDHeader, "req-9")
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, request)
@@ -101,7 +102,7 @@ func TestWriteHoldsRequestID(t *testing.T) {
 
 func TestWriteWithoutRequestID(t *testing.T) {
 	recorder := httptest.NewRecorder()
-	Write(recorder, httptest.NewRequest(http.MethodGet, "/", nil), http.StatusNotFound, "gone")
+	Write(recorder, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil), http.StatusNotFound, "gone")
 	if problem := decode(t, recorder); problem.RequestID != "" {
 		t.Errorf("request_id = %q, want an empty value", problem.RequestID)
 	}
@@ -124,7 +125,7 @@ func TestRouterErrors(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			recorder := httptest.NewRecorder()
-			router.ServeHTTP(recorder, httptest.NewRequest(tc.method, tc.path, nil))
+			router.ServeHTTP(recorder, httptest.NewRequestWithContext(t.Context(), tc.method, tc.path, nil))
 			if recorder.Code != tc.status {
 				t.Fatalf("status = %d, want %d", recorder.Code, tc.status)
 			}
@@ -145,7 +146,7 @@ func TestRecoverer(t *testing.T) {
 	handler := o11y.RequestID(Recoverer(logger)(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		panic("boom")
 	})))
-	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
 	request.Header.Set(o11y.RequestIDHeader, "req-2")
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, request)
@@ -179,12 +180,13 @@ func TestRecovererKeepsAbortHandler(t *testing.T) {
 			panic(http.ErrAbortHandler)
 		}))
 	defer func() {
-		if value := recover(); value != http.ErrAbortHandler {
+		value, ok := recover().(error)
+		if !ok || !errors.Is(value, http.ErrAbortHandler) {
 			t.Errorf("recovered %#v, want the abort error to pass through", value)
 		}
 		if buf.Len() != 0 {
 			t.Errorf("the abort error went to the log: %s", buf.String())
 		}
 	}()
-	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil))
+	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil))
 }
