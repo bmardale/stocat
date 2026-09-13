@@ -33,6 +33,8 @@ const (
 	BlobLocation = "loc"
 	// FileVersion is the prefix of file version identifiers.
 	FileVersion = "ver"
+	// Upload is the prefix of upload identifiers.
+	Upload = "upl"
 	// Request is the prefix of request identifiers.
 	Request = "req"
 )

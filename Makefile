@@ -41,15 +41,19 @@ require-db:
 
 migrate-up: require-db
 	$(GOOSE) up
+	go tool river migrate-up --database-url "$$DATABASE_URL"
 
 migrate-down: require-db
 	$(GOOSE) down
 
 migrate-reset: require-db
+	go tool river migrate-down --database-url "$$DATABASE_URL" --target-version 0
 	$(GOOSE) reset
+	go tool river migrate-up --database-url "$$DATABASE_URL"
 
 migrate-status: require-db
 	$(GOOSE) status
+	go tool river validate --database-url "$$DATABASE_URL"
 
 migrate-create: require-db
 	@test -n "$$name" || (echo "usage: make migrate-create name=add_users" >&2; exit 1)

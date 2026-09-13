@@ -6,6 +6,7 @@ import {
   LibraryIcon,
   Settings01Icon,
   SquareLock02Icon,
+  Upload01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -22,6 +23,12 @@ import { librariesQueryOptions } from "@/api/libraries";
 import { getNodesListQueryKey, nodesList } from "@/api/generated/libraries/libraries";
 import type { Library, Node, NodesPage } from "@/api/generated/model";
 import { CreateFolderDialog, UnlockLibraryDialog } from "@/components/library-dialogs";
+import {
+  UploadDropOverlay,
+  UploadInput,
+  UploadQueue,
+  useFileUploads,
+} from "@/components/file-uploads";
 import { useLibraryKeys } from "@/components/library-keys";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -107,6 +114,7 @@ function Files() {
       </div>
       {library ? (
         <FileBrowser
+          key={library.id}
           library={library}
           // A folder belongs to the library in the URL. Ignore it for a fallback library.
           folder={search.library === library.id ? search.folder : undefined}
@@ -278,6 +286,11 @@ function FileBrowser({
   const locked = library.encryption_mode === "e2ee" && !keys;
   const path = useFolderPath(library, locked ? undefined : folder);
   const [creating, setCreating] = useState(false);
+  const uploads = useFileUploads({
+    library,
+    parentId: folder ?? library.root_node_id,
+    keys,
+  });
 
   const lock = () => {
     libraryKeys.lock(library.id);
@@ -332,6 +345,10 @@ function FileBrowser({
                 Lock
               </Button>
             )}
+            <Button variant="outline" onClick={uploads.choose}>
+              <HugeiconsIcon icon={Upload01Icon} strokeWidth={2} data-icon="inline-start" />
+              Upload files
+            </Button>
             <Button onClick={() => setCreating(true)}>
               <HugeiconsIcon icon={FolderAddIcon} strokeWidth={2} data-icon="inline-start" />
               New folder
@@ -355,7 +372,18 @@ function FileBrowser({
           </EmptyContent>
         </Empty>
       ) : (
-        <FolderContents library={library} folder={folder} keys={keys} />
+        <div className="relative" {...uploads.dropProps}>
+          <UploadInput inputRef={uploads.inputRef} onFiles={uploads.add} />
+          <UploadDropOverlay visible={uploads.dragging} />
+          <FolderContents library={library} folder={folder} keys={keys} />
+        </div>
+      )}
+      {!locked && (
+        <UploadQueue
+          items={uploads.items}
+          onCancel={uploads.cancel}
+          onClear={uploads.removeFinished}
+        />
       )}
       <CreateFolderDialog
         open={creating}
@@ -402,7 +430,7 @@ function FolderContents({
             <HugeiconsIcon icon={Folder01Icon} strokeWidth={2} />
           </EmptyMedia>
           <EmptyTitle>This folder is empty</EmptyTitle>
-          <EmptyDescription>Create a folder to organize your files.</EmptyDescription>
+          <EmptyDescription>Upload files or create a folder to get started.</EmptyDescription>
         </EmptyHeader>
       </Empty>
     );

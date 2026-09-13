@@ -24,7 +24,7 @@ export const unauthorized = () =>
 
 export const noLibraries = () => jsonResponse(200, []);
 
-type Handler = (init: RequestInit | undefined) => Response;
+type Handler = (init: RequestInit | undefined) => Response | Promise<Response>;
 
 // Keys use the form "METHOD /api/path". An unknown request fails the test.
 export function stubApi(handlers: Record<string, Handler>) {

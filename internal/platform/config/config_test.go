@@ -36,6 +36,9 @@ func TestLoadConfigRejectsInvalidValues(t *testing.T) {
 		values map[string]string
 	}{
 		{name: "zero shutdown timeout", values: map[string]string{"SHUTDOWN_TIMEOUT": "0s"}},
+		{name: "zero upload size", values: map[string]string{"MAX_UPLOAD_SIZE": "0"}},
+		{name: "zero staging capacity", values: map[string]string{"UPLOAD_STAGING_CAPACITY": "0"}},
+		{name: "zero upload lifetime", values: map[string]string{"UPLOAD_SESSION_LIFETIME": "0s"}},
 		{name: "missing app key", values: map[string]string{"APP_KEY": ""}},
 		{name: "app key without prefix", values: map[string]string{"APP_KEY": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="}},
 		{name: "short app key", values: map[string]string{"APP_KEY": "base64:AAAAAAAAAAAAAAAAAAAAAA=="}},

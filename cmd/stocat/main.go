@@ -67,10 +67,14 @@ func run() error {
 	)
 
 	srv, err := server.New(server.Config{
-		Addr:          cfg.Addr,
-		SecureCookies: cfg.SessionCookieSecure,
-		Logger:        log,
-		Encrypter:     encrypter,
+		Addr:                  cfg.Addr,
+		SecureCookies:         cfg.SessionCookieSecure,
+		Logger:                log,
+		Encrypter:             encrypter,
+		UploadStagingDir:      cfg.UploadStagingDir,
+		MaxUploadSize:         cfg.MaxUploadSize,
+		UploadStagingCapacity: cfg.UploadStagingCapacity,
+		UploadSessionLifetime: cfg.UploadSessionLifetime,
 	}, pool)
 	if err != nil {
 		return fmt.Errorf("create server: %w", err)

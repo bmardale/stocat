@@ -27,8 +27,12 @@ type Config struct {
 	// AppPreviousKeys decrypt data that an earlier APP_KEY encrypted.
 	AppPreviousKeys []crypt.Key `env:"APP_PREVIOUS_KEYS" envSeparator:","`
 
-	LogLevel        slog.Level    `env:"LOG_LEVEL" envDefault:"info"`
-	ShutdownTimeout time.Duration `env:"SHUTDOWN_TIMEOUT" envDefault:"10s"`
+	LogLevel              slog.Level    `env:"LOG_LEVEL" envDefault:"info"`
+	ShutdownTimeout       time.Duration `env:"SHUTDOWN_TIMEOUT" envDefault:"10s"`
+	UploadStagingDir      string        `env:"UPLOAD_STAGING_DIR" envDefault:"/var/lib/stocat/uploads"`
+	MaxUploadSize         int64         `env:"MAX_UPLOAD_SIZE" envDefault:"10737418240"`
+	UploadStagingCapacity int64         `env:"UPLOAD_STAGING_CAPACITY" envDefault:"21474836480"`
+	UploadSessionLifetime time.Duration `env:"UPLOAD_SESSION_LIFETIME" envDefault:"24h"`
 
 	Postgres struct {
 		URL      string `env:"DATABASE_URL,required"`
@@ -43,6 +47,9 @@ func LoadConfig() (Config, error) {
 	}
 	if c.ShutdownTimeout <= 0 {
 		return Config{}, fmt.Errorf("SHUTDOWN_TIMEOUT must be positive")
+	}
+	if c.MaxUploadSize <= 0 || c.UploadStagingCapacity <= 0 || c.UploadSessionLifetime <= 0 {
+		return Config{}, fmt.Errorf("upload limits and lifetime must be positive")
 	}
 
 	return c, nil

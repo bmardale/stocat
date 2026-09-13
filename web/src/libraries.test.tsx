@@ -153,6 +153,113 @@ describe("files", () => {
     expect(router.state.location.search).toEqual({ library: "lib_docs" });
   });
 
+  it("uploads a file and shows it after publication", async () => {
+    let published = false;
+    let createBody: Record<string, unknown> | undefined;
+    const uploaded: Node = { ...folder("nod_notes", "notes.txt"), kind: "file" };
+    stubApi({
+      "GET /api/v1/auth/me": () => jsonResponse(200, testUser),
+      "GET /api/v1/libraries": () => jsonResponse(200, [documents]),
+      "GET /api/v1/libraries/lib_docs/nodes": () =>
+        jsonResponse(200, { items: published ? [uploaded] : [] }),
+      "POST /api/v1/uploads": (init) => {
+        createBody = JSON.parse(init?.body as string);
+        return jsonResponse(201, {
+          id: "upl_notes",
+          state: "created",
+          upload_url: "/api/v1/uploads/upl_notes/content",
+          declared_size: 5,
+          offset: 0,
+          expires_at: "2026-09-15T10:00:00Z",
+        });
+      },
+      "HEAD /api/v1/uploads/upl_notes/content": () =>
+        new Response(null, { status: 200, headers: { "Upload-Offset": "0" } }),
+      "PATCH /api/v1/uploads/upl_notes/content": (init) => {
+        expect(new Headers(init?.headers).get("Upload-Offset")).toBe("0");
+        expect((init?.body as Blob | undefined)?.size).toBe(5);
+        return new Response(null, { status: 204, headers: { "Upload-Offset": "5" } });
+      },
+      "POST /api/v1/uploads/upl_notes/complete": () => {
+        return jsonResponse(200, {
+          id: "upl_notes",
+          state: "finalizing",
+          upload_url: "/api/v1/uploads/upl_notes/content",
+          declared_size: 5,
+          offset: 5,
+          expires_at: "2026-09-15T10:00:00Z",
+        });
+      },
+      "GET /api/v1/uploads/upl_notes": () => {
+        published = true;
+        return jsonResponse(200, {
+          id: "upl_notes",
+          state: "completed",
+          upload_url: "/api/v1/uploads/upl_notes/content",
+          declared_size: 5,
+          offset: 5,
+          expires_at: "2026-09-15T10:00:00Z",
+          node_id: "nod_notes",
+          version_id: "ver_notes",
+        });
+      },
+    });
+    await renderApp("/");
+    const input = await screen.findByLabelText("Choose files to upload");
+    fireEvent.change(input, { target: { files: [new File(["hello"], "notes.txt")] } });
+
+    expect(await screen.findByText("Complete")).toBeDefined();
+    await waitFor(() => expect(screen.getAllByText("notes.txt").length).toBeGreaterThanOrEqual(2));
+    expect(createBody).toEqual({
+      library_id: "lib_docs",
+      parent_id: "nod_root",
+      name: "notes.txt",
+      size: 5,
+    });
+  });
+
+  it("cancels an active upload and releases its session", async () => {
+    let patchStarted = false;
+    let cancelled = false;
+    stubApi({
+      "GET /api/v1/auth/me": () => jsonResponse(200, testUser),
+      "GET /api/v1/libraries": () => jsonResponse(200, [documents]),
+      "GET /api/v1/libraries/lib_docs/nodes": () => jsonResponse(200, { items: [] }),
+      "POST /api/v1/uploads": () =>
+        jsonResponse(201, {
+          id: "upl_large",
+          state: "created",
+          upload_url: "/api/v1/uploads/upl_large/content",
+          declared_size: 5,
+          offset: 0,
+          expires_at: "2026-09-15T10:00:00Z",
+        }),
+      "HEAD /api/v1/uploads/upl_large/content": () =>
+        new Response(null, { status: 200, headers: { "Upload-Offset": "0" } }),
+      "PATCH /api/v1/uploads/upl_large/content": (init) => {
+        patchStarted = true;
+        return new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () =>
+            reject(new DOMException("The upload was cancelled.", "AbortError")),
+          );
+        });
+      },
+      "DELETE /api/v1/uploads/upl_large": () => {
+        cancelled = true;
+        return new Response(null, { status: 204 });
+      },
+    });
+    await renderApp("/");
+    fireEvent.change(await screen.findByLabelText("Choose files to upload"), {
+      target: { files: [new File(["hello"], "large.bin")] },
+    });
+    await waitFor(() => expect(patchStarted).toBe(true));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel large.bin" }));
+
+    expect(await screen.findByText("Cancelled")).toBeDefined();
+    await waitFor(() => expect(cancelled).toBe(true));
+  });
+
   it("rejects a folder name with a separator before it sends a request", async () => {
     const fetchMock = stubApi({
       "GET /api/v1/auth/me": () => jsonResponse(200, testUser),
@@ -257,6 +364,90 @@ describe("files", () => {
     fireEvent.click(screen.getByRole("button", { name: "Lock" }));
     expect(await screen.findByText("Private is locked")).toBeDefined();
     expect(screen.queryByText("Tax returns")).toBeNull();
+  });
+
+  it("encrypts file content and metadata before an upload", async () => {
+    const { library } = await encryptedLibrary();
+    let createBody: Record<string, unknown> | undefined;
+    let completeBody: Record<string, unknown> | undefined;
+    let published = false;
+    let offset = 0;
+    stubApi({
+      "GET /api/v1/auth/me": () => jsonResponse(200, testUser),
+      "GET /api/v1/libraries": () => jsonResponse(200, [library]),
+      "GET /api/v1/libraries/lib_private/nodes": () =>
+        jsonResponse(200, {
+          items:
+            published && createBody
+              ? [
+                  {
+                    ...folder("nod_report", "", library.root_node_id),
+                    library_id: library.id,
+                    kind: "file",
+                    name: undefined,
+                    encrypted_name: createBody.encrypted_name,
+                    name_token: createBody.name_token,
+                  },
+                ]
+              : [],
+        }),
+      "POST /api/v1/uploads": (init) => {
+        createBody = JSON.parse(init?.body as string);
+        return jsonResponse(201, {
+          id: "upl_report",
+          state: "created",
+          upload_url: "/api/v1/uploads/upl_report/content",
+          declared_size: createBody?.size,
+          offset: 0,
+          expires_at: "2026-09-15T10:00:00Z",
+        });
+      },
+      "HEAD /api/v1/uploads/upl_report/content": () =>
+        new Response(null, { status: 200, headers: { "Upload-Offset": String(offset) } }),
+      "PATCH /api/v1/uploads/upl_report/content": (init) => {
+        expect(Number(new Headers(init?.headers).get("Upload-Offset"))).toBe(offset);
+        offset += (init?.body as Blob | undefined)?.size ?? 0;
+        return new Response(null, {
+          status: 204,
+          headers: { "Upload-Offset": String(offset) },
+        });
+      },
+      "POST /api/v1/uploads/upl_report/complete": (init) => {
+        completeBody = JSON.parse(init?.body as string);
+        published = true;
+        return jsonResponse(200, {
+          id: "upl_report",
+          state: "completed",
+          upload_url: "/api/v1/uploads/upl_report/content",
+          declared_size: createBody?.size,
+          offset,
+          expires_at: "2026-09-15T10:00:00Z",
+          node_id: "nod_report",
+          version_id: "ver_report",
+        });
+      },
+    });
+    await renderApp("/");
+    fireEvent.click(await screen.findByRole("button", { name: "Unlock" }));
+    const dialog = await screen.findByRole("dialog");
+    fill(dialog, "Passphrase", passphrase);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Unlock" }));
+    await screen.findByText("This folder is empty");
+
+    fireEvent.change(screen.getByLabelText("Choose files to upload"), {
+      target: { files: [new File(["hello"], "report.txt")] },
+    });
+
+    expect(await screen.findByText("Complete")).toBeDefined();
+    await waitFor(() => expect(screen.getAllByText("report.txt").length).toBeGreaterThanOrEqual(2));
+    expect(createBody?.name).toBeUndefined();
+    expect(createBody?.encrypted_name).not.toContain("report.txt");
+    expect(fromBase64(createBody?.name_token as string)).toHaveLength(32);
+    expect(createBody?.size).toBe(53);
+    expect(offset).toBe(53);
+    expect(completeBody?.encryption_format).toBe("stocat-framed-v1");
+    expect(fromBase64(completeBody?.dedup_fingerprint as string)).toHaveLength(32);
+    expect(fromBase64(completeBody?.encrypted_file_key as string)).toHaveLength(61);
   });
 });
 

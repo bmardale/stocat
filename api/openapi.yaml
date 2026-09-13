@@ -92,6 +92,19 @@ components:
       required:
         - type
       type: object
+    CompleteInputBody:
+      additionalProperties: false
+      properties:
+        dedup_fingerprint:
+          contentEncoding: base64
+          type: string
+        encrypted_file_key:
+          contentEncoding: base64
+          type: string
+        encryption_format:
+          maxLength: 64
+          type: string
+      type: object
     ConnectionCheck:
       additionalProperties: false
       properties:
@@ -128,6 +141,39 @@ components:
         - name
         - type
         - enabled
+      type: object
+    CreateInputBody:
+      additionalProperties: false
+      properties:
+        encrypted_name:
+          contentEncoding: base64
+          type: string
+        expected_revision:
+          format: int64
+          minimum: 0
+          type: integer
+        library_id:
+          maxLength: 64
+          type: string
+        name:
+          maxLength: 255
+          type: string
+        name_token:
+          contentEncoding: base64
+          type: string
+        parent_id:
+          maxLength: 64
+          type: string
+        size:
+          format: int64
+          minimum: 0
+          type: integer
+        target_node_id:
+          maxLength: 64
+          type: string
+      required:
+        - library_id
+        - size
       type: object
     CreateLibraryInputBody:
       additionalProperties: false
@@ -596,6 +642,40 @@ components:
           type: array
       required:
         - default_quota_mb
+      type: object
+    Upload:
+      additionalProperties: false
+      properties:
+        declared_size:
+          format: int64
+          type: integer
+        expires_at:
+          format: date-time
+          type: string
+        failure_code:
+          type: string
+        failure_message:
+          type: string
+        id:
+          type: string
+        node_id:
+          type: string
+        offset:
+          format: int64
+          type: integer
+        state:
+          type: string
+        upload_url:
+          type: string
+        version_id:
+          type: string
+      required:
+        - id
+        - state
+        - upload_url
+        - declared_size
+        - offset
+        - expires_at
       type: object
     User:
       additionalProperties: false
@@ -2061,6 +2141,268 @@ paths:
       summary: List storage backends for new libraries
       tags:
         - Libraries
+  /api/v1/uploads:
+    post:
+      operationId: uploads-create
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInputBody"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Upload"
+          description: Created
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Conflict
+        "413":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Request Entity Too Large
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "507":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Insufficient Storage
+      security:
+        - session: []
+      summary: Create an upload session
+      tags:
+        - Uploads
+  /api/v1/uploads/{id}:
+    delete:
+      operationId: uploads-cancel
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      responses:
+        "204":
+          description: No Content
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Conflict
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+      security:
+        - session: []
+      summary: Cancel an upload session
+      tags:
+        - Uploads
+    get:
+      operationId: uploads-get
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Upload"
+          description: OK
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+      security:
+        - session: []
+      summary: Get an upload session
+      tags:
+        - Uploads
+  /api/v1/uploads/{id}/complete:
+    post:
+      operationId: uploads-complete
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompleteInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Upload"
+          description: OK
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Conflict
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+      security:
+        - session: []
+      summary: Complete an upload transfer
+      tags:
+        - Uploads
   /healthz:
     get:
       operationId: health

@@ -14,7 +14,12 @@ const envelopeHeaderLength = 1 + 4 + saltLength;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true });
 
-export type LibraryKeys = { names: CryptoKey; tokens: CryptoKey };
+export type LibraryKeys = {
+  names: CryptoKey;
+  tokens: CryptoKey;
+  files: CryptoKey;
+  deduplication: CryptoKey;
+};
 
 export class IncorrectPassphraseError extends Error {
   constructor() {
@@ -68,7 +73,7 @@ async function deriveLibraryKeys(libraryKey: Uint8Array<ArrayBuffer>): Promise<L
     salt: new Uint8Array(),
     info: encoder.encode(info),
   });
-  const [names, tokens] = await Promise.all([
+  const [names, tokens, files, deduplication] = await Promise.all([
     crypto.subtle.deriveKey(
       hkdf("stocat/v1/name-encryption"),
       material,
@@ -83,8 +88,22 @@ async function deriveLibraryKeys(libraryKey: Uint8Array<ArrayBuffer>): Promise<L
       false,
       ["sign"],
     ),
+    crypto.subtle.deriveKey(
+      hkdf("stocat/v1/file-wrapping"),
+      material,
+      { name: "AES-GCM", length: 256 },
+      false,
+      ["encrypt", "decrypt"],
+    ),
+    crypto.subtle.deriveKey(
+      hkdf("stocat/v1/file-deduplication"),
+      material,
+      { name: "HMAC", hash: "SHA-256", length: 256 },
+      false,
+      ["sign"],
+    ),
   ]);
-  return { names, tokens };
+  return { names, tokens, files, deduplication };
 }
 
 export async function createKeyEnvelope(passphrase: string) {

@@ -19,10 +19,13 @@ import (
 	"github.com/bmardale/stocat/internal/platform/ratelimit"
 	"github.com/bmardale/stocat/internal/platform/version"
 	"github.com/bmardale/stocat/internal/storage"
+	"github.com/bmardale/stocat/internal/uploads"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/riverqueue/river"
 )
 
 type probeOutput struct {
@@ -37,7 +40,11 @@ type Config struct {
 	Logger        *slog.Logger
 	Encrypter     *crypt.Encrypter
 	// RateLimitClock defaults to time.Now. It controls all request limiters.
-	RateLimitClock func() time.Time
+	RateLimitClock        func() time.Time
+	UploadStagingDir      string
+	MaxUploadSize         int64
+	UploadStagingCapacity int64
+	UploadSessionLifetime time.Duration
 }
 
 type Server struct {
@@ -45,6 +52,8 @@ type Server struct {
 	httpServer *http.Server
 	stopping   atomic.Bool
 	log        *slog.Logger
+	queue      *river.Client[pgx.Tx]
+	uploads    *uploads.Service
 }
 
 func New(cfg Config, pool *pgxpool.Pool) (*Server, error) {
@@ -80,11 +89,29 @@ func New(cfg Config, pool *pgxpool.Pool) (*Server, error) {
 	}
 	authService.Register(api)
 	adminGroup := authService.Admin(api, "/api/v1/admin")
-	storage.New(pool, storage.Config{Encrypter: cfg.Encrypter, Logger: log}).Register(adminGroup)
+	storageService := storage.New(pool, storage.Config{Encrypter: cfg.Encrypter, Logger: log})
+	storageService.Register(adminGroup)
 	admin.New(pool, log).Register(adminGroup)
-	libraries.New(pool, log).Register(authService.Protected(api, "/api/v1"))
+	protected := authService.Protected(api, "/api/v1")
+	libraries.New(pool, log).Register(protected)
+	uploadService, err := uploads.New(pool, nil, uploads.Config{
+		StagingDir: cfg.UploadStagingDir, MaxUploadSize: cfg.MaxUploadSize,
+		StagingCapacity: cfg.UploadStagingCapacity, SessionLifetime: cfg.UploadSessionLifetime, Logger: log,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create upload service: %w", err)
+	}
+	var queue *river.Client[pgx.Tx]
+	if pool != nil {
+		queue, err = uploadService.ConfigureQueue(storageService)
+		if err != nil {
+			_ = uploadService.Close()
+			return nil, err
+		}
+	}
+	uploadService.Register(protected)
 
-	s := &Server{api: api, log: log, httpServer: &http.Server{
+	s := &Server{api: api, log: log, queue: queue, uploads: uploadService, httpServer: &http.Server{
 		Addr: cfg.Addr, Handler: router,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
@@ -149,6 +176,13 @@ func (s *Server) Run(ctx context.Context, shutdownTimeout time.Duration) error {
 }
 
 func (s *Server) serve(ctx context.Context, listener net.Listener, shutdownTimeout time.Duration) error {
+	workerCtx, stopWorkers := context.WithCancel(context.Background())
+	defer stopWorkers()
+	if s.queue != nil {
+		if err := s.queue.Start(workerCtx); err != nil {
+			return fmt.Errorf("start publication workers: %w", err)
+		}
+	}
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- s.httpServer.Serve(listener) }()
 	select {
@@ -161,11 +195,24 @@ func (s *Server) serve(ctx context.Context, listener net.Listener, shutdownTimeo
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 	if err := s.httpServer.Shutdown(shutdownCtx); err != nil {
+		if s.queue != nil {
+			_ = s.queue.StopAndCancel(context.Background())
+		}
 		closeErr := s.httpServer.Close()
 		return fmt.Errorf("shutdown HTTP: %w", errors.Join(err, closeErr))
 	}
 	if err := <-serveErr; !errors.Is(err, http.ErrServerClosed) {
 		return fmt.Errorf("serve HTTP: %w", err)
+	}
+	if s.queue != nil {
+		if err := s.queue.Stop(shutdownCtx); err != nil {
+			return fmt.Errorf("stop publication workers: %w", err)
+		}
+	}
+	if s.uploads != nil {
+		if err := s.uploads.Close(); err != nil {
+			return fmt.Errorf("close upload staging: %w", err)
+		}
 	}
 	return nil
 }
