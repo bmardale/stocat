@@ -55,6 +55,13 @@ func (s *Service) tusPatch(ctx huma.Context) {
 		s.writeTusError(ctx, http.StatusInternalServerError, "The server cannot extend the upload deadline.")
 		return
 	}
+	// The server write timeout starts before the body is read, so a slow chunk cannot write its response.
+	if w, ok := ctx.BodyWriter().(http.ResponseWriter); ok {
+		if err := http.NewResponseController(w).SetWriteDeadline(time.Time{}); err != nil && !errors.Is(err, http.ErrNotSupported) {
+			s.writeTusError(ctx, http.StatusInternalServerError, "The server cannot extend the upload deadline.")
+			return
+		}
+	}
 	if ctx.Header("Content-Type") != "application/offset+octet-stream" {
 		s.writeTusError(ctx, http.StatusUnsupportedMediaType, "Use application/offset+octet-stream.")
 		return
