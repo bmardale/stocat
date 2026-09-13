@@ -50,7 +50,7 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
 };
 
 export const getStorageBackendsListUrl = () => {
-  return `/admin/storage-backends`;
+  return `/api/v1/admin/storage-backends`;
 };
 
 /**
@@ -66,7 +66,7 @@ export const storageBackendsList = async (
 };
 
 export const getStorageBackendsListQueryKey = () => {
-  return [`/admin/storage-backends`] as const;
+  return [`/api/v1/admin/storage-backends`] as const;
 };
 
 export const getStorageBackendsListQueryOptions = <
@@ -173,7 +173,7 @@ export function useStorageBackendsList<
 }
 
 export const getStorageBackendsCreateUrl = () => {
-  return `/admin/storage-backends`;
+  return `/api/v1/admin/storage-backends`;
 };
 
 /**
@@ -278,7 +278,7 @@ export const useStorageBackendsCreate = <TError = ErrorType<Problem>, TContext =
   return useMutation(getStorageBackendsCreateMutationOptions(options), queryClient);
 };
 export const getStorageBackendsCheckSettingsUrl = () => {
-  return `/admin/storage-backends/check`;
+  return `/api/v1/admin/storage-backends/check`;
 };
 
 /**
@@ -387,7 +387,7 @@ export const useStorageBackendsCheckSettings = <TError = ErrorType<Problem>, TCo
   return useMutation(getStorageBackendsCheckSettingsMutationOptions(options), queryClient);
 };
 export const getStorageBackendsDeleteUrl = (id: string) => {
-  return `/admin/storage-backends/${id}`;
+  return `/api/v1/admin/storage-backends/${id}`;
 };
 
 /**
@@ -471,7 +471,7 @@ export const useStorageBackendsDelete = <TError = ErrorType<Problem>, TContext =
   return useMutation(getStorageBackendsDeleteMutationOptions(options), queryClient);
 };
 export const getStorageBackendsGetUrl = (id: string) => {
-  return `/admin/storage-backends/${id}`;
+  return `/api/v1/admin/storage-backends/${id}`;
 };
 
 /**
@@ -488,7 +488,7 @@ export const storageBackendsGet = async (
 };
 
 export const getStorageBackendsGetQueryKey = (id: string) => {
-  return [`/admin/storage-backends/${id}`] as const;
+  return [`/api/v1/admin/storage-backends/${id}`] as const;
 };
 
 export const getStorageBackendsGetQueryOptions = <
@@ -599,7 +599,7 @@ export function useStorageBackendsGet<
 }
 
 export const getStorageBackendsUpdateUrl = (id: string) => {
-  return `/admin/storage-backends/${id}`;
+  return `/api/v1/admin/storage-backends/${id}`;
 };
 
 /**
@@ -709,7 +709,7 @@ export const useStorageBackendsUpdate = <TError = ErrorType<Problem>, TContext =
   return useMutation(getStorageBackendsUpdateMutationOptions(options), queryClient);
 };
 export const getStorageBackendsCheckUrl = (id: string) => {
-  return `/admin/storage-backends/${id}/check`;
+  return `/api/v1/admin/storage-backends/${id}/check`;
 };
 
 /**

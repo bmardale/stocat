@@ -10,6 +10,73 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type Blob struct {
+	ID               int64
+	PublicID         string
+	LibraryID        int64
+	SizeBytes        int64
+	CiphertextSha256 []byte
+	DedupFingerprint []byte
+	EncryptionFormat pgtype.Text
+	EncryptedFileKey []byte
+	CreatedAt        pgtype.Timestamptz
+}
+
+type BlobLocation struct {
+	ID         int64
+	PublicID   string
+	BlobID     int64
+	LibraryID  int64
+	BackendID  int64
+	ObjectKey  string
+	State      string
+	VerifiedAt pgtype.Timestamptz
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+}
+
+type FileVersion struct {
+	ID                    int64
+	PublicID              string
+	NodeID                int64
+	LibraryID             int64
+	Ordinal               int64
+	BlobID                int64
+	SizeBytes             int64
+	ContentSha256         []byte
+	RestoredFromVersionID pgtype.Int8
+	CreatedAt             pgtype.Timestamptz
+}
+
+type Library struct {
+	ID             int64
+	PublicID       string
+	OwnerID        int64
+	BackendID      int64
+	RootNodeID     int64
+	Name           string
+	EncryptionMode string
+	KeyEnvelope    []byte
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+}
+
+type Node struct {
+	ID               int64
+	PublicID         string
+	LibraryID        int64
+	ParentID         pgtype.Int8
+	Kind             string
+	Name             pgtype.Text
+	EncryptedName    []byte
+	NameToken        []byte
+	CurrentVersionID pgtype.Int8
+	Revision         int64
+	TrashedAt        pgtype.Timestamptz
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+}
+
 type Session struct {
 	TokenHash []byte
 	PublicID  string
@@ -41,4 +108,16 @@ type User struct {
 	CreatedAt    pgtype.Timestamptz
 	UpdatedAt    pgtype.Timestamptz
 	IsAdmin      bool
+}
+
+type UserKeyBundle struct {
+	UserID                     int64
+	FormatVersion              int32
+	KdfSalt                    []byte
+	KdfParameters              []byte
+	EncryptedMasterKey         []byte
+	RecoveryEncryptedMasterKey []byte
+	MasterEncryptedRecoveryKey []byte
+	CreatedAt                  pgtype.Timestamptz
+	UpdatedAt                  pgtype.Timestamptz
 }

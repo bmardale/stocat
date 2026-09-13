@@ -46,7 +46,7 @@ type logoutOutput struct {
 var errInvalidCredentials = errors.New("invalid credentials")
 
 func (s *Service) Register(api huma.API) {
-	group := huma.NewGroup(api, "/auth")
+	group := huma.NewGroup(api, "/api/v1/auth")
 	group.UseSimpleModifier(func(op *huma.Operation) {
 		op.Tags = []string{"Auth"}
 		ratelimit.Document(api, op)

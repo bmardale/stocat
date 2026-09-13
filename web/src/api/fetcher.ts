@@ -1,8 +1,5 @@
 import type { Problem } from "./generated/model";
 
-// The Vite dev server proxies this prefix to the Go server and removes it.
-const baseUrl = "/api";
-
 export class ApiError extends Error {
   readonly status: number;
   readonly problem?: Problem;
@@ -16,7 +13,7 @@ export class ApiError extends Error {
 }
 
 export async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${baseUrl}${url}`, init);
+  const response = await fetch(url, init);
   const body = await readBody(response);
   if (!response.ok) {
     throw new ApiError(response.status, body as Problem | undefined);

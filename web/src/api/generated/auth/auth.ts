@@ -51,7 +51,7 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
 };
 
 export const getAuthAccountUpdateUrl = () => {
-  return `/auth/account`;
+  return `/api/v1/auth/account`;
 };
 
 /**
@@ -156,7 +156,7 @@ export const useAuthAccountUpdate = <TError = ErrorType<Problem>, TContext = unk
   return useMutation(getAuthAccountUpdateMutationOptions(options), queryClient);
 };
 export const getAuthLoginUrl = () => {
-  return `/auth/login`;
+  return `/api/v1/auth/login`;
 };
 
 /**
@@ -259,7 +259,7 @@ export const useAuthLogin = <TError = ErrorType<Problem>, TContext = unknown>(
   return useMutation(getAuthLoginMutationOptions(options), queryClient);
 };
 export const getAuthLogoutUrl = () => {
-  return `/auth/logout`;
+  return `/api/v1/auth/logout`;
 };
 
 /**
@@ -312,7 +312,7 @@ export const useAuthLogout = <TError = ErrorType<Problem>, TContext = unknown>(
   return useMutation(getAuthLogoutMutationOptions(options), queryClient);
 };
 export const getAuthMeUrl = () => {
-  return `/auth/me`;
+  return `/api/v1/auth/me`;
 };
 
 /**
@@ -326,7 +326,7 @@ export const authMe = async (options?: Parameters<typeof apiFetch>[1]): Promise<
 };
 
 export const getAuthMeQueryKey = () => {
-  return [`/auth/me`] as const;
+  return [`/api/v1/auth/me`] as const;
 };
 
 export const getAuthMeQueryOptions = <
@@ -411,7 +411,7 @@ export function useAuthMe<TData = Awaited<ReturnType<typeof authMe>>, TError = E
 }
 
 export const getAuthPasswordChangeUrl = () => {
-  return `/auth/password`;
+  return `/api/v1/auth/password`;
 };
 
 /**
@@ -516,7 +516,7 @@ export const useAuthPasswordChange = <TError = ErrorType<Problem>, TContext = un
   return useMutation(getAuthPasswordChangeMutationOptions(options), queryClient);
 };
 export const getAuthRegisterUrl = () => {
-  return `/auth/register`;
+  return `/api/v1/auth/register`;
 };
 
 /**
@@ -619,7 +619,7 @@ export const useAuthRegister = <TError = ErrorType<Problem>, TContext = unknown>
   return useMutation(getAuthRegisterMutationOptions(options), queryClient);
 };
 export const getAuthSessionsRevokeOthersUrl = () => {
-  return `/auth/sessions`;
+  return `/api/v1/auth/sessions`;
 };
 
 /**
@@ -699,7 +699,7 @@ export const useAuthSessionsRevokeOthers = <TError = ErrorType<Problem>, TContex
   return useMutation(getAuthSessionsRevokeOthersMutationOptions(options), queryClient);
 };
 export const getAuthSessionsListUrl = () => {
-  return `/auth/sessions`;
+  return `/api/v1/auth/sessions`;
 };
 
 /**
@@ -715,7 +715,7 @@ export const authSessionsList = async (
 };
 
 export const getAuthSessionsListQueryKey = () => {
-  return [`/auth/sessions`] as const;
+  return [`/api/v1/auth/sessions`] as const;
 };
 
 export const getAuthSessionsListQueryOptions = <
@@ -812,7 +812,7 @@ export function useAuthSessionsList<
 }
 
 export const getAuthSessionsRevokeUrl = (id: string) => {
-  return `/auth/sessions/${id}`;
+  return `/api/v1/auth/sessions/${id}`;
 };
 
 /**

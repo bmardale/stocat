@@ -8,7 +8,7 @@ function fill(label: string, value: string) {
 
 describe("auth", () => {
   it("sends a guest from home to sign in without a redirect path", async () => {
-    stubApi({ "GET /api/auth/me": unauthorized });
+    stubApi({ "GET /api/v1/auth/me": unauthorized });
     const router = await renderApp("/");
     expect(await screen.findByRole("button", { name: "Sign in" })).toBeDefined();
     expect(router.state.location.pathname).toBe("/login");
@@ -16,7 +16,7 @@ describe("auth", () => {
   });
 
   it("keeps the requested path when it sends a guest to sign in", async () => {
-    stubApi({ "GET /api/auth/me": unauthorized });
+    stubApi({ "GET /api/v1/auth/me": unauthorized });
     const router = await renderApp("/?view=grid");
     expect(await screen.findByRole("button", { name: "Sign in" })).toBeDefined();
     expect(router.state.location.pathname).toBe("/login");
@@ -24,14 +24,14 @@ describe("auth", () => {
   });
 
   it("sends a signed-in user from sign in to home", async () => {
-    stubApi({ "GET /api/auth/me": () => jsonResponse(200, testUser) });
+    stubApi({ "GET /api/v1/auth/me": () => jsonResponse(200, testUser) });
     const router = await renderApp("/login");
     expect(await screen.findByText("Signed in as ada@example.com.")).toBeDefined();
     expect(router.state.location.pathname).toBe("/");
   });
 
   it("validates the sign-in form before it sends a request", async () => {
-    const fetchMock = stubApi({ "GET /api/auth/me": unauthorized });
+    const fetchMock = stubApi({ "GET /api/v1/auth/me": unauthorized });
     await renderApp("/login");
     fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
     expect(await screen.findByText("Enter a valid email address.")).toBeDefined();
@@ -42,8 +42,8 @@ describe("auth", () => {
   it("signs in and opens the redirect path", async () => {
     let body: unknown;
     stubApi({
-      "GET /api/auth/me": unauthorized,
-      "POST /api/auth/login": (init) => {
+      "GET /api/v1/auth/me": unauthorized,
+      "POST /api/v1/auth/login": (init) => {
         body = JSON.parse(init?.body as string);
         return jsonResponse(200, testUser);
       },
@@ -59,8 +59,8 @@ describe("auth", () => {
 
   it("shows the server error when sign-in fails", async () => {
     stubApi({
-      "GET /api/auth/me": unauthorized,
-      "POST /api/auth/login": () =>
+      "GET /api/v1/auth/me": unauthorized,
+      "POST /api/v1/auth/login": () =>
         jsonResponse(401, { status: 401, detail: "The email or password is incorrect." }),
     });
     await renderApp("/login");
@@ -71,7 +71,7 @@ describe("auth", () => {
   });
 
   it("rejects a short password on registration", async () => {
-    const fetchMock = stubApi({ "GET /api/auth/me": unauthorized });
+    const fetchMock = stubApi({ "GET /api/v1/auth/me": unauthorized });
     await renderApp("/register");
     fill("Name", "Ada Lovelace");
     fill("Email", "ada@example.com");
@@ -83,8 +83,8 @@ describe("auth", () => {
 
   it("registers and opens home", async () => {
     stubApi({
-      "GET /api/auth/me": unauthorized,
-      "POST /api/auth/register": () => jsonResponse(201, testUser),
+      "GET /api/v1/auth/me": unauthorized,
+      "POST /api/v1/auth/register": () => jsonResponse(201, testUser),
     });
     const router = await renderApp("/register");
     fill("Name", "Ada Lovelace");
@@ -97,8 +97,8 @@ describe("auth", () => {
 
   it("signs out and opens sign in", async () => {
     stubApi({
-      "GET /api/auth/me": () => jsonResponse(200, testUser),
-      "POST /api/auth/logout": () => jsonResponse(204),
+      "GET /api/v1/auth/me": () => jsonResponse(200, testUser),
+      "POST /api/v1/auth/logout": () => jsonResponse(204),
     });
     const router = await renderApp("/");
     fireEvent.click(await screen.findByRole("button", { name: /Ada Lovelace/ }));

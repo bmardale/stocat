@@ -11,8 +11,8 @@ describe("account settings", () => {
     let body: unknown;
     const updated = { ...testUser, name: "Grace Hopper", email: "grace@example.com" };
     stubApi({
-      "GET /api/auth/me": () => jsonResponse(200, testUser),
-      "PATCH /api/auth/account": (init) => {
+      "GET /api/v1/auth/me": () => jsonResponse(200, testUser),
+      "PATCH /api/v1/auth/account": (init) => {
         body = JSON.parse(init?.body as string);
         return jsonResponse(200, updated);
       },
@@ -29,7 +29,7 @@ describe("account settings", () => {
   });
 
   it("validates password confirmation before sending a request", async () => {
-    const fetchMock = stubApi({ "GET /api/auth/me": () => jsonResponse(200, testUser) });
+    const fetchMock = stubApi({ "GET /api/v1/auth/me": () => jsonResponse(200, testUser) });
     await renderApp("/settings");
     fill("Current password", "correct horse battery staple");
     fill("New password", "a different secure password");
@@ -42,8 +42,8 @@ describe("account settings", () => {
   it("changes the password without sending its confirmation", async () => {
     let body: unknown;
     const fetchMock = stubApi({
-      "GET /api/auth/me": () => jsonResponse(200, testUser),
-      "PUT /api/auth/password": (init) => {
+      "GET /api/v1/auth/me": () => jsonResponse(200, testUser),
+      "PUT /api/v1/auth/password": (init) => {
         body = JSON.parse(init?.body as string);
         return jsonResponse(204);
       },
@@ -68,8 +68,8 @@ describe("account settings", () => {
 
   it("shows the server error when the current password is wrong", async () => {
     stubApi({
-      "GET /api/auth/me": () => jsonResponse(200, testUser),
-      "PUT /api/auth/password": () =>
+      "GET /api/v1/auth/me": () => jsonResponse(200, testUser),
+      "PUT /api/v1/auth/password": () =>
         jsonResponse(422, { status: 422, detail: "The current password is incorrect." }),
     });
     await renderApp("/settings");

@@ -14,9 +14,8 @@ export default defineConfig({
   server: {
     allowedHosts: [".onamp.dev"],
     proxy: {
-      "/api": {
+      "/api/v1": {
         target: "http://localhost:8080",
-        rewrite: (path) => path.replace(/^\/api/, ""),
       },
     },
   },

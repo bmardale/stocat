@@ -54,11 +54,11 @@ function stubBackends(initial: Backend[]) {
     return saved;
   };
   const fetchMock = stubApi({
-    "GET /api/auth/me": () => jsonResponse(200, adminUser),
-    "GET /api/admin/storage-backends": () => jsonResponse(200, backends),
-    "POST /api/admin/storage-backends": (init) => jsonResponse(201, save("stb_new", init)),
-    "PUT /api/admin/storage-backends/stb_s3": (init) => jsonResponse(200, save("stb_s3", init)),
-    "DELETE /api/admin/storage-backends/stb_local": () => {
+    "GET /api/v1/auth/me": () => jsonResponse(200, adminUser),
+    "GET /api/v1/admin/storage-backends": () => jsonResponse(200, backends),
+    "POST /api/v1/admin/storage-backends": (init) => jsonResponse(201, save("stb_new", init)),
+    "PUT /api/v1/admin/storage-backends/stb_s3": (init) => jsonResponse(200, save("stb_s3", init)),
+    "DELETE /api/v1/admin/storage-backends/stb_local": () => {
       backends = backends.filter((backend) => backend.id !== "stb_local");
       return jsonResponse(204);
     },
@@ -79,7 +79,7 @@ async function openActions(name: string) {
 
 describe("storage backends", () => {
   it("hides the page from users who are not administrators", async () => {
-    stubApi({ "GET /api/auth/me": () => jsonResponse(200, testUser) });
+    stubApi({ "GET /api/v1/auth/me": () => jsonResponse(200, testUser) });
     const router = await renderApp("/admin/storage");
     expect(await screen.findByRole("heading", { name: "Home" })).toBeDefined();
     expect(router.state.location.pathname).toBe("/");
@@ -166,7 +166,7 @@ describe("storage backends", () => {
     expect(within(dialog).getByText("Enter a bucket name.")).toBeDefined();
     expect(within(dialog).getByText("Enter the secret access key.")).toBeDefined();
     expect(fetchMock).not.toHaveBeenCalledWith(
-      "/api/admin/storage-backends",
+      "/api/v1/admin/storage-backends",
       expect.objectContaining({ method: "POST" }),
     );
   });
@@ -193,9 +193,9 @@ describe("storage backends", () => {
 
   it("shows the server error in the dialog", async () => {
     stubApi({
-      "GET /api/auth/me": () => jsonResponse(200, adminUser),
-      "GET /api/admin/storage-backends": () => jsonResponse(200, []),
-      "POST /api/admin/storage-backends": () =>
+      "GET /api/v1/auth/me": () => jsonResponse(200, adminUser),
+      "GET /api/v1/admin/storage-backends": () => jsonResponse(200, []),
+      "POST /api/v1/admin/storage-backends": () =>
         jsonResponse(409, {
           status: 409,
           detail: "A storage backend with this name already exists.",
@@ -223,7 +223,7 @@ describe("storage backends", () => {
     await waitFor(() => expect(rows()).toHaveLength(2));
     expect(screen.queryByText("/srv/stocat")).toBeNull();
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/admin/storage-backends/stb_local",
+      "/api/v1/admin/storage-backends/stb_local",
       expect.objectContaining({ method: "DELETE" }),
     );
   });
@@ -231,9 +231,9 @@ describe("storage backends", () => {
   it("tests the connection of unsaved settings in the dialog", async () => {
     const bodies: unknown[] = [];
     stubApi({
-      "GET /api/auth/me": () => jsonResponse(200, adminUser),
-      "GET /api/admin/storage-backends": () => jsonResponse(200, []),
-      "POST /api/admin/storage-backends/check": (init) => {
+      "GET /api/v1/auth/me": () => jsonResponse(200, adminUser),
+      "GET /api/v1/admin/storage-backends": () => jsonResponse(200, []),
+      "POST /api/v1/admin/storage-backends/check": (init) => {
         const body = JSON.parse(init?.body as string);
         bodies.push(body);
         const result: ConnectionCheck = body.local.root.endsWith("missing")
@@ -263,9 +263,9 @@ describe("storage backends", () => {
   it("tests changes to a saved backend with the stored credentials", async () => {
     let body: unknown;
     stubApi({
-      "GET /api/auth/me": () => jsonResponse(200, adminUser),
-      "GET /api/admin/storage-backends": () => jsonResponse(200, [s3Backend]),
-      "POST /api/admin/storage-backends/check": (init) => {
+      "GET /api/v1/auth/me": () => jsonResponse(200, adminUser),
+      "GET /api/v1/admin/storage-backends": () => jsonResponse(200, [s3Backend]),
+      "POST /api/v1/admin/storage-backends/check": (init) => {
         body = JSON.parse(init?.body as string);
         return jsonResponse(422, {
           status: 422,
@@ -296,11 +296,11 @@ describe("storage backends", () => {
 
   it("tests the connection of a saved backend from the table", async () => {
     stubApi({
-      "GET /api/auth/me": () => jsonResponse(200, adminUser),
-      "GET /api/admin/storage-backends": () => jsonResponse(200, [s3Backend, localBackend]),
-      "POST /api/admin/storage-backends/stb_s3/check": () =>
+      "GET /api/v1/auth/me": () => jsonResponse(200, adminUser),
+      "GET /api/v1/admin/storage-backends": () => jsonResponse(200, [s3Backend, localBackend]),
+      "POST /api/v1/admin/storage-backends/stb_s3/check": () =>
         jsonResponse(200, { ok: false, message: "The bucket does not exist." }),
-      "POST /api/admin/storage-backends/stb_local/check": () =>
+      "POST /api/v1/admin/storage-backends/stb_local/check": () =>
         jsonResponse(200, { ok: true, message: "The server can write, read, and delete objects." }),
     });
     await renderApp("/admin/storage");

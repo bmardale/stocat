@@ -100,7 +100,7 @@ func (s *Service) Register(api huma.API) {
 	huma.Register(group, huma.Operation{
 		OperationID: "storage-backends-delete", Method: http.MethodDelete, Path: "/{id}",
 		Summary: "Delete a storage backend", DefaultStatus: http.StatusNoContent,
-		Errors: []int{http.StatusNotFound},
+		Errors: []int{http.StatusNotFound, http.StatusConflict},
 	}, s.delete)
 	s.registerChecks(group)
 }
@@ -243,6 +243,9 @@ func (s *Service) decryptCredentials(row db.StorageBackend) (s3Credentials, erro
 
 func (s *Service) delete(ctx context.Context, input *backendInput) (*struct{}, error) {
 	deleted, err := s.queries.DeleteStorageBackend(ctx, input.ID)
+	if isReferenceConflict(err) {
+		return nil, huma.Error409Conflict("The storage backend is in use.")
+	}
 	if err != nil {
 		return nil, s.internalError(ctx, "delete storage backend", err)
 	}
@@ -276,6 +279,11 @@ func notFound() error {
 func isNameConflict(err error) bool {
 	pgErr, ok := errors.AsType[*pgconn.PgError](err)
 	return ok && pgErr.Code == "23505" && pgErr.ConstraintName == "storage_backends_name_lower_key"
+}
+
+func isReferenceConflict(err error) bool {
+	pgErr, ok := errors.AsType[*pgconn.PgError](err)
+	return ok && pgErr.Code == "23503"
 }
 
 func (s *Service) internalError(ctx context.Context, operation string, err error) error {

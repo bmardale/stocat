@@ -100,9 +100,9 @@ func TestAccessLog(t *testing.T) {
 		status           int
 		level            string
 	}{
-		{name: "success", path: "/auth/me", want: "/auth/me", status: http.StatusOK, level: "INFO"},
-		{name: "client error", path: "/auth/me", want: "/auth/me", status: http.StatusBadRequest, level: "WARN"},
-		{name: "server error", path: "/auth/me", want: "/auth/me", status: http.StatusInternalServerError, level: "ERROR"},
+		{name: "success", path: "/api/v1/auth/me", want: "/api/v1/auth/me", status: http.StatusOK, level: "INFO"},
+		{name: "client error", path: "/api/v1/auth/me", want: "/api/v1/auth/me", status: http.StatusBadRequest, level: "WARN"},
+		{name: "server error", path: "/api/v1/auth/me", want: "/api/v1/auth/me", status: http.StatusInternalServerError, level: "ERROR"},
 		{name: "health probe", path: "/healthz", want: "/healthz", status: http.StatusOK, level: "DEBUG"},
 		{name: "failed probe", path: "/readyz", want: "/readyz", status: http.StatusServiceUnavailable, level: "ERROR"},
 		{name: "unmatched path", path: "/missing", want: "/missing", status: http.StatusNotFound, level: "WARN"},

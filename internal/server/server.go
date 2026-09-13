@@ -12,6 +12,7 @@ import (
 
 	"github.com/bmardale/stocat/internal/apierr"
 	"github.com/bmardale/stocat/internal/auth"
+	"github.com/bmardale/stocat/internal/libraries"
 	"github.com/bmardale/stocat/internal/platform/crypt"
 	"github.com/bmardale/stocat/internal/platform/o11y"
 	"github.com/bmardale/stocat/internal/platform/ratelimit"
@@ -77,7 +78,8 @@ func New(cfg Config, pool *pgxpool.Pool) (*Server, error) {
 		return nil, fmt.Errorf("create authentication service: %w", err)
 	}
 	authService.Register(api)
-	storage.New(pool, storage.Config{Encrypter: cfg.Encrypter, Logger: log}).Register(authService.Admin(api, "/admin"))
+	storage.New(pool, storage.Config{Encrypter: cfg.Encrypter, Logger: log}).Register(authService.Admin(api, "/api/v1/admin"))
+	libraries.New(pool, log).Register(authService.Protected(api, "/api/v1"))
 
 	s := &Server{api: api, log: log, httpServer: &http.Server{
 		Addr: cfg.Addr, Handler: router,

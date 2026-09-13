@@ -56,7 +56,7 @@ func TestCredentialIPLimits(t *testing.T) {
 		path  string
 		burst int
 	}{
-		{"/auth/login", 10}, {"/auth/register", 3},
+		{"/api/v1/auth/login", 10}, {"/api/v1/auth/register", 3},
 	} {
 		t.Run(tc.path, func(t *testing.T) {
 			router, _, _ := newTestAPI(t, nil, true)
@@ -68,7 +68,7 @@ func TestCredentialIPLimits(t *testing.T) {
 			requireRateLimited(t, response)
 			response = authRequest(t, router, http.MethodPost, tc.path, "{", "[2001:db8:0:1::1]:1234", "")
 			requireStatus(t, response, http.StatusBadRequest)
-			response = authRequest(t, router, http.MethodPost, "/auth/logout", "", "[2001:db8::1]:1234", "")
+			response = authRequest(t, router, http.MethodPost, "/api/v1/auth/logout", "", "[2001:db8::1]:1234", "")
 			requireStatus(t, response, http.StatusNoContent)
 		})
 	}
@@ -77,26 +77,26 @@ func TestCredentialIPLimits(t *testing.T) {
 func TestCredentialSharedIPLimit(t *testing.T) {
 	router, _, _ := newTestAPI(t, nil, true)
 	for range 3 {
-		requireStatus(t, authRequest(t, router, http.MethodPost, "/auth/register", "{}", "192.0.2.1:1234", ""), http.StatusUnprocessableEntity)
+		requireStatus(t, authRequest(t, router, http.MethodPost, "/api/v1/auth/register", "{}", "192.0.2.1:1234", ""), http.StatusUnprocessableEntity)
 	}
 	for range 7 {
-		requireStatus(t, authRequest(t, router, http.MethodPost, "/auth/login", "{}", "192.0.2.1:1234", ""), http.StatusUnprocessableEntity)
+		requireStatus(t, authRequest(t, router, http.MethodPost, "/api/v1/auth/login", "{}", "192.0.2.1:1234", ""), http.StatusUnprocessableEntity)
 	}
-	requireRateLimited(t, authRequest(t, router, http.MethodPost, "/auth/login", "{}", "192.0.2.1:1234", ""))
+	requireRateLimited(t, authRequest(t, router, http.MethodPost, "/api/v1/auth/login", "{}", "192.0.2.1:1234", ""))
 }
 
 func TestRejectedRegistrationKeepsSharedIPTokens(t *testing.T) {
 	router, _, _ := newTestAPI(t, nil, true)
 	for range 3 {
-		requireStatus(t, authRequest(t, router, http.MethodPost, "/auth/register", "{", "192.0.2.1:1234", ""), http.StatusBadRequest)
+		requireStatus(t, authRequest(t, router, http.MethodPost, "/api/v1/auth/register", "{", "192.0.2.1:1234", ""), http.StatusBadRequest)
 	}
 	for range 10 {
-		requireRateLimited(t, authRequest(t, router, http.MethodPost, "/auth/register", "{", "192.0.2.1:1234", ""))
+		requireRateLimited(t, authRequest(t, router, http.MethodPost, "/api/v1/auth/register", "{", "192.0.2.1:1234", ""))
 	}
 	for range 7 {
-		requireStatus(t, authRequest(t, router, http.MethodPost, "/auth/login", "{", "192.0.2.1:1234", ""), http.StatusBadRequest)
+		requireStatus(t, authRequest(t, router, http.MethodPost, "/api/v1/auth/login", "{", "192.0.2.1:1234", ""), http.StatusBadRequest)
 	}
-	requireRateLimited(t, authRequest(t, router, http.MethodPost, "/auth/login", "{", "192.0.2.1:1234", ""))
+	requireRateLimited(t, authRequest(t, router, http.MethodPost, "/api/v1/auth/login", "{", "192.0.2.1:1234", ""))
 }
 
 func TestRejectedLoginKeepsEmailIPTokens(t *testing.T) {
@@ -104,29 +104,29 @@ func TestRejectedLoginKeepsEmailIPTokens(t *testing.T) {
 	router, _, _ := newTestAPI(t, nil, true, func() time.Time { return now })
 	const body = `{"email":"user@example.com","password":""}`
 	for i := range 15 {
-		requireStatus(t, authRequest(t, router, http.MethodPost, "/auth/login", body, fmt.Sprintf("192.0.2.%d:1234", i+1), ""), http.StatusUnauthorized)
+		requireStatus(t, authRequest(t, router, http.MethodPost, "/api/v1/auth/login", body, fmt.Sprintf("192.0.2.%d:1234", i+1), ""), http.StatusUnauthorized)
 	}
 	for range 6 {
-		requireRateLimited(t, authRequest(t, router, http.MethodPost, "/auth/login", body, "198.51.100.1:1234", ""))
+		requireRateLimited(t, authRequest(t, router, http.MethodPost, "/api/v1/auth/login", body, "198.51.100.1:1234", ""))
 	}
 	now = now.Add(2 * time.Second)
-	requireStatus(t, authRequest(t, router, http.MethodPost, "/auth/login", body, "198.51.100.1:1234", ""), http.StatusUnauthorized)
+	requireStatus(t, authRequest(t, router, http.MethodPost, "/api/v1/auth/login", body, "198.51.100.1:1234", ""), http.StatusUnauthorized)
 }
 
 func TestLoginEmailLimit(t *testing.T) {
 	router, _, _ := newTestAPI(t, nil, true)
 	for i := range 15 {
-		response := authRequest(t, router, http.MethodPost, "/auth/login",
+		response := authRequest(t, router, http.MethodPost, "/api/v1/auth/login",
 			`{"email":"User@example.com","password":""}`, fmt.Sprintf("192.0.2.%d:1234", i+1), "")
 		requireStatus(t, response, http.StatusUnauthorized)
 	}
-	response := authRequest(t, router, http.MethodPost, "/auth/login",
+	response := authRequest(t, router, http.MethodPost, "/api/v1/auth/login",
 		`{"email":" USER@EXAMPLE.COM ","password":""}`, "192.0.2.100:1234", "")
 	requireRateLimited(t, response)
 	if strings.Contains(strings.ToLower(response.Body.String()), "user@example.com") {
 		t.Fatal("rate limit response exposes the email")
 	}
-	response = authRequest(t, router, http.MethodPost, "/auth/login",
+	response = authRequest(t, router, http.MethodPost, "/api/v1/auth/login",
 		`{"email":"other@example.com","password":""}`, "192.0.2.101:1234", "")
 	requireStatus(t, response, http.StatusUnauthorized)
 }
@@ -135,17 +135,17 @@ func TestLoginEmailIPLimit(t *testing.T) {
 	now := time.Now()
 	router, _, _ := newTestAPI(t, nil, true, func() time.Time { return now })
 	for i := range 5 {
-		response := authRequest(t, router, http.MethodPost, "/auth/login",
+		response := authRequest(t, router, http.MethodPost, "/api/v1/auth/login",
 			`{"email":"User@example.com","password":""}`, fmt.Sprintf("[2001:db8::%x]:1234", i+1), "")
 		requireStatus(t, response, http.StatusUnauthorized)
 	}
-	response := authRequest(t, router, http.MethodPost, "/auth/login",
+	response := authRequest(t, router, http.MethodPost, "/api/v1/auth/login",
 		`{"email":" USER@EXAMPLE.COM ","password":""}`, "[2001:db8::ffff]:5678", "")
 	requireRateLimited(t, response)
 	for range 100 {
 		now = now.Add(12 * time.Second)
 		for _, remote := range []string{"[2001:db8::1]:1234", "192.0.2.100:1234"} {
-			response := authRequest(t, router, http.MethodPost, "/auth/login",
+			response := authRequest(t, router, http.MethodPost, "/api/v1/auth/login",
 				`{"email":"user@example.com","password":""}`, remote, "")
 			requireStatus(t, response, http.StatusUnauthorized)
 		}
@@ -165,7 +165,7 @@ func TestRegistrationEmailValidation(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		response := authRequest(t, router, http.MethodPost, "/auth/register", string(body), fmt.Sprintf("192.0.2.%d:1234", i+1), "")
+		response := authRequest(t, router, http.MethodPost, "/api/v1/auth/register", string(body), fmt.Sprintf("192.0.2.%d:1234", i+1), "")
 		requireStatus(t, response, http.StatusUnprocessableEntity)
 	}
 	for i, status := range []int{http.StatusCreated, http.StatusConflict, http.StatusTooManyRequests} {
@@ -173,7 +173,7 @@ func TestRegistrationEmailValidation(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		response := authRequest(t, router, http.MethodPost, "/auth/register", string(body), fmt.Sprintf("192.0.2.%d:1234", i+100), "")
+		response := authRequest(t, router, http.MethodPost, "/api/v1/auth/register", string(body), fmt.Sprintf("192.0.2.%d:1234", i+100), "")
 		requireStatus(t, response, status)
 		if status == http.StatusTooManyRequests {
 			requireRateLimited(t, response)
@@ -198,8 +198,8 @@ func TestRenamedCredentialOperations(t *testing.T) {
 		path, remote string
 		burst        int
 	}{
-		{"/auth/login", "192.0.2.1:1234", 10},
-		{"/auth/register", "192.0.2.2:1234", 3},
+		{"/api/v1/auth/login", "192.0.2.1:1234", 10},
+		{"/api/v1/auth/register", "192.0.2.2:1234", 3},
 	} {
 		for i := range tc.burst + 1 {
 			response := authRequest(t, router, http.MethodPost, tc.path, "{", tc.remote, "")
@@ -222,17 +222,17 @@ func TestUserRateLimit(t *testing.T) {
 			user, _ := UserFromContext(ctx)
 			return &userOutput{Body: user}, nil
 		})
-	response := api.PostCtx(t.Context(), "/auth/register", registration("limited@example.com"))
+	response := api.PostCtx(t.Context(), "/api/v1/auth/register", registration("limited@example.com"))
 	requireStatus(t, response, http.StatusCreated)
 	first := responseCookie(t, response).String()
-	response = api.PostCtx(t.Context(), "/auth/login", credentials("limited@example.com"))
+	response = api.PostCtx(t.Context(), "/api/v1/auth/login", credentials("limited@example.com"))
 	requireStatus(t, response, http.StatusOK)
 	second := responseCookie(t, response).String()
-	response = api.PostCtx(t.Context(), "/auth/register", registration("other-limit@example.com"))
+	response = api.PostCtx(t.Context(), "/api/v1/auth/register", registration("other-limit@example.com"))
 	requireStatus(t, response, http.StatusCreated)
 	other := responseCookie(t, response).String()
 	for i := range 30 {
-		path, cookie := "/auth/me", first
+		path, cookie := "/api/v1/auth/me", first
 		if i%2 == 0 {
 			path, cookie = "/private/check", second
 		}
@@ -240,11 +240,11 @@ func TestUserRateLimit(t *testing.T) {
 		requireStatus(t, response, http.StatusOK)
 	}
 	for _, cookie := range []string{first, second} {
-		requireRateLimited(t, authRequest(t, router, http.MethodGet, "/auth/me", "", "192.0.2.100:1234", cookie))
+		requireRateLimited(t, authRequest(t, router, http.MethodGet, "/api/v1/auth/me", "", "192.0.2.100:1234", cookie))
 	}
-	requireStatus(t, authRequest(t, router, http.MethodGet, "/auth/me", "", "192.0.2.100:1234", other), http.StatusOK)
+	requireStatus(t, authRequest(t, router, http.MethodGet, "/api/v1/auth/me", "", "192.0.2.100:1234", other), http.StatusOK)
 	now = now.Add(500 * time.Millisecond)
 	requireStatus(t, authRequest(t, router, http.MethodGet, "/private/check", "", "192.0.2.100:1234", first), http.StatusOK)
-	requireRateLimited(t, authRequest(t, router, http.MethodGet, "/auth/me", "", "192.0.2.100:1234", second))
-	requireStatus(t, authRequest(t, router, http.MethodPost, "/auth/logout", "", "192.0.2.100:1234", first), http.StatusNoContent)
+	requireRateLimited(t, authRequest(t, router, http.MethodGet, "/api/v1/auth/me", "", "192.0.2.100:1234", second))
+	requireStatus(t, authRequest(t, router, http.MethodPost, "/api/v1/auth/logout", "", "192.0.2.100:1234", first), http.StatusNoContent)
 }

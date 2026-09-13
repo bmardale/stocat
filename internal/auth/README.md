@@ -4,13 +4,13 @@ The `Auth` OpenAPI tag contains these routes:
 
 | Method | Path | Result |
 | --- | --- | --- |
-| POST | `/auth/register` | Create a user and a session. Return the user with status 201. |
-| POST | `/auth/login` | Create a session. Return the user with status 200. |
-| GET | `/auth/me` | Require a valid session. Return the user with status 200. |
-| POST | `/auth/logout` | Delete the current session and clear its cookie. Return status 204. |
-| GET | `/auth/sessions` | Require a valid session. Return the active sessions of the user with status 200. |
-| DELETE | `/auth/sessions` | Require a valid session. Delete all other sessions of the user. Return status 204. |
-| DELETE | `/auth/sessions/{id}` | Require a valid session. Delete one session of the user. Return status 204. |
+| POST | `/api/v1/auth/register` | Create a user and a session. Return the user with status 201. |
+| POST | `/api/v1/auth/login` | Create a session. Return the user with status 200. |
+| GET | `/api/v1/auth/me` | Require a valid session. Return the user with status 200. |
+| POST | `/api/v1/auth/logout` | Delete the current session and clear its cookie. Return status 204. |
+| GET | `/api/v1/auth/sessions` | Require a valid session. Return the active sessions of the user with status 200. |
+| DELETE | `/api/v1/auth/sessions` | Require a valid session. Delete all other sessions of the user. Return status 204. |
+| DELETE | `/api/v1/auth/sessions/{id}` | Require a valid session. Delete one session of the user. Return status 204. |
 
 Registration requires `name`, `email`, and `password`. Login requires `email` and `password`.
 Email comparison ignores case. Registration and login remove leading and trailing spaces from email addresses.
@@ -81,7 +81,7 @@ Protected routes share each user's limit across sessions, IP addresses, and chil
 Repeated `Protected` calls within nested groups reuse the verified user and consume one user token per request.
 The server uses the verified user ID because an email address can change.
 The general IP limit also applies to authenticated requests and invalid session tokens.
-`/auth/me` uses the general IP and user limits. Logout uses only the general IP limit.
+`/api/v1/auth/me` uses the general IP and user limits. Logout uses only the general IP limit.
 Login throttling does not prevent logout unless the general IP limit also rejects the request.
 
 The server returns status 429 with the standard problem body and a `Retry-After` header in seconds.

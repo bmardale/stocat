@@ -22,6 +22,19 @@ const StorageBackend = "stb"
 // Session is the prefix of session identifiers.
 const Session = "ses"
 
+const (
+	// Library is the prefix of library identifiers.
+	Library = "lib"
+	// Node is the prefix of file and folder identifiers.
+	Node = "nod"
+	// Blob is the prefix of blob identifiers.
+	Blob = "blb"
+	// BlobLocation is the prefix of blob location identifiers.
+	BlobLocation = "loc"
+	// FileVersion is the prefix of file version identifiers.
+	FileVersion = "ver"
+)
+
 const separator = "_"
 
 // entropy gives random bytes to the ULID constructor. It reads from
