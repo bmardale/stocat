@@ -98,7 +98,7 @@ func (q *Queries) GetSession(ctx context.Context, tokenHash []byte) (Session, er
 }
 
 const getSessionUser = `-- name: GetSessionUser :one
-SELECT users.id, users.public_id, users.name, users.email, users.password_hash, users.created_at, users.updated_at, users.is_admin FROM sessions
+SELECT users.id, users.public_id, users.name, users.email, users.password_hash, users.created_at, users.updated_at, users.is_admin, users.default_quota_mb FROM sessions
 JOIN users ON users.id = sessions.user_id
 WHERE sessions.token_hash = $1 AND sessions.expires_at > now()
 `
@@ -115,6 +115,7 @@ func (q *Queries) GetSessionUser(ctx context.Context, tokenHash []byte) (User, e
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.IsAdmin,
+		&i.DefaultQuotaMb,
 	)
 	return i, err
 }

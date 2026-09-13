@@ -59,6 +59,7 @@ type Library struct {
 	KeyEnvelope    []byte
 	CreatedAt      pgtype.Timestamptz
 	UpdatedAt      pgtype.Timestamptz
+	QuotaMb        pgtype.Int8
 }
 
 type Node struct {
@@ -100,14 +101,15 @@ type StorageBackend struct {
 }
 
 type User struct {
-	ID           int64
-	PublicID     string
-	Name         string
-	Email        string
-	PasswordHash string
-	CreatedAt    pgtype.Timestamptz
-	UpdatedAt    pgtype.Timestamptz
-	IsAdmin      bool
+	ID             int64
+	PublicID       string
+	Name           string
+	Email          string
+	PasswordHash   string
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+	IsAdmin        bool
+	DefaultQuotaMb pgtype.Int8
 }
 
 type UserKeyBundle struct {

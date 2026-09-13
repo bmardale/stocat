@@ -5,6 +5,7 @@
  * OpenAPI spec version: 0.0.1
  */
 
+export * from "./adminUser.ts";
 export * from "./backend.ts";
 export * from "./backendType.ts";
 export * from "./changePasswordInputBody.ts";
@@ -21,6 +22,7 @@ export * from "./library.ts";
 export * from "./libraryBackend.ts";
 export * from "./libraryBackendType.ts";
 export * from "./libraryEncryptionMode.ts";
+export * from "./libraryQuota.ts";
 export * from "./localConfig.ts";
 export * from "./loginInputBody.ts";
 export * from "./node.ts";
@@ -35,4 +37,6 @@ export * from "./s3Input.ts";
 export * from "./session.ts";
 export * from "./updateAccountInputBody.ts";
 export * from "./updateBackendInputBody.ts";
+export * from "./updateLibraryQuotaInputBody.ts";
+export * from "./updateUserQuotaInputBody.ts";
 export * from "./user.ts";

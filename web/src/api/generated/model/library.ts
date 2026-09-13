@@ -14,6 +14,11 @@ export interface Library {
   id: string;
   key_envelope?: string;
   name: string;
+  /**
+   * Quota override in megabytes. A null value uses the user default quota.
+   * @nullable
+   */
+  quota_mb: number | null;
   root_node_id: string;
   updated_at: string;
 }

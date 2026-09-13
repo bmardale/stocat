@@ -15,7 +15,7 @@ const createLibrary = `-- name: CreateLibrary :one
 INSERT INTO libraries (id, public_id, owner_id, backend_id, root_node_id, name, encryption_mode, key_envelope)
 OVERRIDING SYSTEM VALUE
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, public_id, owner_id, backend_id, root_node_id, name, encryption_mode, key_envelope, created_at, updated_at
+RETURNING id, public_id, owner_id, backend_id, root_node_id, name, encryption_mode, key_envelope, created_at, updated_at, quota_mb
 `
 
 type CreateLibraryParams struct {
@@ -52,6 +52,7 @@ func (q *Queries) CreateLibrary(ctx context.Context, arg CreateLibraryParams) (L
 		&i.KeyEnvelope,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.QuotaMb,
 	)
 	return i, err
 }
@@ -171,7 +172,7 @@ func (q *Queries) GetEnabledBackendByPublicID(ctx context.Context, publicID stri
 }
 
 const getLibraryByPublicIDAndOwner = `-- name: GetLibraryByPublicIDAndOwner :one
-SELECT l.id, l.public_id, l.owner_id, l.backend_id, l.root_node_id, l.name, l.encryption_mode, l.key_envelope, l.created_at, l.updated_at, b.public_id AS backend_public_id, b.name AS backend_name, b.type AS backend_type,
+SELECT l.id, l.public_id, l.owner_id, l.backend_id, l.root_node_id, l.name, l.encryption_mode, l.key_envelope, l.created_at, l.updated_at, l.quota_mb, b.public_id AS backend_public_id, b.name AS backend_name, b.type AS backend_type,
        root.public_id AS root_node_public_id
 FROM libraries l
 JOIN storage_backends b ON b.id = l.backend_id
@@ -195,6 +196,7 @@ type GetLibraryByPublicIDAndOwnerRow struct {
 	KeyEnvelope      []byte
 	CreatedAt        pgtype.Timestamptz
 	UpdatedAt        pgtype.Timestamptz
+	QuotaMb          pgtype.Int8
 	BackendPublicID  string
 	BackendName      string
 	BackendType      string
@@ -215,6 +217,7 @@ func (q *Queries) GetLibraryByPublicIDAndOwner(ctx context.Context, arg GetLibra
 		&i.KeyEnvelope,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.QuotaMb,
 		&i.BackendPublicID,
 		&i.BackendName,
 		&i.BackendType,
@@ -341,7 +344,7 @@ func (q *Queries) ListEnabledStorageBackends(ctx context.Context) ([]ListEnabled
 }
 
 const listLibrariesByOwner = `-- name: ListLibrariesByOwner :many
-SELECT l.id, l.public_id, l.owner_id, l.backend_id, l.root_node_id, l.name, l.encryption_mode, l.key_envelope, l.created_at, l.updated_at, b.public_id AS backend_public_id, b.name AS backend_name, b.type AS backend_type,
+SELECT l.id, l.public_id, l.owner_id, l.backend_id, l.root_node_id, l.name, l.encryption_mode, l.key_envelope, l.created_at, l.updated_at, l.quota_mb, b.public_id AS backend_public_id, b.name AS backend_name, b.type AS backend_type,
        root.public_id AS root_node_public_id
 FROM libraries l
 JOIN storage_backends b ON b.id = l.backend_id
@@ -361,6 +364,7 @@ type ListLibrariesByOwnerRow struct {
 	KeyEnvelope      []byte
 	CreatedAt        pgtype.Timestamptz
 	UpdatedAt        pgtype.Timestamptz
+	QuotaMb          pgtype.Int8
 	BackendPublicID  string
 	BackendName      string
 	BackendType      string
@@ -387,10 +391,92 @@ func (q *Queries) ListLibrariesByOwner(ctx context.Context, ownerID int64) ([]Li
 			&i.KeyEnvelope,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.QuotaMb,
 			&i.BackendPublicID,
 			&i.BackendName,
 			&i.BackendType,
 			&i.RootNodePublicID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listLibrariesByOwnerID = `-- name: ListLibrariesByOwnerID :many
+SELECT id, public_id, owner_id, name, quota_mb
+FROM libraries
+WHERE owner_id = $1
+ORDER BY name, id
+`
+
+type ListLibrariesByOwnerIDRow struct {
+	ID       int64
+	PublicID string
+	OwnerID  int64
+	Name     string
+	QuotaMb  pgtype.Int8
+}
+
+func (q *Queries) ListLibrariesByOwnerID(ctx context.Context, ownerID int64) ([]ListLibrariesByOwnerIDRow, error) {
+	rows, err := q.db.Query(ctx, listLibrariesByOwnerID, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListLibrariesByOwnerIDRow
+	for rows.Next() {
+		var i ListLibrariesByOwnerIDRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.PublicID,
+			&i.OwnerID,
+			&i.Name,
+			&i.QuotaMb,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listLibrariesForAdmin = `-- name: ListLibrariesForAdmin :many
+SELECT id, public_id, owner_id, name, quota_mb
+FROM libraries
+ORDER BY owner_id, name, id
+`
+
+type ListLibrariesForAdminRow struct {
+	ID       int64
+	PublicID string
+	OwnerID  int64
+	Name     string
+	QuotaMb  pgtype.Int8
+}
+
+func (q *Queries) ListLibrariesForAdmin(ctx context.Context) ([]ListLibrariesForAdminRow, error) {
+	rows, err := q.db.Query(ctx, listLibrariesForAdmin)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListLibrariesForAdminRow
+	for rows.Next() {
+		var i ListLibrariesForAdminRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.PublicID,
+			&i.OwnerID,
+			&i.Name,
+			&i.QuotaMb,
 		); err != nil {
 			return nil, err
 		}
@@ -422,4 +508,37 @@ func (q *Queries) NextNodeID(ctx context.Context) (int64, error) {
 	var column_1 int64
 	err := row.Scan(&column_1)
 	return column_1, err
+}
+
+const updateLibraryQuota = `-- name: UpdateLibraryQuota :one
+UPDATE libraries
+SET quota_mb = $1
+WHERE public_id = $2
+RETURNING id, public_id, owner_id, name, quota_mb
+`
+
+type UpdateLibraryQuotaParams struct {
+	QuotaMb  pgtype.Int8
+	PublicID string
+}
+
+type UpdateLibraryQuotaRow struct {
+	ID       int64
+	PublicID string
+	OwnerID  int64
+	Name     string
+	QuotaMb  pgtype.Int8
+}
+
+func (q *Queries) UpdateLibraryQuota(ctx context.Context, arg UpdateLibraryQuotaParams) (UpdateLibraryQuotaRow, error) {
+	row := q.db.QueryRow(ctx, updateLibraryQuota, arg.QuotaMb, arg.PublicID)
+	var i UpdateLibraryQuotaRow
+	err := row.Scan(
+		&i.ID,
+		&i.PublicID,
+		&i.OwnerID,
+		&i.Name,
+		&i.QuotaMb,
+	)
+	return i, err
 }
