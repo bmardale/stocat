@@ -310,6 +310,36 @@ func (q *Queries) ListChildNodes(ctx context.Context, arg ListChildNodesParams) 
 	return items, nil
 }
 
+const listEnabledStorageBackends = `-- name: ListEnabledStorageBackends :many
+SELECT public_id, name, type FROM storage_backends WHERE enabled = true ORDER BY lower(name), id
+`
+
+type ListEnabledStorageBackendsRow struct {
+	PublicID string
+	Name     string
+	Type     string
+}
+
+func (q *Queries) ListEnabledStorageBackends(ctx context.Context) ([]ListEnabledStorageBackendsRow, error) {
+	rows, err := q.db.Query(ctx, listEnabledStorageBackends)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListEnabledStorageBackendsRow
+	for rows.Next() {
+		var i ListEnabledStorageBackendsRow
+		if err := rows.Scan(&i.PublicID, &i.Name, &i.Type); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listLibrariesByOwner = `-- name: ListLibrariesByOwner :many
 SELECT l.id, l.public_id, l.owner_id, l.backend_id, l.root_node_id, l.name, l.encryption_mode, l.key_envelope, l.created_at, l.updated_at, b.public_id AS backend_public_id, b.name AS backend_name, b.type AS backend_type,
        root.public_id AS root_node_public_id

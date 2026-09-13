@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vite-plus/test";
-import { jsonResponse, renderApp, stubApi, testUser, unauthorized } from "@/test/app";
+import { jsonResponse, noLibraries, renderApp, stubApi, testUser, unauthorized } from "@/test/app";
 
 function fill(label: string, value: string) {
   fireEvent.change(screen.getByLabelText(label), { target: { value } });
@@ -24,9 +24,12 @@ describe("auth", () => {
   });
 
   it("sends a signed-in user from sign in to home", async () => {
-    stubApi({ "GET /api/v1/auth/me": () => jsonResponse(200, testUser) });
+    stubApi({
+      "GET /api/v1/auth/me": () => jsonResponse(200, testUser),
+      "GET /api/v1/libraries": noLibraries,
+    });
     const router = await renderApp("/login");
-    expect(await screen.findByText("Signed in as ada@example.com.")).toBeDefined();
+    expect(await screen.findByRole("heading", { name: "Files" })).toBeDefined();
     expect(router.state.location.pathname).toBe("/");
   });
 
@@ -43,6 +46,7 @@ describe("auth", () => {
     let body: unknown;
     stubApi({
       "GET /api/v1/auth/me": unauthorized,
+      "GET /api/v1/libraries": noLibraries,
       "POST /api/v1/auth/login": (init) => {
         body = JSON.parse(init?.body as string);
         return jsonResponse(200, testUser);
@@ -84,6 +88,7 @@ describe("auth", () => {
   it("registers and opens home", async () => {
     stubApi({
       "GET /api/v1/auth/me": unauthorized,
+      "GET /api/v1/libraries": noLibraries,
       "POST /api/v1/auth/register": () => jsonResponse(201, testUser),
     });
     const router = await renderApp("/register");
@@ -91,13 +96,14 @@ describe("auth", () => {
     fill("Email", "ada@example.com");
     fill("Password", "correct horse battery staple");
     fireEvent.click(screen.getByRole("button", { name: "Create account" }));
-    expect(await screen.findByText("Signed in as ada@example.com.")).toBeDefined();
+    expect(await screen.findByRole("heading", { name: "Files" })).toBeDefined();
     expect(router.state.location.pathname).toBe("/");
   });
 
   it("signs out and opens sign in", async () => {
     stubApi({
       "GET /api/v1/auth/me": () => jsonResponse(200, testUser),
+      "GET /api/v1/libraries": noLibraries,
       "POST /api/v1/auth/logout": () => jsonResponse(204),
     });
     const router = await renderApp("/");

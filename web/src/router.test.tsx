@@ -1,22 +1,28 @@
 import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { jsonResponse, renderApp, stubApi, testUser, unauthorized } from "@/test/app";
+import { jsonResponse, noLibraries, renderApp, stubApi, testUser, unauthorized } from "@/test/app";
 
 describe("routing", () => {
-  it("renders the home route for a signed-in user", async () => {
-    stubApi({ "GET /api/v1/auth/me": () => jsonResponse(200, testUser) });
+  it("renders the files route for a signed-in user", async () => {
+    stubApi({
+      "GET /api/v1/auth/me": () => jsonResponse(200, testUser),
+      "GET /api/v1/libraries": noLibraries,
+    });
     await renderApp("/");
-    expect(await screen.findByRole("heading", { name: "Home" })).toBeDefined();
+    expect(await screen.findByRole("heading", { name: "Files" })).toBeDefined();
   });
 
   it("returns home from an unknown route", async () => {
-    stubApi({ "GET /api/v1/auth/me": () => jsonResponse(200, testUser) });
+    stubApi({
+      "GET /api/v1/auth/me": () => jsonResponse(200, testUser),
+      "GET /api/v1/libraries": noLibraries,
+    });
     const router = await renderApp("/missing");
     expect(await screen.findByRole("heading", { name: "Nothing here. Wild." })).toBeDefined();
     expect(screen.getByText("404")).toBeDefined();
     expect(screen.getAllByRole("banner")).toHaveLength(1);
     fireEvent.click(screen.getByRole("link", { name: "Go home" }));
-    expect(await screen.findByRole("heading", { name: "Home" })).toBeDefined();
+    expect(await screen.findByRole("heading", { name: "Files" })).toBeDefined();
     expect(router.state.location.pathname).toBe("/");
   });
 

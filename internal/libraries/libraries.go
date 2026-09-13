@@ -92,6 +92,9 @@ type listNodesInput struct {
 	Limit     int32  `query:"limit" minimum:"1" maximum:"200" default:"100"`
 }
 
+type backendsOutput struct {
+	Body []LibraryBackend `nullable:"false"`
+}
 type libraryOutput struct{ Body Library }
 type librariesOutput struct {
 	Body []Library `nullable:"false"`
@@ -111,6 +114,10 @@ func New(pool *pgxpool.Pool, logger *slog.Logger) *Service {
 }
 
 func (s *Service) Register(api huma.API) {
+	huma.Register(api, huma.Operation{
+		OperationID: "library-backends-list", Method: http.MethodGet, Path: "/storage-backends",
+		Summary: "List storage backends for new libraries", Tags: []string{"Libraries"},
+	}, s.listBackends)
 	group := huma.NewGroup(api, "/libraries")
 	group.UseSimpleModifier(func(op *huma.Operation) { op.Tags = []string{"Libraries"} })
 	huma.Register(group, huma.Operation{
@@ -134,6 +141,18 @@ func (s *Service) Register(api huma.API) {
 		OperationID: "nodes-list", Method: http.MethodGet, Path: "/{id}/nodes", Summary: "List a folder",
 		Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity},
 	}, s.listNodes)
+}
+
+func (s *Service) listBackends(ctx context.Context, _ *struct{}) (*backendsOutput, error) {
+	rows, err := s.queries.ListEnabledStorageBackends(ctx)
+	if err != nil {
+		return nil, s.internalError(ctx, "list enabled storage backends", err)
+	}
+	output := &backendsOutput{Body: make([]LibraryBackend, 0, len(rows))}
+	for _, row := range rows {
+		output.Body = append(output.Body, LibraryBackend{ID: row.PublicID, Name: row.Name, Type: row.Type})
+	}
+	return output, nil
 }
 
 func (s *Service) list(ctx context.Context, _ *struct{}) (*librariesOutput, error) {

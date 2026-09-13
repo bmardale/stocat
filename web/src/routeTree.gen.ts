@@ -17,6 +17,7 @@ import { Route as AppSettingsRouteRouteImport } from './routes/_app/settings/rou
 import { Route as AuthLoginRouteImport } from './routes/_auth/login'
 import { Route as AuthRegisterRouteImport } from './routes/_auth/register'
 import { Route as AppAdminStorageRouteImport } from './routes/_app/admin/storage'
+import { Route as AppLibrariesIndexRouteImport } from './routes/_app/libraries/index'
 import { Route as AppSettingsIndexRouteImport } from './routes/_app/settings/index'
 import { Route as AppSettingsSessionsRouteImport } from './routes/_app/settings/sessions'
 
@@ -58,6 +59,11 @@ const AppAdminStorageRoute = AppAdminStorageRouteImport.update({
   path: '/storage',
   getParentRoute: () => AppAdminRouteRoute,
 } as any)
+const AppLibrariesIndexRoute = AppLibrariesIndexRouteImport.update({
+  id: '/libraries/',
+  path: '/libraries/',
+  getParentRoute: () => AppRouteRoute,
+} as any)
 const AppSettingsIndexRoute = AppSettingsIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -77,6 +83,7 @@ export interface FileRoutesByFullPath {
   '/register': typeof AuthRegisterRoute
   '/admin/storage': typeof AppAdminStorageRoute
   '/settings/sessions': typeof AppSettingsSessionsRoute
+  '/libraries/': typeof AppLibrariesIndexRoute
   '/settings/': typeof AppSettingsIndexRoute
 }
 export interface FileRoutesByTo {
@@ -86,6 +93,7 @@ export interface FileRoutesByTo {
   '/register': typeof AuthRegisterRoute
   '/admin/storage': typeof AppAdminStorageRoute
   '/settings/sessions': typeof AppSettingsSessionsRoute
+  '/libraries': typeof AppLibrariesIndexRoute
   '/settings': typeof AppSettingsIndexRoute
 }
 export interface FileRoutesById {
@@ -99,6 +107,7 @@ export interface FileRoutesById {
   '/_app/': typeof AppIndexRoute
   '/_app/admin/storage': typeof AppAdminStorageRoute
   '/_app/settings/sessions': typeof AppSettingsSessionsRoute
+  '/_app/libraries/': typeof AppLibrariesIndexRoute
   '/_app/settings/': typeof AppSettingsIndexRoute
 }
 export interface FileRouteTypes {
@@ -111,6 +120,7 @@ export interface FileRouteTypes {
     | '/register'
     | '/admin/storage'
     | '/settings/sessions'
+    | '/libraries/'
     | '/settings/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -120,6 +130,7 @@ export interface FileRouteTypes {
     | '/register'
     | '/admin/storage'
     | '/settings/sessions'
+    | '/libraries'
     | '/settings'
   id:
     | '__root__'
@@ -132,6 +143,7 @@ export interface FileRouteTypes {
     | '/_app/'
     | '/_app/admin/storage'
     | '/_app/settings/sessions'
+    | '/_app/libraries/'
     | '/_app/settings/'
   fileRoutesById: FileRoutesById
 }
@@ -198,6 +210,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAdminStorageRouteImport
       parentRoute: typeof AppAdminRouteRoute
     }
+    '/_app/libraries/': {
+      id: '/_app/libraries/'
+      path: '/libraries'
+      fullPath: '/libraries/'
+      preLoaderRoute: typeof AppLibrariesIndexRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
     '/_app/settings/': {
       id: '/_app/settings/'
       path: '/'
@@ -244,12 +263,14 @@ interface AppRouteRouteChildren {
   AppAdminRouteRoute: typeof AppAdminRouteRouteWithChildren
   AppSettingsRouteRoute: typeof AppSettingsRouteRouteWithChildren
   AppIndexRoute: typeof AppIndexRoute
+  AppLibrariesIndexRoute: typeof AppLibrariesIndexRoute
 }
 
 const AppRouteRouteChildren: AppRouteRouteChildren = {
   AppAdminRouteRoute: AppAdminRouteRouteWithChildren,
   AppSettingsRouteRoute: AppSettingsRouteRouteWithChildren,
   AppIndexRoute: AppIndexRoute,
+  AppLibrariesIndexRoute: AppLibrariesIndexRoute,
 }
 
 const AppRouteRouteWithChildren = AppRouteRoute._addFileChildren(

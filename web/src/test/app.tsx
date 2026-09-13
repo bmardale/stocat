@@ -22,6 +22,8 @@ export function jsonResponse(status: number, body?: unknown) {
 export const unauthorized = () =>
   jsonResponse(401, { title: "Unauthorized", status: 401, detail: "Sign in to continue." });
 
+export const noLibraries = () => jsonResponse(200, []);
+
 type Handler = (init: RequestInit | undefined) => Response;
 
 // Keys use the form "METHOD /api/path". An unknown request fails the test.

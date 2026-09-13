@@ -1,4 +1,4 @@
-import { DatabaseIcon, Home01Icon } from "@hugeicons/core-free-icons";
+import { DatabaseIcon, Folder01Icon, LibraryIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Link, useMatchRoute } from "@tanstack/react-router";
 import logoMark from "@/assets/logo-mark.svg";
@@ -49,12 +49,22 @@ export function AppSidebar() {
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton
-                tooltip="Home"
+                tooltip="Files"
                 isActive={Boolean(matchRoute({ to: "/" }))}
                 render={<Link to="/" onClick={() => setOpenMobile(false)} />}
               >
-                <HugeiconsIcon icon={Home01Icon} strokeWidth={2} />
-                <span>Home</span>
+                <HugeiconsIcon icon={Folder01Icon} strokeWidth={2} />
+                <span>Files</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                tooltip="Libraries"
+                isActive={Boolean(matchRoute({ to: "/libraries", fuzzy: true }))}
+                render={<Link to="/libraries" onClick={() => setOpenMobile(false)} />}
+              >
+                <HugeiconsIcon icon={LibraryIcon} strokeWidth={2} />
+                <span>Libraries</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>

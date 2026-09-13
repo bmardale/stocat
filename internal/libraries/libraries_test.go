@@ -82,7 +82,20 @@ func TestPrivateLibraries(t *testing.T) {
 	ctx := t.Context()
 
 	requireLibraryStatus(t, env.api.GetCtx(ctx, "/api/v1/libraries"), http.StatusUnauthorized)
-	response := env.api.PostCtx(ctx, "/api/v1/libraries", owner, map[string]any{
+	if _, err := env.queries.CreateStorageBackend(ctx, db.CreateStorageBackendParams{
+		PublicID: id.New(id.StorageBackend), Name: "Disabled", Type: "local", Config: []byte(`{"root":"/tmp/stocat-disabled"}`),
+		EncryptedSecrets: "test", Enabled: false,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	response := env.api.GetCtx(ctx, "/api/v1/storage-backends", other)
+	requireLibraryStatus(t, response, http.StatusOK)
+	backends := decodeLibrary[[]LibraryBackend](t, response)
+	if len(backends) != 1 || backends[0] != (LibraryBackend{ID: env.backendID, Name: "Local", Type: "local"}) {
+		t.Fatalf("enabled backends = %+v", backends)
+	}
+
+	response = env.api.PostCtx(ctx, "/api/v1/libraries", owner, map[string]any{
 		"name": "Documents", "backend_id": env.backendID, "encryption_mode": EncryptionNone,
 	})
 	requireLibraryStatus(t, response, http.StatusCreated)

@@ -7,6 +7,7 @@ Use these authenticated routes:
 
 | Method | Path | Result |
 | --- | --- | --- |
+| GET | `/api/v1/storage-backends` | List the enabled storage backends with ID, name, and type. |
 | GET | `/api/v1/libraries` | List the current user's libraries. |
 | POST | `/api/v1/libraries` | Create a library and its root folder. |
 | GET | `/api/v1/libraries/{id}` | Get one library. |

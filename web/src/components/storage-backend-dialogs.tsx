@@ -400,7 +400,7 @@ export function DeleteStorageBackendDialog({
           <AlertDialogTitle>Delete {backend?.name}?</AlertDialogTitle>
           <AlertDialogDescription>
             The server removes the settings and the stored credentials. Files in the backend stay
-            where they are.
+            where they are. You cannot delete a backend that a library uses.
           </AlertDialogDescription>
         </AlertDialogHeader>
         {remove.error && <FieldError>{remove.error.message}</FieldError>}

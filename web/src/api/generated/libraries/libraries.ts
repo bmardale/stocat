@@ -24,6 +24,7 @@ import type {
   CreateLibraryInputBody,
   FolderInputBody,
   Library,
+  LibraryBackend,
   Node,
   NodesListParams,
   NodesPage,
@@ -630,6 +631,129 @@ export function useNodesList<
   queryClient?: QueryClient,
 ): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
   const queryOptions = getNodesListQueryOptions(id, params, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getLibraryBackendsListUrl = () => {
+  return `/api/v1/storage-backends`;
+};
+
+/**
+ * @summary List storage backends for new libraries
+ */
+export const libraryBackendsList = async (
+  options?: Parameters<typeof apiFetch>[1],
+): Promise<LibraryBackend[]> => {
+  return apiFetch<LibraryBackend[]>(getLibraryBackendsListUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getLibraryBackendsListQueryKey = () => {
+  return [`/api/v1/storage-backends`] as const;
+};
+
+export const getLibraryBackendsListQueryOptions = <
+  TData = Awaited<ReturnType<typeof libraryBackendsList>>,
+  TError = ErrorType<Problem>,
+>(options?: {
+  query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof libraryBackendsList>>, TError, TData>>;
+  request?: SecondParameter<typeof apiFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getLibraryBackendsListQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof libraryBackendsList>>> = ({ signal }) =>
+    libraryBackendsList({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof libraryBackendsList>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type LibraryBackendsListQueryResult = NonNullable<
+  Awaited<ReturnType<typeof libraryBackendsList>>
+>;
+export type LibraryBackendsListQueryError = ErrorType<Problem>;
+
+export function useLibraryBackendsList<
+  TData = Awaited<ReturnType<typeof libraryBackendsList>>,
+  TError = ErrorType<Problem>,
+>(
+  options: {
+    query: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof libraryBackendsList>>, TError, TData>
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof libraryBackendsList>>,
+          TError,
+          Awaited<ReturnType<typeof libraryBackendsList>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useLibraryBackendsList<
+  TData = Awaited<ReturnType<typeof libraryBackendsList>>,
+  TError = ErrorType<Problem>,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof libraryBackendsList>>, TError, TData>
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof libraryBackendsList>>,
+          TError,
+          Awaited<ReturnType<typeof libraryBackendsList>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useLibraryBackendsList<
+  TData = Awaited<ReturnType<typeof libraryBackendsList>>,
+  TError = ErrorType<Problem>,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof libraryBackendsList>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary List storage backends for new libraries
+ */
+
+export function useLibraryBackendsList<
+  TData = Awaited<ReturnType<typeof libraryBackendsList>>,
+  TError = ErrorType<Problem>,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof libraryBackendsList>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getLibraryBackendsListQueryOptions(options);
 
   const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
     queryKey: DataTag<QueryKey, TData, TError>;

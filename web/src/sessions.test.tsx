@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vite-plus/test";
 import type { Session } from "@/api/generated/model";
-import { jsonResponse, renderApp, stubApi, testUser } from "@/test/app";
+import { jsonResponse, noLibraries, renderApp, stubApi, testUser } from "@/test/app";
 
 const currentSession: Session = {
   id: "ses_current",
@@ -33,6 +33,7 @@ function stubSessions(initial: Session[]) {
   let sessions = initial;
   const fetchMock = stubApi({
     "GET /api/v1/auth/me": () => jsonResponse(200, testUser),
+    "GET /api/v1/libraries": noLibraries,
     "GET /api/v1/auth/sessions": () => jsonResponse(200, sessions),
     "DELETE /api/v1/auth/sessions": () => {
       sessions = sessions.filter((session) => session.current);

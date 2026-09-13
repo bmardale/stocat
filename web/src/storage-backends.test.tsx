@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vite-plus/test";
 import type { Backend, ConnectionCheck, User } from "@/api/generated/model";
-import { jsonResponse, renderApp, stubApi, testUser } from "@/test/app";
+import { jsonResponse, noLibraries, renderApp, stubApi, testUser } from "@/test/app";
 
 const adminUser: User = { ...testUser, is_admin: true };
 
@@ -55,6 +55,7 @@ function stubBackends(initial: Backend[]) {
   };
   const fetchMock = stubApi({
     "GET /api/v1/auth/me": () => jsonResponse(200, adminUser),
+    "GET /api/v1/libraries": noLibraries,
     "GET /api/v1/admin/storage-backends": () => jsonResponse(200, backends),
     "POST /api/v1/admin/storage-backends": (init) => jsonResponse(201, save("stb_new", init)),
     "PUT /api/v1/admin/storage-backends/stb_s3": (init) => jsonResponse(200, save("stb_s3", init)),
@@ -79,9 +80,12 @@ async function openActions(name: string) {
 
 describe("storage backends", () => {
   it("hides the page from users who are not administrators", async () => {
-    stubApi({ "GET /api/v1/auth/me": () => jsonResponse(200, testUser) });
+    stubApi({
+      "GET /api/v1/auth/me": () => jsonResponse(200, testUser),
+      "GET /api/v1/libraries": noLibraries,
+    });
     const router = await renderApp("/admin/storage");
-    expect(await screen.findByRole("heading", { name: "Home" })).toBeDefined();
+    expect(await screen.findByRole("heading", { name: "Files" })).toBeDefined();
     expect(router.state.location.pathname).toBe("/");
     expect(screen.queryByRole("link", { name: "Storage" })).toBeNull();
   });

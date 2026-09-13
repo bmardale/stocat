@@ -53,3 +53,6 @@ WHERE library_id = sqlc.arg(library_id) AND parent_id = sqlc.arg(parent_id)
   AND trashed_at IS NULL AND id > sqlc.arg(after_id)
 ORDER BY id
 LIMIT sqlc.arg(page_limit);
+
+-- name: ListEnabledStorageBackends :many
+SELECT public_id, name, type FROM storage_backends WHERE enabled = true ORDER BY lower(name), id;
