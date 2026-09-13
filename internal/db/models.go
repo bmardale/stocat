@@ -5,8 +5,19 @@
 package db
 
 import (
+	"net/netip"
+
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+type Session struct {
+	TokenHash []byte
+	UserID    int64
+	UserAgent string
+	IpAddress *netip.Addr
+	CreatedAt pgtype.Timestamptz
+	ExpiresAt pgtype.Timestamptz
+}
 
 type User struct {
 	ID           int64

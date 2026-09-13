@@ -10,4 +10,4 @@ SELECT * FROM users WHERE id = $1;
 SELECT * FROM users WHERE public_id = $1;
 
 -- name: GetUserByEmail :one
-SELECT * FROM users WHERE email = $1;
+SELECT * FROM users WHERE lower(email) = lower(sqlc.arg(email)::text);
