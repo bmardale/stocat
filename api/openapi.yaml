@@ -1,5 +1,34 @@
 components:
   schemas:
+    AdminUser:
+      additionalProperties: false
+      properties:
+        default_quota_mb:
+          description: Default quota in megabytes. A null value means no limit.
+          format: int64
+          type:
+            - integer
+            - "null"
+        email:
+          type: string
+        id:
+          type: string
+        is_admin:
+          type: boolean
+        libraries:
+          items:
+            $ref: "#/components/schemas/LibraryQuota"
+          type: array
+        name:
+          type: string
+      required:
+        - id
+        - name
+        - email
+        - is_admin
+        - default_quota_mb
+        - libraries
+      type: object
     Backend:
       additionalProperties: false
       properties:
@@ -172,6 +201,12 @@ components:
           type: string
         name:
           type: string
+        quota_mb:
+          description: Quota override in megabytes. A null value uses the user default quota.
+          format: int64
+          type:
+            - integer
+            - "null"
         root_node_id:
           type: string
         updated_at:
@@ -183,6 +218,7 @@ components:
         - encryption_mode
         - root_node_id
         - backend
+        - quota_mb
         - created_at
         - updated_at
       type: object
@@ -202,6 +238,24 @@ components:
         - id
         - name
         - type
+      type: object
+    LibraryQuota:
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        quota_mb:
+          description: Quota in megabytes. A null value uses the user default quota.
+          format: int64
+          type:
+            - integer
+            - "null"
+      required:
+        - id
+        - name
+        - quota_mb
       type: object
     LocalConfig:
       additionalProperties: false
@@ -495,6 +549,32 @@ components:
         - name
         - enabled
       type: object
+    UpdateLibraryQuotaInputBody:
+      additionalProperties: false
+      properties:
+        quota_mb:
+          description: Quota in megabytes. Send null to use the user default quota.
+          format: int64
+          minimum: 0
+          type:
+            - integer
+            - "null"
+      required:
+        - quota_mb
+      type: object
+    UpdateUserQuotaInputBody:
+      additionalProperties: false
+      properties:
+        default_quota_mb:
+          description: Default quota in megabytes. Send null for no limit.
+          format: int64
+          minimum: 0
+          type:
+            - integer
+            - "null"
+      required:
+        - default_quota_mb
+      type: object
     User:
       additionalProperties: false
       properties:
@@ -522,6 +602,76 @@ info:
   version: 0.0.1
 openapi: 3.1.0
 paths:
+  /api/v1/admin/libraries/{id}/quota:
+    put:
+      operationId: admin-libraries-quota-set
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateLibraryQuotaInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryQuota"
+          description: OK
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Forbidden
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+      security:
+        - session: []
+      summary: Set the quota override of a library
+      tags:
+        - Admin
   /api/v1/admin/storage-backends:
     get:
       operationId: storage-backends-list
@@ -971,6 +1121,129 @@ paths:
       summary: Check the connection of a saved backend
       tags:
         - Storage
+  /api/v1/admin/users:
+    get:
+      operationId: admin-users-list
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/AdminUser"
+                type: array
+          description: OK
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Forbidden
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Error
+      security:
+        - session: []
+      summary: List users with their quotas
+      tags:
+        - Admin
+  /api/v1/admin/users/{id}/quota:
+    put:
+      operationId: admin-users-quota-set
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserQuotaInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUser"
+          description: OK
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Forbidden
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+      security:
+        - session: []
+      summary: Set the default quota of a user
+      tags:
+        - Admin
   /api/v1/auth/account:
     patch:
       operationId: auth-account-update

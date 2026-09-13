@@ -1,4 +1,9 @@
-import { DatabaseIcon, Folder01Icon, LibraryIcon } from "@hugeicons/core-free-icons";
+import {
+  DatabaseIcon,
+  Folder01Icon,
+  LibraryIcon,
+  UserAccountIcon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Link, useMatchRoute } from "@tanstack/react-router";
 import logoMark from "@/assets/logo-mark.svg";
@@ -81,6 +86,16 @@ export function AppSidebar() {
                 >
                   <HugeiconsIcon icon={DatabaseIcon} strokeWidth={2} />
                   <span>Storage</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  tooltip="Users"
+                  isActive={Boolean(matchRoute({ to: "/admin/users" }))}
+                  render={<Link to="/admin/users" onClick={() => setOpenMobile(false)} />}
+                >
+                  <HugeiconsIcon icon={UserAccountIcon} strokeWidth={2} />
+                  <span>Users</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>

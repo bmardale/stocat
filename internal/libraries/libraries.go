@@ -39,6 +39,7 @@ type Library struct {
 	KeyEnvelope    []byte         `json:"key_envelope,omitempty"`
 	RootNodeID     string         `json:"root_node_id"`
 	Backend        LibraryBackend `json:"backend"`
+	QuotaMB        *int64         `json:"quota_mb" doc:"Quota override in megabytes. A null value uses the user default quota."`
 	CreatedAt      time.Time      `json:"created_at"`
 	UpdatedAt      time.Time      `json:"updated_at"`
 }
@@ -367,6 +368,7 @@ func libraryFromListRow(row db.ListLibrariesByOwnerRow) Library {
 		ID: row.PublicID, Name: row.Name, EncryptionMode: row.EncryptionMode, KeyEnvelope: row.KeyEnvelope,
 		RootNodeID: row.RootNodePublicID,
 		Backend:    LibraryBackend{ID: row.BackendPublicID, Name: row.BackendName, Type: row.BackendType},
+		QuotaMB:    quotaPtr(row.QuotaMb),
 		CreatedAt:  row.CreatedAt.Time, UpdatedAt: row.UpdatedAt.Time,
 	}
 }
@@ -376,8 +378,17 @@ func libraryFromGetRow(row db.GetLibraryByPublicIDAndOwnerRow) Library {
 		ID: row.PublicID, Name: row.Name, EncryptionMode: row.EncryptionMode, KeyEnvelope: row.KeyEnvelope,
 		RootNodeID: row.RootNodePublicID,
 		Backend:    LibraryBackend{ID: row.BackendPublicID, Name: row.BackendName, Type: row.BackendType},
+		QuotaMB:    quotaPtr(row.QuotaMb),
 		CreatedAt:  row.CreatedAt.Time, UpdatedAt: row.UpdatedAt.Time,
 	}
+}
+
+func quotaPtr(value pgtype.Int8) *int64 {
+	if !value.Valid {
+		return nil
+	}
+	quota := value.Int64
+	return &quota
 }
 
 func nodeFromRow(row db.Node, libraryID, parentID string) Node {

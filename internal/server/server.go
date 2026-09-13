@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/bmardale/stocat/internal/admin"
 	"github.com/bmardale/stocat/internal/apierr"
 	"github.com/bmardale/stocat/internal/auth"
 	"github.com/bmardale/stocat/internal/libraries"
@@ -78,7 +79,9 @@ func New(cfg Config, pool *pgxpool.Pool) (*Server, error) {
 		return nil, fmt.Errorf("create authentication service: %w", err)
 	}
 	authService.Register(api)
-	storage.New(pool, storage.Config{Encrypter: cfg.Encrypter, Logger: log}).Register(authService.Admin(api, "/api/v1/admin"))
+	adminGroup := authService.Admin(api, "/api/v1/admin")
+	storage.New(pool, storage.Config{Encrypter: cfg.Encrypter, Logger: log}).Register(adminGroup)
+	admin.New(pool, log).Register(adminGroup)
 	libraries.New(pool, log).Register(authService.Protected(api, "/api/v1"))
 
 	s := &Server{api: api, log: log, httpServer: &http.Server{
