@@ -9,11 +9,15 @@ linters:
     - nilerr
     - noctx
     - unconvert
+  exclusions:
+    generated: strict
 
 formatters:
   enable:
     - gofmt
     - goimports
+  exclusions:
+    generated: strict
 
 issues:
   max-issues-per-linter: 0
