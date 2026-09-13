@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+go_version="1.27.1"
+vite_plus_version="0.3.1"
+
+run_step() {
+	local name="$1"
+	shift
+	local start="$SECONDS"
+
+	printf '==> %s\n' "$name"
+	"$@"
+	printf '<== %s (%ss)\n' "$name" "$((SECONDS - start))"
+}
+
+install_docker() {
+	if command -v docker >/dev/null 2>&1 && command -v dockerd >/dev/null 2>&1 &&
+		docker compose version >/dev/null 2>&1; then
+		return
+	fi
+
+	sudo install -m 0755 -d /etc/apt/keyrings
+	sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+	sudo chmod a+r /etc/apt/keyrings/docker.asc
+	echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $(. /etc/os-release && echo "$VERSION_CODENAME") stable" |
+		sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
+	sudo apt-get update
+	sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+}
+
+configure_oxlint_memory() {
+	local config="/etc/sysctl.d/99-stocat-oxlint.conf"
+	if [[ ! -f "$config" ]] || ! grep -Fqx 'vm.overcommit_memory = 1' "$config"; then
+		printf 'vm.overcommit_memory = 1\n' | sudo tee "$config" >/dev/null
+	fi
+	if [[ "$(cat /proc/sys/vm/overcommit_memory)" != "1" ]]; then
+		sudo sysctl --quiet -p "$config"
+	fi
+}
+
+install_go() {
+	if command -v go >/dev/null 2>&1 && [[ "$(go env GOVERSION)" == "go${go_version}" ]]; then
+		return
+	fi
+
+	local arch archive checksum temp_dir
+	case "$(dpkg --print-architecture)" in
+	amd64)
+		arch="amd64"
+		checksum="63d339f0da5ab53635a56f2490a7984dfe12dfcff22ad749f63edaf590168445"
+		;;
+	arm64)
+		arch="arm64"
+		checksum="3450b45a3f9ee8568792736a5c5e70a1f2e9b36c35a8f74958c03e51d7d92bec"
+		;;
+	*)
+		printf 'Unsupported architecture: %s\n' "$(dpkg --print-architecture)" >&2
+		return 1
+		;;
+	esac
+
+	archive="go${go_version}.linux-${arch}.tar.gz"
+	temp_dir="$(mktemp -d)"
+	curl -fsSL "https://go.dev/dl/${archive}" -o "$temp_dir/$archive"
+	printf '%s  %s\n' "$checksum" "$temp_dir/$archive" | sha256sum --check --status
+	sudo rm -rf /usr/local/go
+	sudo tar -C /usr/local -xzf "$temp_dir/$archive"
+	sudo ln -sfn /usr/local/go/bin/go /usr/local/bin/go
+	sudo ln -sfn /usr/local/go/bin/gofmt /usr/local/bin/gofmt
+	rm -rf "$temp_dir"
+}
+
+install_vite_plus() {
+	local installed_version=""
+	if command -v vp >/dev/null 2>&1; then
+		installed_version="$(vp --version 2>/dev/null || true)"
+		installed_version="${installed_version%%$'\n'*}"
+		if [[ "$installed_version" == "vp v${vite_plus_version}" ]]; then
+			return
+		fi
+	fi
+
+	local installer
+	installer="$(mktemp)"
+	curl -fsSL --connect-timeout 5 --max-time 15 \
+		"https://raw.githubusercontent.com/voidzero-dev/vite-plus/v${vite_plus_version}/packages/cli/install.sh" \
+		-o "$installer"
+	CI=true VP_HOME="$HOME/.vite-plus" VP_VERSION="$vite_plus_version" bash "$installer"
+	rm -f "$installer"
+	install -d "$HOME/.local/bin"
+	ln -sfn "$HOME/.vite-plus/bin/vp" "$HOME/.local/bin/vp"
+}
+
+install_web_dependencies() {
+	(
+		cd web
+		vp install --frozen-lockfile
+	)
+}
+
+run_step "Install Docker" install_docker
+sudo usermod -aG docker "$(id -un)"
+run_step "Configure Oxlint memory" configure_oxlint_memory
+run_step "Install Go ${go_version}" install_go
+run_step "Install Vite+ ${vite_plus_version}" install_vite_plus
+run_step "Download Go modules" go mod download
+run_step "Install web dependencies" install_web_dependencies

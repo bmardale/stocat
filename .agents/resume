@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if docker info >/dev/null 2>&1; then
+	exit 0
+fi
+
+amp orb service stop docker-daemon >/dev/null 2>&1 || true
+amp orb service start docker-daemon --command "sudo dockerd --group $(id -gn)" >/dev/null
+
+for _ in {1..32}; do
+	if docker info >/dev/null 2>&1; then
+		exit 0
+	fi
+	sleep 0.25
+done
+
+printf 'Docker did not become ready.\n' >&2
+exit 1
