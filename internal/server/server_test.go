@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -20,6 +21,19 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+func newTestServer(t *testing.T, cfg Config, pool *pgxpool.Pool) *Server {
+	t.Helper()
+	if cfg.RateLimitClock == nil {
+		now := time.Now()
+		cfg.RateLimitClock = func() time.Time { return now }
+	}
+	s, err := New(cfg, pool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
 func TestProbes(t *testing.T) {
 	for _, tc := range []struct {
 		name, path string
@@ -31,7 +45,7 @@ func TestProbes(t *testing.T) {
 		{"readiness during shutdown", "/readyz", true, http.StatusServiceUnavailable},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			s := New(Config{SecureCookies: true}, nil)
+			s := newTestServer(t, Config{SecureCookies: true}, nil)
 			s.stopping.Store(tc.stopping)
 			api := humatest.Wrap(t, s.api)
 			response := api.GetCtx(t.Context(), tc.path)
@@ -42,8 +56,56 @@ func TestProbes(t *testing.T) {
 	}
 }
 
+func TestGlobalRateLimit(t *testing.T) {
+	now := time.Now()
+	s := newTestServer(t, Config{Logger: slog.New(slog.DiscardHandler), RateLimitClock: func() time.Time { return now }}, nil)
+	s.stopping.Store(true)
+	request := func(path, remote string, attempt int) *httptest.ResponseRecorder {
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil)
+		req.RemoteAddr = remote
+		req.Header.Set("X-Forwarded-For", fmt.Sprintf("203.0.113.%d", attempt))
+		req.Header.Set("X-Real-IP", fmt.Sprintf("203.0.113.%d", attempt))
+		req.Header.Set("Forwarded", fmt.Sprintf("for=203.0.113.%d", attempt))
+		req.Header.Set("Cookie", fmt.Sprintf("%s=%064d", "stocat_session", attempt))
+		response := httptest.NewRecorder()
+		s.httpServer.Handler.ServeHTTP(response, req)
+		return response
+	}
+	for i := range 60 {
+		if response := request(fmt.Sprintf("/missing/%d", i), "192.0.2.1:1234", i); response.Code != http.StatusNotFound {
+			t.Fatalf("request %d: %d %s", i, response.Code, response.Body)
+		}
+	}
+	response := request("/auth/me", "[::ffff:192.0.2.1]:5678", 61)
+	if response.Code != http.StatusTooManyRequests || response.Header().Get("Retry-After") != "1" || response.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("missing rate limit response: %d %s", response.Code, response.Body)
+	}
+	var problem apierr.Problem
+	if err := json.Unmarshal(response.Body.Bytes(), &problem); err != nil {
+		t.Fatal(err)
+	}
+	if problem.Status != http.StatusTooManyRequests || problem.RequestID == "" || problem.RequestID != response.Header().Get(o11y.RequestIDHeader) {
+		t.Fatalf("invalid problem: %+v", problem)
+	}
+	for path, status := range map[string]int{"/healthz": http.StatusOK, "/readyz": http.StatusServiceUnavailable} {
+		if response := request(path, "192.0.2.1:1234", 62); response.Code != status {
+			t.Fatalf("probe %s was limited: %d", path, response.Code)
+		}
+	}
+	if response := request("/missing", "192.0.2.2:1234", 63); response.Code != http.StatusNotFound {
+		t.Fatalf("another IP was limited: %d", response.Code)
+	}
+	now = now.Add(200 * time.Millisecond)
+	if response := request("/missing", "192.0.2.1:1234", 64); response.Code != http.StatusNotFound {
+		t.Fatalf("refilled token was rejected: %d", response.Code)
+	}
+	if response := request("/missing", "192.0.2.1:1234", 65); response.Code != http.StatusTooManyRequests {
+		t.Fatalf("refill admitted extra requests: %d", response.Code)
+	}
+}
+
 func TestAuthCrossOriginProtection(t *testing.T) {
-	s := New(Config{SecureCookies: true, Logger: slog.New(slog.DiscardHandler)}, nil)
+	s := newTestServer(t, Config{SecureCookies: true, Logger: slog.New(slog.DiscardHandler)}, nil)
 	for _, path := range []string{"/auth/register", "/auth/login", "/auth/logout"} {
 		t.Run(path, func(t *testing.T) {
 			request := httptest.NewRequestWithContext(t.Context(), http.MethodPost, path, strings.NewReader("{}"))
@@ -158,7 +220,7 @@ func TestReadinessUnavailable(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	s := New(Config{SecureCookies: true}, pool)
+	s := newTestServer(t, Config{SecureCookies: true}, pool)
 	api := humatest.Wrap(t, s.api)
 	response := api.GetCtx(t.Context(), "/readyz")
 	if response.Code != http.StatusServiceUnavailable {
@@ -168,7 +230,7 @@ func TestReadinessUnavailable(t *testing.T) {
 
 func TestRouterAddsRequestID(t *testing.T) {
 	var buf bytes.Buffer
-	s := New(Config{
+	s := newTestServer(t, Config{
 		SecureCookies: true,
 		Logger:        o11y.NewLogger(o11y.LoggingConfig{Level: slog.LevelDebug}, &buf),
 	}, nil)
@@ -201,7 +263,7 @@ func TestRouterAddsRequestID(t *testing.T) {
 }
 
 func TestErrorEnvelope(t *testing.T) {
-	s := New(Config{SecureCookies: true, Logger: slog.New(slog.DiscardHandler)}, nil)
+	s := newTestServer(t, Config{SecureCookies: true, Logger: slog.New(slog.DiscardHandler)}, nil)
 
 	for _, tc := range []struct {
 		name, method, path, origin string
