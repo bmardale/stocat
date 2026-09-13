@@ -56,6 +56,24 @@ func TestProbes(t *testing.T) {
 	}
 }
 
+func TestVersion(t *testing.T) {
+	s := newTestServer(t, Config{SecureCookies: true}, nil)
+	api := humatest.Wrap(t, s.api)
+	response := api.GetCtx(t.Context(), "/api/v1/version")
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusOK, response.Body.String())
+	}
+	var got struct {
+		Version string `json:"version"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Version == "" {
+		t.Fatal("version is empty")
+	}
+}
+
 func TestGlobalRateLimit(t *testing.T) {
 	now := time.Now()
 	s := newTestServer(t, Config{Logger: slog.New(slog.DiscardHandler), RateLimitClock: func() time.Time { return now }}, nil)

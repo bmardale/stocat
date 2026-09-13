@@ -17,7 +17,7 @@ import type {
   UseQueryResult,
 } from "@tanstack/react-query";
 
-import type { ProbeOutputBody, Problem } from "../model";
+import type { ProbeOutputBody, Problem, VersionOutputBody } from "../model";
 
 import { apiFetch } from "../../fetcher.ts";
 import type { ErrorType } from "../../fetcher.ts";
@@ -38,6 +38,119 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
   }
   return result;
 };
+
+export const getVersionUrl = () => {
+  return `/api/v1/version`;
+};
+
+/**
+ * @summary Get the server version
+ */
+export const version = async (
+  options?: Parameters<typeof apiFetch>[1],
+): Promise<VersionOutputBody> => {
+  return apiFetch<VersionOutputBody>(getVersionUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getVersionQueryKey = () => {
+  return [`/api/v1/version`] as const;
+};
+
+export const getVersionQueryOptions = <
+  TData = Awaited<ReturnType<typeof version>>,
+  TError = ErrorType<Problem>,
+>(options?: {
+  query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof version>>, TError, TData>>;
+  request?: SecondParameter<typeof apiFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getVersionQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof version>>> = ({ signal }) =>
+    version({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof version>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type VersionQueryResult = NonNullable<Awaited<ReturnType<typeof version>>>;
+export type VersionQueryError = ErrorType<Problem>;
+
+export function useVersion<
+  TData = Awaited<ReturnType<typeof version>>,
+  TError = ErrorType<Problem>,
+>(
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof version>>, TError, TData>> &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof version>>,
+          TError,
+          Awaited<ReturnType<typeof version>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useVersion<
+  TData = Awaited<ReturnType<typeof version>>,
+  TError = ErrorType<Problem>,
+>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof version>>, TError, TData>> &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof version>>,
+          TError,
+          Awaited<ReturnType<typeof version>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useVersion<
+  TData = Awaited<ReturnType<typeof version>>,
+  TError = ErrorType<Problem>,
+>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof version>>, TError, TData>>;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary Get the server version
+ */
+
+export function useVersion<
+  TData = Awaited<ReturnType<typeof version>>,
+  TError = ErrorType<Problem>,
+>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof version>>, TError, TData>>;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getVersionQueryOptions(options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
 
 export const getHealthUrl = () => {
   return `/healthz`;

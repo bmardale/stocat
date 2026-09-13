@@ -1,7 +1,15 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { Passkey } from "@/api/generated/model";
-import { jsonResponse, noLibraries, renderApp, stubApi, testUser, unauthorized } from "@/test/app";
+import {
+  jsonResponse,
+  noLibraries,
+  renderApp,
+  serverVersion,
+  stubApi,
+  testUser,
+  unauthorized,
+} from "@/test/app";
 
 class FakePublicKeyCredential {
   static parseRequestOptionsFromJSON(options: unknown) {
@@ -55,6 +63,7 @@ describe("passkey sign-in", () => {
     let body: unknown;
     stubApi({
       "GET /api/v1/auth/me": unauthorized,
+      "GET /api/v1/version": serverVersion,
       "GET /api/v1/libraries": noLibraries,
       "POST /api/v1/auth/passkeys/login/options": () => jsonResponse(200, { challenge: "abc" }),
       "POST /api/v1/auth/passkeys/login": (init) => {
@@ -75,6 +84,7 @@ describe("passkey sign-in", () => {
     credentials.get.mockRejectedValue(new DOMException("Cancelled", "NotAllowedError"));
     stubApi({
       "GET /api/v1/auth/me": unauthorized,
+      "GET /api/v1/version": serverVersion,
       "POST /api/v1/auth/passkeys/login/options": () => jsonResponse(200, { challenge: "abc" }),
     });
     await renderApp("/login");
@@ -85,7 +95,10 @@ describe("passkey sign-in", () => {
   });
 
   it("hides passkey sign-in when the browser does not support passkeys", async () => {
-    stubApi({ "GET /api/v1/auth/me": unauthorized });
+    stubApi({
+      "GET /api/v1/auth/me": unauthorized,
+      "GET /api/v1/version": serverVersion,
+    });
     await renderApp("/login");
     expect(await screen.findByRole("button", { name: "Sign in" })).toBeDefined();
     expect(screen.queryByRole("button", { name: "Sign in with a passkey" })).toBeNull();
@@ -101,6 +114,7 @@ describe("passkey settings", () => {
     };
     stubApi({
       "GET /api/v1/auth/me": () => jsonResponse(200, testUser),
+      "GET /api/v1/version": serverVersion,
       "GET /api/v1/auth/passkeys": () => jsonResponse(200, passkeys),
       "POST /api/v1/auth/passkeys/registration/options": (init) => {
         record("options", init);

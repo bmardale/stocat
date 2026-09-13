@@ -1,6 +1,14 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vite-plus/test";
-import { jsonResponse, noLibraries, renderApp, stubApi, testUser, unauthorized } from "@/test/app";
+import {
+  jsonResponse,
+  noLibraries,
+  renderApp,
+  serverVersion,
+  stubApi,
+  testUser,
+  unauthorized,
+} from "@/test/app";
 
 function fill(label: string, value: string) {
   fireEvent.change(screen.getByLabelText(label), { target: { value } });
@@ -8,7 +16,7 @@ function fill(label: string, value: string) {
 
 describe("auth", () => {
   it("sends a guest from home to sign in without a redirect path", async () => {
-    stubApi({ "GET /api/v1/auth/me": unauthorized });
+    stubApi({ "GET /api/v1/auth/me": unauthorized, "GET /api/v1/version": serverVersion });
     const router = await renderApp("/");
     expect(await screen.findByRole("button", { name: "Sign in" })).toBeDefined();
     expect(router.state.location.pathname).toBe("/login");
@@ -16,7 +24,7 @@ describe("auth", () => {
   });
 
   it("keeps the requested path when it sends a guest to sign in", async () => {
-    stubApi({ "GET /api/v1/auth/me": unauthorized });
+    stubApi({ "GET /api/v1/auth/me": unauthorized, "GET /api/v1/version": serverVersion });
     const router = await renderApp("/?view=grid");
     expect(await screen.findByRole("button", { name: "Sign in" })).toBeDefined();
     expect(router.state.location.pathname).toBe("/login");
@@ -34,18 +42,22 @@ describe("auth", () => {
   });
 
   it("validates the sign-in form before it sends a request", async () => {
-    const fetchMock = stubApi({ "GET /api/v1/auth/me": unauthorized });
+    const fetchMock = stubApi({
+      "GET /api/v1/auth/me": unauthorized,
+      "GET /api/v1/version": serverVersion,
+    });
     await renderApp("/login");
     fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
     expect(await screen.findByText("Enter a valid email address.")).toBeDefined();
     expect(screen.getByText("Enter your password.")).toBeDefined();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("signs in and opens the redirect path", async () => {
     let body: unknown;
     stubApi({
       "GET /api/v1/auth/me": unauthorized,
+      "GET /api/v1/version": serverVersion,
       "GET /api/v1/libraries": noLibraries,
       "POST /api/v1/auth/login": (init) => {
         body = JSON.parse(init?.body as string);
@@ -64,6 +76,7 @@ describe("auth", () => {
   it("shows the server error when sign-in fails", async () => {
     stubApi({
       "GET /api/v1/auth/me": unauthorized,
+      "GET /api/v1/version": serverVersion,
       "POST /api/v1/auth/login": () =>
         jsonResponse(401, { status: 401, detail: "The email or password is incorrect." }),
     });
@@ -75,19 +88,23 @@ describe("auth", () => {
   });
 
   it("rejects a short password on registration", async () => {
-    const fetchMock = stubApi({ "GET /api/v1/auth/me": unauthorized });
+    const fetchMock = stubApi({
+      "GET /api/v1/auth/me": unauthorized,
+      "GET /api/v1/version": serverVersion,
+    });
     await renderApp("/register");
     fill("Name", "Ada Lovelace");
     fill("Email", "ada@example.com");
     fill("Password", "too short");
     fireEvent.click(screen.getByRole("button", { name: "Create account" }));
     expect(await screen.findByText("The password is too short.")).toBeDefined();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("registers and opens home", async () => {
     stubApi({
       "GET /api/v1/auth/me": unauthorized,
+      "GET /api/v1/version": serverVersion,
       "GET /api/v1/libraries": noLibraries,
       "POST /api/v1/auth/register": () => jsonResponse(201, testUser),
     });
@@ -103,6 +120,7 @@ describe("auth", () => {
   it("signs out and opens sign in", async () => {
     stubApi({
       "GET /api/v1/auth/me": () => jsonResponse(200, testUser),
+      "GET /api/v1/version": serverVersion,
       "GET /api/v1/libraries": noLibraries,
       "POST /api/v1/auth/logout": () => jsonResponse(204),
     });

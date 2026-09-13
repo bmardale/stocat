@@ -52,3 +52,4 @@ export * from "./updateLibraryQuotaInputBody.ts";
 export * from "./updateUserQuotaInputBody.ts";
 export * from "./upload.ts";
 export * from "./user.ts";
+export * from "./versionOutputBody.ts";
