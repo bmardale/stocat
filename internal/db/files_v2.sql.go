@@ -7,6 +7,8 @@ package db
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const getV2CurrentFileByPublicIDAndOwner = `-- name: GetV2CurrentFileByPublicIDAndOwner :one
@@ -78,4 +80,194 @@ func (q *Queries) GetV2CurrentFileByPublicIDAndOwner(ctx context.Context, arg Ge
 		&i.ObjectKey,
 	)
 	return i, err
+}
+
+const getV2FileNodeByPublicIDAndOwner = `-- name: GetV2FileNodeByPublicIDAndOwner :one
+SELECT n.id, n.public_id, n.library_id, n.key_epoch, n.visible_encryption_generation, n.trashed_at,
+       l.public_id AS library_public_id
+FROM nodes n
+JOIN libraries l ON l.id = n.library_id
+WHERE n.public_id = $1 AND n.kind = 'file'
+  AND l.owner_id = $2 AND l.encryption_format = 'v2'
+`
+
+type GetV2FileNodeByPublicIDAndOwnerParams struct {
+	NodePublicID string
+	OwnerID      int64
+}
+
+type GetV2FileNodeByPublicIDAndOwnerRow struct {
+	ID                          int64
+	PublicID                    string
+	LibraryID                   int64
+	KeyEpoch                    int64
+	VisibleEncryptionGeneration int64
+	TrashedAt                   pgtype.Timestamptz
+	LibraryPublicID             string
+}
+
+func (q *Queries) GetV2FileNodeByPublicIDAndOwner(ctx context.Context, arg GetV2FileNodeByPublicIDAndOwnerParams) (GetV2FileNodeByPublicIDAndOwnerRow, error) {
+	row := q.db.QueryRow(ctx, getV2FileNodeByPublicIDAndOwner, arg.NodePublicID, arg.OwnerID)
+	var i GetV2FileNodeByPublicIDAndOwnerRow
+	err := row.Scan(
+		&i.ID,
+		&i.PublicID,
+		&i.LibraryID,
+		&i.KeyEpoch,
+		&i.VisibleEncryptionGeneration,
+		&i.TrashedAt,
+		&i.LibraryPublicID,
+	)
+	return i, err
+}
+
+const listV2TrashedFilesByOwner = `-- name: ListV2TrashedFilesByOwner :many
+SELECT n.id, n.public_id, n.name_token, n.encrypted_metadata, n.metadata_signature, n.key_epoch,
+       n.metadata_revision, n.revision, n.trashed_at,
+       l.public_id AS library_public_id, parent.public_id AS parent_public_id,
+       e.ciphertext AS parent_envelope, e.owner_signature AS parent_envelope_signature
+FROM nodes n
+JOIN libraries l ON l.id = n.library_id
+JOIN nodes parent ON parent.id = n.parent_id
+JOIN node_key_envelopes e ON e.child_node_id = n.id AND e.parent_node_id = n.parent_id
+    AND e.child_epoch = n.key_epoch AND e.generation = n.visible_encryption_generation
+WHERE l.owner_id = $1 AND l.encryption_format = 'v2' AND n.kind = 'file'
+  AND n.trashed_at IS NOT NULL AND n.id > $2
+ORDER BY n.id
+LIMIT $3
+`
+
+type ListV2TrashedFilesByOwnerParams struct {
+	OwnerID   int64
+	AfterID   int64
+	PageLimit int32
+}
+
+type ListV2TrashedFilesByOwnerRow struct {
+	ID                      int64
+	PublicID                string
+	NameToken               []byte
+	EncryptedMetadata       []byte
+	MetadataSignature       []byte
+	KeyEpoch                int64
+	MetadataRevision        int64
+	Revision                int64
+	TrashedAt               pgtype.Timestamptz
+	LibraryPublicID         string
+	ParentPublicID          string
+	ParentEnvelope          []byte
+	ParentEnvelopeSignature []byte
+}
+
+func (q *Queries) ListV2TrashedFilesByOwner(ctx context.Context, arg ListV2TrashedFilesByOwnerParams) ([]ListV2TrashedFilesByOwnerRow, error) {
+	rows, err := q.db.Query(ctx, listV2TrashedFilesByOwner, arg.OwnerID, arg.AfterID, arg.PageLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListV2TrashedFilesByOwnerRow
+	for rows.Next() {
+		var i ListV2TrashedFilesByOwnerRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.PublicID,
+			&i.NameToken,
+			&i.EncryptedMetadata,
+			&i.MetadataSignature,
+			&i.KeyEpoch,
+			&i.MetadataRevision,
+			&i.Revision,
+			&i.TrashedAt,
+			&i.LibraryPublicID,
+			&i.ParentPublicID,
+			&i.ParentEnvelope,
+			&i.ParentEnvelopeSignature,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockV2NodeEnvelope = `-- name: LockV2NodeEnvelope :one
+SELECT child_node_id, parent_node_id, child_epoch, parent_epoch, generation, ciphertext, owner_signature, library_id FROM node_key_envelopes
+WHERE child_node_id = $1 AND child_epoch = $2 AND generation = $3
+FOR UPDATE
+`
+
+type LockV2NodeEnvelopeParams struct {
+	ChildNodeID int64
+	ChildEpoch  int64
+	Generation  int64
+}
+
+func (q *Queries) LockV2NodeEnvelope(ctx context.Context, arg LockV2NodeEnvelopeParams) (NodeKeyEnvelope, error) {
+	row := q.db.QueryRow(ctx, lockV2NodeEnvelope, arg.ChildNodeID, arg.ChildEpoch, arg.Generation)
+	var i NodeKeyEnvelope
+	err := row.Scan(
+		&i.ChildNodeID,
+		&i.ParentNodeID,
+		&i.ChildEpoch,
+		&i.ParentEpoch,
+		&i.Generation,
+		&i.Ciphertext,
+		&i.OwnerSignature,
+		&i.LibraryID,
+	)
+	return i, err
+}
+
+const moveV2FileNode = `-- name: MoveV2FileNode :execrows
+UPDATE nodes
+SET parent_id = $1, name_token = $2, updated_at = now()
+WHERE id = $3 AND kind = 'file' AND trashed_at IS NULL
+`
+
+type MoveV2FileNodeParams struct {
+	ParentID  pgtype.Int8
+	NameToken []byte
+	ID        int64
+}
+
+func (q *Queries) MoveV2FileNode(ctx context.Context, arg MoveV2FileNodeParams) (int64, error) {
+	result, err := q.db.Exec(ctx, moveV2FileNode, arg.ParentID, arg.NameToken, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const updateNodeKeyEnvelopeParent = `-- name: UpdateNodeKeyEnvelopeParent :exec
+UPDATE node_key_envelopes
+SET parent_node_id = $1, parent_epoch = $2,
+    ciphertext = $3, owner_signature = $4
+WHERE child_node_id = $5 AND child_epoch = $6
+  AND generation = $7
+`
+
+type UpdateNodeKeyEnvelopeParentParams struct {
+	ParentNodeID   int64
+	ParentEpoch    int64
+	Ciphertext     []byte
+	OwnerSignature []byte
+	ChildNodeID    int64
+	ChildEpoch     int64
+	Generation     int64
+}
+
+func (q *Queries) UpdateNodeKeyEnvelopeParent(ctx context.Context, arg UpdateNodeKeyEnvelopeParentParams) error {
+	_, err := q.db.Exec(ctx, updateNodeKeyEnvelopeParent,
+		arg.ParentNodeID,
+		arg.ParentEpoch,
+		arg.Ciphertext,
+		arg.OwnerSignature,
+		arg.ChildNodeID,
+		arg.ChildEpoch,
+		arg.Generation,
+	)
+	return err
 }

@@ -4,23 +4,32 @@
  * stocat
  * OpenAPI spec version: 0.0.1
  */
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import type {
   DataTag,
   DefinedInitialDataOptions,
   DefinedUseQueryResult,
+  MutationFunction,
   QueryClient,
   QueryFunction,
   QueryKey,
   UndefinedInitialDataOptions,
+  UseMutationOptions,
+  UseMutationResult,
   UseQueryOptions,
   UseQueryResult,
 } from "@tanstack/react-query";
 
-import type { EncryptedFileDetails, Problem } from "../model";
+import type {
+  EncryptedFileDetails,
+  EncryptedFilesTrashListParams,
+  EncryptedMoveInputBody,
+  EncryptedTrashPage,
+  Problem,
+} from "../model";
 
 import { apiFetch } from "../../fetcher.ts";
-import type { ErrorType } from "../../fetcher.ts";
+import type { ErrorType, BodyType } from "../../fetcher.ts";
 
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
@@ -39,6 +48,236 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
   return result;
 };
 
+export const getEncryptedFilesTrashListUrl = (params?: EncryptedFilesTrashListParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : String(value));
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/v2/files/trash?${stringifiedParams}`
+    : `/api/v2/files/trash`;
+};
+
+/**
+ * @summary List trashed encrypted files
+ */
+export const encryptedFilesTrashList = async (
+  params?: EncryptedFilesTrashListParams,
+  options?: Parameters<typeof apiFetch>[1],
+): Promise<EncryptedTrashPage> => {
+  return apiFetch<EncryptedTrashPage>(getEncryptedFilesTrashListUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getEncryptedFilesTrashListQueryKey = (params?: EncryptedFilesTrashListParams) => {
+  return [`/api/v2/files/trash`, ...(params ? [params] : [])] as const;
+};
+
+export const getEncryptedFilesTrashListQueryOptions = <
+  TData = Awaited<ReturnType<typeof encryptedFilesTrashList>>,
+  TError = ErrorType<Problem>,
+>(
+  params?: EncryptedFilesTrashListParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof encryptedFilesTrashList>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getEncryptedFilesTrashListQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof encryptedFilesTrashList>>> = ({
+    signal,
+  }) => encryptedFilesTrashList(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof encryptedFilesTrashList>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type EncryptedFilesTrashListQueryResult = NonNullable<
+  Awaited<ReturnType<typeof encryptedFilesTrashList>>
+>;
+export type EncryptedFilesTrashListQueryError = ErrorType<Problem>;
+
+export function useEncryptedFilesTrashList<
+  TData = Awaited<ReturnType<typeof encryptedFilesTrashList>>,
+  TError = ErrorType<Problem>,
+>(
+  params: undefined | EncryptedFilesTrashListParams,
+  options: {
+    query: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof encryptedFilesTrashList>>, TError, TData>
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof encryptedFilesTrashList>>,
+          TError,
+          Awaited<ReturnType<typeof encryptedFilesTrashList>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useEncryptedFilesTrashList<
+  TData = Awaited<ReturnType<typeof encryptedFilesTrashList>>,
+  TError = ErrorType<Problem>,
+>(
+  params?: EncryptedFilesTrashListParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof encryptedFilesTrashList>>, TError, TData>
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof encryptedFilesTrashList>>,
+          TError,
+          Awaited<ReturnType<typeof encryptedFilesTrashList>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useEncryptedFilesTrashList<
+  TData = Awaited<ReturnType<typeof encryptedFilesTrashList>>,
+  TError = ErrorType<Problem>,
+>(
+  params?: EncryptedFilesTrashListParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof encryptedFilesTrashList>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary List trashed encrypted files
+ */
+
+export function useEncryptedFilesTrashList<
+  TData = Awaited<ReturnType<typeof encryptedFilesTrashList>>,
+  TError = ErrorType<Problem>,
+>(
+  params?: EncryptedFilesTrashListParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof encryptedFilesTrashList>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getEncryptedFilesTrashListQueryOptions(params, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getEncryptedFilesDeleteUrl = (id: string) => {
+  return `/api/v2/files/${id}`;
+};
+
+/**
+ * @summary Move an encrypted file to trash
+ */
+export const encryptedFilesDelete = async (
+  id: string,
+  options?: Parameters<typeof apiFetch>[1],
+): Promise<void> => {
+  return apiFetch<void>(getEncryptedFilesDeleteUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getEncryptedFilesDeleteMutationKey = () => ["encryptedFilesDelete"] as const;
+
+export const getEncryptedFilesDeleteMutationOptions = <
+  TError = ErrorType<Problem>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof encryptedFilesDelete>>,
+    TError,
+    EncryptedFilesDeleteMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof apiFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof encryptedFilesDelete>>,
+  TError,
+  EncryptedFilesDeleteMutationVariables,
+  TContext
+> => {
+  const mutationKey = getEncryptedFilesDeleteMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof encryptedFilesDelete>>,
+    EncryptedFilesDeleteMutationVariables
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return encryptedFilesDelete(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type EncryptedFilesDeleteMutationResult = NonNullable<
+  Awaited<ReturnType<typeof encryptedFilesDelete>>
+>;
+
+export type EncryptedFilesDeleteMutationError = ErrorType<Problem>;
+export type EncryptedFilesDeleteMutationVariables = { id: string };
+
+/**
+ * @summary Move an encrypted file to trash
+ */
+export const useEncryptedFilesDelete = <TError = ErrorType<Problem>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof encryptedFilesDelete>>,
+      TError,
+      EncryptedFilesDeleteMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof encryptedFilesDelete>>,
+  TError,
+  EncryptedFilesDeleteMutationVariables,
+  TContext
+> => {
+  return useMutation(getEncryptedFilesDeleteMutationOptions(options), queryClient);
+};
 export const getEncryptedFilesGetUrl = (id: string) => {
   return `/api/v2/files/${id}`;
 };
@@ -301,3 +540,283 @@ export function useEncryptedFilesContent<
 
   return withQueryKey(query, queryOptions.queryKey);
 }
+
+export const getEncryptedFilesMoveUrl = (id: string) => {
+  return `/api/v2/files/${id}/move`;
+};
+
+/**
+ * The parent envelope names the destination folder and uses the next envelope revision.
+ * @summary Move an encrypted file within its library
+ */
+export const encryptedFilesMove = async (
+  id: string,
+  encryptedMoveInputBody: EncryptedMoveInputBody,
+  options?: Parameters<typeof apiFetch>[1],
+): Promise<void> => {
+  const getHeaders = (
+    h?: NonNullable<RequestInit["headers"]>,
+  ): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(
+          h as Iterable<Iterable<string>>,
+          (entry) => Array.from(entry) as [string, string],
+        ),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+  return apiFetch<void>(getEncryptedFilesMoveUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...getHeaders(options?.headers) },
+    body: JSON.stringify(encryptedMoveInputBody),
+  });
+};
+
+export const getEncryptedFilesMoveMutationKey = () => ["encryptedFilesMove"] as const;
+
+export const getEncryptedFilesMoveMutationOptions = <
+  TError = ErrorType<Problem>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof encryptedFilesMove>>,
+    TError,
+    EncryptedFilesMoveMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof apiFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof encryptedFilesMove>>,
+  TError,
+  EncryptedFilesMoveMutationVariables,
+  TContext
+> => {
+  const mutationKey = getEncryptedFilesMoveMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof encryptedFilesMove>>,
+    EncryptedFilesMoveMutationVariables
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return encryptedFilesMove(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type EncryptedFilesMoveMutationResult = NonNullable<
+  Awaited<ReturnType<typeof encryptedFilesMove>>
+>;
+export type EncryptedFilesMoveMutationBody = BodyType<EncryptedMoveInputBody>;
+export type EncryptedFilesMoveMutationError = ErrorType<Problem>;
+export type EncryptedFilesMoveMutationVariables = {
+  id: string;
+  data: BodyType<EncryptedMoveInputBody>;
+};
+
+/**
+ * @summary Move an encrypted file within its library
+ */
+export const useEncryptedFilesMove = <TError = ErrorType<Problem>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof encryptedFilesMove>>,
+      TError,
+      EncryptedFilesMoveMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof encryptedFilesMove>>,
+  TError,
+  EncryptedFilesMoveMutationVariables,
+  TContext
+> => {
+  return useMutation(getEncryptedFilesMoveMutationOptions(options), queryClient);
+};
+export const getEncryptedFilesDeletePermanentlyUrl = (id: string) => {
+  return `/api/v2/files/${id}/permanent`;
+};
+
+/**
+ * @summary Permanently delete a trashed encrypted file
+ */
+export const encryptedFilesDeletePermanently = async (
+  id: string,
+  options?: Parameters<typeof apiFetch>[1],
+): Promise<void> => {
+  return apiFetch<void>(getEncryptedFilesDeletePermanentlyUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getEncryptedFilesDeletePermanentlyMutationKey = () =>
+  ["encryptedFilesDeletePermanently"] as const;
+
+export const getEncryptedFilesDeletePermanentlyMutationOptions = <
+  TError = ErrorType<Problem>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof encryptedFilesDeletePermanently>>,
+    TError,
+    EncryptedFilesDeletePermanentlyMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof apiFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof encryptedFilesDeletePermanently>>,
+  TError,
+  EncryptedFilesDeletePermanentlyMutationVariables,
+  TContext
+> => {
+  const mutationKey = getEncryptedFilesDeletePermanentlyMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof encryptedFilesDeletePermanently>>,
+    EncryptedFilesDeletePermanentlyMutationVariables
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return encryptedFilesDeletePermanently(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type EncryptedFilesDeletePermanentlyMutationResult = NonNullable<
+  Awaited<ReturnType<typeof encryptedFilesDeletePermanently>>
+>;
+
+export type EncryptedFilesDeletePermanentlyMutationError = ErrorType<Problem>;
+export type EncryptedFilesDeletePermanentlyMutationVariables = { id: string };
+
+/**
+ * @summary Permanently delete a trashed encrypted file
+ */
+export const useEncryptedFilesDeletePermanently = <TError = ErrorType<Problem>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof encryptedFilesDeletePermanently>>,
+      TError,
+      EncryptedFilesDeletePermanentlyMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof encryptedFilesDeletePermanently>>,
+  TError,
+  EncryptedFilesDeletePermanentlyMutationVariables,
+  TContext
+> => {
+  return useMutation(getEncryptedFilesDeletePermanentlyMutationOptions(options), queryClient);
+};
+export const getEncryptedFilesRestoreUrl = (id: string) => {
+  return `/api/v2/files/${id}/restore`;
+};
+
+/**
+ * @summary Restore a trashed encrypted file
+ */
+export const encryptedFilesRestore = async (
+  id: string,
+  options?: Parameters<typeof apiFetch>[1],
+): Promise<void> => {
+  return apiFetch<void>(getEncryptedFilesRestoreUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getEncryptedFilesRestoreMutationKey = () => ["encryptedFilesRestore"] as const;
+
+export const getEncryptedFilesRestoreMutationOptions = <
+  TError = ErrorType<Problem>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof encryptedFilesRestore>>,
+    TError,
+    EncryptedFilesRestoreMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof apiFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof encryptedFilesRestore>>,
+  TError,
+  EncryptedFilesRestoreMutationVariables,
+  TContext
+> => {
+  const mutationKey = getEncryptedFilesRestoreMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof encryptedFilesRestore>>,
+    EncryptedFilesRestoreMutationVariables
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return encryptedFilesRestore(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type EncryptedFilesRestoreMutationResult = NonNullable<
+  Awaited<ReturnType<typeof encryptedFilesRestore>>
+>;
+
+export type EncryptedFilesRestoreMutationError = ErrorType<Problem>;
+export type EncryptedFilesRestoreMutationVariables = { id: string };
+
+/**
+ * @summary Restore a trashed encrypted file
+ */
+export const useEncryptedFilesRestore = <TError = ErrorType<Problem>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof encryptedFilesRestore>>,
+      TError,
+      EncryptedFilesRestoreMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof encryptedFilesRestore>>,
+  TError,
+  EncryptedFilesRestoreMutationVariables,
+  TContext
+> => {
+  return useMutation(getEncryptedFilesRestoreMutationOptions(options), queryClient);
+};

@@ -76,10 +76,11 @@ func newV2Env(t *testing.T) v2Env {
 	if err != nil {
 		t.Fatal(err)
 	}
-	queue, err := service.ConfigureQueue(stores)
+	queue, err := service.ConfigureQueue(stores, fileService.AddWorkers)
 	if err != nil {
 		t.Fatal(err)
 	}
+	fileService.UseQueue(queue)
 	service.Register(v1)
 	service.RegisterV2(v2)
 	if err := queue.Start(t.Context()); err != nil {
@@ -190,16 +191,20 @@ func (e v2Env) metadata(t *testing.T, node string) encryption.SignedRecord {
 	}))
 }
 
+func (e v2Env) envelope(t *testing.T, parent, child string, parentEpoch, revision int) encryption.SignedRecord {
+	t.Helper()
+	return e.sign(t, e.record(t, "parent-envelope", map[string]string{
+		"account_id": e.account, "library_id": e.library, "parent_id": parent, "child_id": child,
+		"parent_epoch": strconv.Itoa(parentEpoch), "child_epoch": "1", "generation": "1", "revision": strconv.Itoa(revision),
+		"nonce": encode64(randomV2Bytes(t, 24)), "ciphertext": encode64(randomV2Bytes(t, 48)),
+	}))
+}
+
 func (e v2Env) newFile(t *testing.T, node string, size int, parentEpoch int) map[string]any {
 	t.Helper()
 	return map[string]any{
 		"library_id": e.library, "size": size, "metadata": e.metadata(t, node),
-		"name_token": encode64(randomV2Bytes(t, 32)),
-		"parent_envelope": e.sign(t, e.record(t, "parent-envelope", map[string]string{
-			"account_id": e.account, "library_id": e.library, "parent_id": e.root, "child_id": node,
-			"parent_epoch": strconv.Itoa(parentEpoch), "child_epoch": "1", "generation": "1", "revision": "1",
-			"nonce": encode64(randomV2Bytes(t, 24)), "ciphertext": encode64(randomV2Bytes(t, 48)),
-		})),
+		"name_token": encode64(randomV2Bytes(t, 32)), "parent_envelope": e.envelope(t, e.root, node, parentEpoch, 1),
 	}
 }
 
@@ -360,4 +365,63 @@ func TestEncryptedUploadsPublishFiles(t *testing.T) {
 	if failed := waitForUploadState(t, env.queries, env.userID, upload.ID, "failed"); failed.FailureCode.String != "invalid_encryption" {
 		t.Fatalf("tampered upload failure = %q", failed.FailureCode.String)
 	}
+}
+
+func TestEncryptedFileMutations(t *testing.T) {
+	env := newV2Env(t)
+	file := newV2File(t, 3)
+	nodeID := id.New(id.Node)
+	upload := env.start(t, env.newFile(t, nodeID, len(file.ciphertext), 1), file.ciphertext)
+	requireStatus(t, env.api.Post("/api/v2/uploads/"+upload.ID+"/complete", env.cookie,
+		env.completion(t, nodeID, id.New(id.FileVersion), file, 2)), http.StatusOK)
+	waitForUpload(t, env.queries, env.userID, upload.ID)
+	folderID := id.New(id.Node)
+	requireStatus(t, env.api.Post("/api/v2/libraries/"+env.library+"/folders", env.cookie, map[string]any{
+		"metadata": env.metadata(t, folderID), "parent_envelope": env.envelope(t, env.root, folderID, 1, 1),
+		"name_token": encode64(randomV2Bytes(t, 32)),
+	}), http.StatusCreated)
+
+	moveURL := "/api/v2/files/" + nodeID + "/move"
+	move := func(parent string, revision int) map[string]any {
+		return map[string]any{"parent_envelope": env.envelope(t, parent, nodeID, 1, revision), "name_token": encode64(randomV2Bytes(t, 32))}
+	}
+	requireStatus(t, env.api.Post(moveURL, env.cookie, `If-Match: "1"`, move(folderID, 3)), http.StatusUnprocessableEntity)
+	requireStatus(t, env.api.Post(moveURL, env.cookie, `If-Match: "2"`, move(folderID, 2)), http.StatusConflict)
+	requireStatus(t, env.api.Post(moveURL, env.cookie, `If-Match: "1"`, move(id.New(id.Node), 2)), http.StatusNotFound)
+	requireStatus(t, env.api.Post(moveURL, env.cookie, `If-Match: "1"`, move(folderID, 2)), http.StatusNoContent)
+	response := env.api.Get("/api/v2/libraries/"+env.library+"/nodes?parent_id="+folderID, env.cookie)
+	requireStatus(t, response, http.StatusOK)
+	var page struct {
+		Items []vault.EncryptedNode `json:"items"`
+	}
+	decodeBody(t, response.Body.Bytes(), &page)
+	if len(page.Items) != 1 || page.Items[0].ID != nodeID || page.Items[0].ParentID != folderID {
+		t.Fatalf("destination folder = %+v", page.Items)
+	}
+
+	fileURL := "/api/v2/files/" + nodeID
+	requireStatus(t, env.api.Delete(fileURL, env.cookie), http.StatusNoContent)
+	requireStatus(t, env.api.Get(fileURL, env.cookie), http.StatusNotFound)
+	requireStatus(t, env.api.Post(moveURL, env.cookie, `If-Match: "2"`, move(env.root, 3)), http.StatusNotFound)
+	response = env.api.Get("/api/v2/files/trash", env.cookie)
+	requireStatus(t, response, http.StatusOK)
+	var trash struct {
+		Items []files.EncryptedTrashedFile `json:"items"`
+	}
+	decodeBody(t, response.Body.Bytes(), &trash)
+	if len(trash.Items) != 1 || trash.Items[0].ID != nodeID || trash.Items[0].ParentID != folderID {
+		t.Fatalf("encrypted trash = %+v", trash.Items)
+	}
+	response = env.api.Get("/api/v1/files/trash", env.cookie)
+	requireStatus(t, response, http.StatusOK)
+	decodeBody(t, response.Body.Bytes(), &trash)
+	if len(trash.Items) != 0 {
+		t.Fatalf("v1 trash includes v2 files: %+v", trash.Items)
+	}
+	requireStatus(t, env.api.Post(fileURL+"/restore", env.cookie), http.StatusNoContent)
+	requireStatus(t, env.api.Get(fileURL, env.cookie), http.StatusOK)
+	requireStatus(t, env.api.Delete(fileURL+"/permanent", env.cookie), http.StatusNotFound)
+	requireStatus(t, env.api.Delete(fileURL, env.cookie), http.StatusNoContent)
+	requireStatus(t, env.api.Delete(fileURL+"/permanent", env.cookie), http.StatusNoContent)
+	requireStatus(t, env.api.Post(fileURL+"/restore", env.cookie), http.StatusNotFound)
 }

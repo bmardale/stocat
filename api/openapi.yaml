@@ -604,6 +604,20 @@ components:
         - created_at
         - updated_at
       type: object
+    EncryptedMoveInputBody:
+      additionalProperties: false
+      properties:
+        name_token:
+          maxLength: 43
+          minLength: 43
+          pattern: ^[A-Za-z0-9_-]+$
+          type: string
+        parent_envelope:
+          $ref: "#/components/schemas/SignedRecord"
+      required:
+        - parent_envelope
+        - name_token
+      type: object
     EncryptedNode:
       additionalProperties: false
       properties:
@@ -661,6 +675,58 @@ components:
           type: string
       required:
         - items
+      type: object
+    EncryptedTrashPage:
+      additionalProperties: false
+      properties:
+        items:
+          items:
+            $ref: "#/components/schemas/EncryptedTrashedFile"
+          type: array
+        next_cursor:
+          type: string
+      required:
+        - items
+      type: object
+    EncryptedTrashedFile:
+      additionalProperties: false
+      properties:
+        delete_after:
+          format: date-time
+          type: string
+        id:
+          type: string
+        key_epoch:
+          type: string
+        library_id:
+          type: string
+        metadata:
+          $ref: "#/components/schemas/SignedRecord"
+        metadata_revision:
+          type: string
+        name_token:
+          type: string
+        parent_envelope:
+          $ref: "#/components/schemas/SignedRecord"
+        parent_id:
+          type: string
+        revision:
+          type: string
+        trashed_at:
+          format: date-time
+          type: string
+      required:
+        - id
+        - library_id
+        - parent_id
+        - key_epoch
+        - metadata_revision
+        - revision
+        - name_token
+        - metadata
+        - parent_envelope
+        - trashed_at
+        - delete_after
       type: object
     ErrorDetail:
       additionalProperties: false
@@ -5791,7 +5857,121 @@ paths:
       summary: Publish the next account encryption identity
       tags:
         - Encryption
+  /api/v2/files/trash:
+    get:
+      operationId: encrypted-files-trash-list
+      parameters:
+        - explode: false
+          in: query
+          name: cursor
+          schema:
+            maxLength: 64
+            type: string
+        - explode: false
+          in: query
+          name: limit
+          schema:
+            default: 100
+            format: int32
+            maximum: 200
+            minimum: 1
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EncryptedTrashPage"
+          description: OK
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+      security:
+        - session: []
+      summary: List trashed encrypted files
+      tags:
+        - Encrypted files
   /api/v2/files/{id}:
+    delete:
+      operationId: encrypted-files-delete
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      responses:
+        "204":
+          description: No Content
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+      security:
+        - session: []
+      summary: Move an encrypted file to trash
+      tags:
+        - Encrypted files
     get:
       operationId: encrypted-files-get
       parameters:
@@ -5920,6 +6100,206 @@ paths:
       security:
         - session: []
       summary: Stream the ciphertext of an encrypted file
+      tags:
+        - Encrypted files
+  /api/v2/files/{id}/move:
+    post:
+      description: The parent envelope names the destination folder and uses the next envelope revision.
+      operationId: encrypted-files-move
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+        - description: Send the revision of the current parent envelope in quotes.
+          in: header
+          name: If-Match
+          required: true
+          schema:
+            description: Send the revision of the current parent envelope in quotes.
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EncryptedMoveInputBody"
+        required: true
+      responses:
+        "204":
+          description: No Content
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Conflict
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+      security:
+        - session: []
+      summary: Move an encrypted file within its library
+      tags:
+        - Encrypted files
+  /api/v2/files/{id}/permanent:
+    delete:
+      operationId: encrypted-files-delete-permanently
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      responses:
+        "204":
+          description: No Content
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Conflict
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
+      security:
+        - session: []
+      summary: Permanently delete a trashed encrypted file
+      tags:
+        - Encrypted files
+  /api/v2/files/{id}/restore:
+    post:
+      operationId: encrypted-files-restore
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      responses:
+        "204":
+          description: No Content
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Conflict
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+      security:
+        - session: []
+      summary: Restore a trashed encrypted file
       tags:
         - Encrypted files
   /api/v2/libraries:

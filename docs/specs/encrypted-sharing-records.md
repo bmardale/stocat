@@ -347,6 +347,27 @@ Before the client uses plaintext, it must apply these checks:
 - Verify each covering frame before it releases plaintext from that frame.
 - Verify a complete download against `ciphertext_hash` and the expected frame count.
 
+## Owner file changes
+
+| Method | Path | Behavior |
+| --- | --- | --- |
+| POST | `/api/v2/files/{id}/move` | Move a file to another folder in the same library. |
+| DELETE | `/api/v2/files/{id}` | Move a file to trash. |
+| POST | `/api/v2/files/{id}/restore` | Restore a trashed file. |
+| DELETE | `/api/v2/files/{id}/permanent` | Permanently delete a trashed file. |
+| GET | `/api/v2/files/trash` | List trashed files with their metadata and parent envelopes. |
+
+A move request contains a new signed parent envelope and a new name token.
+The envelope names the destination folder, its key epoch, the file, the file key epoch, and generation 1.
+Its revision is the current envelope revision plus 1.
+`If-Match` contains the current envelope revision in quotes. A different value returns status 409.
+The server changes the parent, the name token, and the envelope in one transaction.
+
+The server does not move v2 files between libraries.
+The client must copy the file with new node identifiers and keys, and then delete the original.
+Trash, restoration, and permanent deletion keep the node key and its records.
+The trash purge job also deletes v2 files, together with their version keys and parent envelopes.
+
 ## Client account formats
 
 The server stores these formats only as ciphertext. Browser clients must use them exactly.

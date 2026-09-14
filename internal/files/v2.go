@@ -41,6 +41,7 @@ type encryptedDetailsOutput struct{ Body EncryptedFileDetails }
 func (s *Service) RegisterV2(api huma.API) {
 	group := huma.NewGroup(api, "/files")
 	group.UseSimpleModifier(func(op *huma.Operation) { op.Tags = []string{"Encrypted files"} })
+	s.registerV2Mutations(group)
 	huma.Register(group, huma.Operation{
 		OperationID: "encrypted-files-get", Method: http.MethodGet, Path: "/{id}",
 		Summary: "Get the current version records of an encrypted file", Errors: []int{http.StatusNotFound},
