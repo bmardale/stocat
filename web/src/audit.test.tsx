@@ -46,7 +46,8 @@ describe("activity", () => {
       "GET /api/v1/libraries": noLibraries,
       "GET /api/v1/account-events": () =>
         jsonResponse(200, { items: [quotaChanged, signedIn], next_cursor: signedIn.id }),
-      "GET /api/v1/account-events?cursor=aud_signed_in": () => jsonResponse(200, { items: [purged] }),
+      "GET /api/v1/account-events?cursor=aud_signed_in": () =>
+        jsonResponse(200, { items: [purged] }),
     });
     await renderApp("/settings/activity");
     expect(await screen.findByRole("heading", { name: "Activity" })).toBeDefined();
