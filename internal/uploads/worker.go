@@ -85,6 +85,7 @@ func (s *Service) ConfigureQueue(stores *storage.Service, register ...func(*rive
 		SoftStopTimeout: 30 * time.Second,
 		Queues: map[string]river.QueueConfig{
 			"publication": {MaxWorkers: 2},
+			"replication": {MaxWorkers: 2},
 			"maintenance": {MaxWorkers: 1},
 		},
 		PeriodicJobs: periodicJobs,

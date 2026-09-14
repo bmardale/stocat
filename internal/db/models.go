@@ -61,6 +61,19 @@ type Library struct {
 	UpdatedAt      pgtype.Timestamptz
 }
 
+type LibraryReplication struct {
+	ID                   int64
+	PublicID             string
+	OwnerID              int64
+	SourceLibraryID      int64
+	DestinationLibraryID int64
+	State                string
+	LastError            pgtype.Text
+	LastSyncedAt         pgtype.Timestamptz
+	CreatedAt            pgtype.Timestamptz
+	UpdatedAt            pgtype.Timestamptz
+}
+
 type Node struct {
 	ID               int64
 	PublicID         string
@@ -106,6 +119,12 @@ type PasskeyUser struct {
 type QuotaSetting struct {
 	ID                bool
 	DefaultLimitBytes pgtype.Int8
+}
+
+type ReplicationNode struct {
+	ReplicationID     int64
+	SourceNodeID      int64
+	DestinationNodeID int64
 }
 
 type Session struct {

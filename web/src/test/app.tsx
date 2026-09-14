@@ -33,6 +33,9 @@ export function stubApi(handlers: Record<string, Handler>) {
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     const key = `${init?.method ?? "GET"} ${url}`;
     const handler = handlers[key];
+    if (!handler && key === "GET /api/v1/replications") {
+      return jsonResponse(200, []);
+    }
     if (!handler) {
       throw new Error(`Unexpected request: ${key}`);
     }

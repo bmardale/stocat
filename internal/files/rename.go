@@ -7,6 +7,7 @@ import (
 	"github.com/bmardale/stocat/internal/auth"
 	"github.com/bmardale/stocat/internal/db"
 	"github.com/bmardale/stocat/internal/libraries"
+	"github.com/bmardale/stocat/internal/replication"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -28,6 +29,10 @@ type nodeOutput struct{ Body libraries.Node }
 func (s *Service) rename(ctx context.Context, input *renameInput) (*nodeOutput, error) {
 	file, err := s.loadNode(ctx, input.ID)
 	if err != nil {
+		return nil, err
+	}
+	user, _ := auth.UserFromContext(ctx)
+	if err := replication.EnsureLibraryWritable(ctx, s.queries, file.LibraryPublicID, user.ID); err != nil {
 		return nil, err
 	}
 	name, encryptedName, nameToken, err := libraries.ValidateNodeName(file.EncryptionMode, input.Body.Name, input.Body.EncryptedName, input.Body.NameToken)

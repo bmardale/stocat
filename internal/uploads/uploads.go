@@ -18,6 +18,7 @@ import (
 	"github.com/bmardale/stocat/internal/db"
 	"github.com/bmardale/stocat/internal/platform/id"
 	"github.com/bmardale/stocat/internal/quota"
+	"github.com/bmardale/stocat/internal/replication"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -175,6 +176,9 @@ func (s *Service) create(ctx context.Context, input *createInput) (*uploadOutput
 		}
 		library, err := q.LockLibraryForUpload(ctx, db.LockLibraryForUploadParams{PublicID: input.Body.LibraryID, OwnerID: user.ID})
 		if err != nil {
+			return err
+		}
+		if err := replication.EnsureLibraryWritable(ctx, q, input.Body.LibraryID, user.ID); err != nil {
 			return err
 		}
 		parentID := library.RootNodeID
