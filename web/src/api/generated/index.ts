@@ -4,6 +4,7 @@ export * from "./audit/audit.ts";
 export * from "./auth/auth.ts";
 export * from "./default/default.ts";
 export * from "./encrypted-libraries/encrypted-libraries.ts";
+export * from "./encrypted-uploads/encrypted-uploads.ts";
 export * from "./encryption/encryption.ts";
 export * from "./files/files.ts";
 export * from "./libraries/libraries.ts";

@@ -107,6 +107,7 @@ type FileVersionKey struct {
 	ContentID           []byte
 	EncryptedContentKey []byte
 	SignedManifest      []byte
+	ManifestSignature   []byte
 }
 
 type InviteCode struct {
@@ -318,32 +319,42 @@ type Tag struct {
 }
 
 type UploadSession struct {
-	ID                 int64
-	PublicID           string
-	OwnerID            int64
-	LibraryID          int64
-	ParentID           int64
-	TargetNodeID       pgtype.Int8
-	ExpectedRevision   pgtype.Int8
-	Name               pgtype.Text
-	EncryptedName      []byte
-	NameToken          []byte
-	DeclaredSize       int64
-	UploadOffset       int64
-	StagingKey         string
-	DestinationKey     string
-	State              string
-	DedupFingerprint   []byte
-	EncryptionFormat   pgtype.Text
-	EncryptedFileKey   []byte
-	PublishedNodeID    pgtype.Int8
-	PublishedVersionID pgtype.Int8
-	FailureCode        pgtype.Text
-	FailureMessage     pgtype.Text
-	ExpiresAt          pgtype.Timestamptz
-	CreatedAt          pgtype.Timestamptz
-	UpdatedAt          pgtype.Timestamptz
-	CompletedAt        pgtype.Timestamptz
+	ID                      int64
+	PublicID                string
+	OwnerID                 int64
+	LibraryID               int64
+	ParentID                int64
+	TargetNodeID            pgtype.Int8
+	ExpectedRevision        pgtype.Int8
+	Name                    pgtype.Text
+	EncryptedName           []byte
+	NameToken               []byte
+	DeclaredSize            int64
+	UploadOffset            int64
+	StagingKey              string
+	DestinationKey          string
+	State                   string
+	DedupFingerprint        []byte
+	EncryptionFormat        pgtype.Text
+	EncryptedFileKey        []byte
+	PublishedNodeID         pgtype.Int8
+	PublishedVersionID      pgtype.Int8
+	FailureCode             pgtype.Text
+	FailureMessage          pgtype.Text
+	ExpiresAt               pgtype.Timestamptz
+	CreatedAt               pgtype.Timestamptz
+	UpdatedAt               pgtype.Timestamptz
+	CompletedAt             pgtype.Timestamptz
+	NodePublicID            pgtype.Text
+	EncryptedMetadata       []byte
+	MetadataSignature       []byte
+	ParentEnvelope          []byte
+	ParentEnvelopeSignature []byte
+	FileKeyRecord           []byte
+	ManifestRecord          []byte
+	ManifestSignature       []byte
+	CurrentVersionRecord    []byte
+	CurrentVersionSignature []byte
 }
 
 type User struct {

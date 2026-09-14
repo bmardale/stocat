@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -29,8 +28,6 @@ const (
 	kindFile     = "file"
 	pageSize     = 200
 	maxBodyBytes = 256 << 10
-	// The nodes and libraries tables limit a complete metadata record to 64 KiB.
-	maxMetadataRecord = 64 << 10
 )
 
 type EncryptedLibrary struct {
@@ -196,26 +193,8 @@ func (s *Service) owner(ctx context.Context) (owner, error) {
 	return owner{id: user.ID, binding: binding, signingKey: key, generation: generation}, nil
 }
 
-// signed parses a record, checks its binding, and verifies the signature of the current identity.
 func (o owner) signed(field, kind string, value encryption.SignedRecord) (encryptionv2.Record, []byte, []byte, error) {
-	record, data, signature, err := o.binding.Parse(field, kind, value)
-	if err != nil {
-		return record, nil, nil, err
-	}
-	if kind == "node-metadata" && len(data) > maxMetadataRecord {
-		return record, nil, nil, encryption.Invalid(field, errors.New("record is too large"))
-	}
-	return record, data, signature, encryption.Verify(field, data, o.signingKey, signature)
-}
-
-// expect compares record fields with expected values. Pairs contain a field name and its value.
-func expect(field string, record encryptionv2.Record, pairs ...string) error {
-	for index := 0; index+1 < len(pairs); index += 2 {
-		if record.Fields[pairs[index]] != pairs[index+1] {
-			return encryption.Invalid(field, fmt.Errorf("%s must be %s", pairs[index], pairs[index+1]))
-		}
-	}
-	return nil
+	return o.binding.ParseSigned(field, kind, value, o.signingKey)
 }
 
 func (s *Service) listLibraries(ctx context.Context, _ *struct{}) (*librariesOutput, error) {
@@ -268,7 +247,7 @@ func (s *Service) createLibrary(ctx context.Context, input *createEncryptedLibra
 	if err != nil {
 		return nil, err
 	}
-	if err = expect("root_metadata", metadata, "node_epoch", "1", "revision", "1"); err != nil {
+	if err = encryption.Expect("root_metadata", metadata, "node_epoch", "1", "revision", "1"); err != nil {
 		return nil, err
 	}
 	libraryID, rootID := metadata.Fields["library_id"], metadata.Fields["node_id"]
@@ -276,7 +255,7 @@ func (s *Service) createLibrary(ctx context.Context, input *createEncryptedLibra
 	if err != nil {
 		return nil, err
 	}
-	if err = expect("owner_root_envelope", root, "library_id", libraryID, "node_id", rootID,
+	if err = encryption.Expect("owner_root_envelope", root, "library_id", libraryID, "node_id", rootID,
 		"generation", strconv.FormatUint(o.generation, 10), "node_epoch", "1", "revision", "1"); err != nil {
 		return nil, err
 	}
@@ -335,7 +314,7 @@ func (s *Service) renameLibrary(ctx context.Context, input *renameEncryptedLibra
 			return huma.Error409Conflict("The library changed. Load it again.")
 		}
 		revision := library.RootMetadataRevision + 1
-		if err = expect("root_metadata", metadata, "library_id", input.ID, "node_id", library.RootNodePublicID,
+		if err = encryption.Expect("root_metadata", metadata, "library_id", input.ID, "node_id", library.RootNodePublicID,
 			"node_epoch", counter(library.RootKeyEpoch), "revision", counter(revision)); err != nil {
 			return err
 		}
@@ -404,7 +383,7 @@ func (s *Service) createFolder(ctx context.Context, input *createEncryptedFolder
 	if err != nil {
 		return nil, err
 	}
-	if err = expect("metadata", metadata, "library_id", library.PublicID, "node_epoch", "1", "revision", "1"); err != nil {
+	if err = encryption.Expect("metadata", metadata, "library_id", library.PublicID, "node_epoch", "1", "revision", "1"); err != nil {
 		return nil, err
 	}
 	envelope, envelopeData, envelopeSignature, err := o.signed("parent_envelope", "parent-envelope", input.Body.ParentEnvelope)
@@ -415,7 +394,7 @@ func (s *Service) createFolder(ctx context.Context, input *createEncryptedFolder
 	if err != nil {
 		return nil, err
 	}
-	if err = expect("parent_envelope", envelope, "library_id", library.PublicID, "child_id", metadata.Fields["node_id"],
+	if err = encryption.Expect("parent_envelope", envelope, "library_id", library.PublicID, "child_id", metadata.Fields["node_id"],
 		"parent_epoch", counter(parent.KeyEpoch), "child_epoch", "1", "generation", "1", "revision", "1"); err != nil {
 		return nil, err
 	}
@@ -539,7 +518,7 @@ func (s *Service) renameNode(ctx context.Context, input *renameEncryptedNodeInpu
 			return huma.Error409Conflict("The item changed. Load it again.")
 		}
 		revision := node.MetadataRevision + 1
-		if err = expect("metadata", metadata, "library_id", node.LibraryPublicID, "node_id", node.PublicID,
+		if err = encryption.Expect("metadata", metadata, "library_id", node.LibraryPublicID, "node_id", node.PublicID,
 			"node_epoch", counter(node.KeyEpoch), "revision", counter(revision)); err != nil {
 			return err
 		}

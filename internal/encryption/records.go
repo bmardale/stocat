@@ -115,3 +115,28 @@ func Encode(data, signature []byte) SignedRecord {
 		Signature: base64.RawURLEncoding.EncodeToString(signature),
 	}
 }
+
+// MaxMetadataRecord is the largest complete node-metadata record that the database stores.
+const MaxMetadataRecord = 64 << 10
+
+// ParseSigned parses a signed record, checks its binding, and verifies it with signingKey.
+func (b Binding) ParseSigned(field, kind string, value SignedRecord, signingKey []byte) (encryptionv2.Record, []byte, []byte, error) {
+	record, data, signature, err := b.Parse(field, kind, value)
+	if err != nil {
+		return record, nil, nil, err
+	}
+	if kind == "node-metadata" && len(data) > MaxMetadataRecord {
+		return record, nil, nil, Invalid(field, errors.New("record is too large"))
+	}
+	return record, data, signature, Verify(field, data, signingKey, signature)
+}
+
+// Expect compares record fields with expected values. Pairs contain a field name and its value.
+func Expect(field string, record encryptionv2.Record, pairs ...string) error {
+	for index := 0; index+1 < len(pairs); index += 2 {
+		if record.Fields[pairs[index]] != pairs[index+1] {
+			return Invalid(field, fmt.Errorf("%s must be %s", pairs[index], pairs[index+1]))
+		}
+	}
+	return nil
+}

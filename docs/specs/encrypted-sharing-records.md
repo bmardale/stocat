@@ -289,6 +289,47 @@ The root node row stores the signature, key epoch, and metadata revision.
 Child node rows store the metadata record, its signature, and the name token.
 `node_key_envelopes` stores each parent envelope and its signature.
 
+## Owner upload API
+
+`POST /api/v2/uploads` creates a session for a new file or a replacement.
+Send the ciphertext to `upload_url` with the resumable upload protocol.
+Then send `POST /api/v2/uploads/{id}/complete`.
+The v1 completion route returns status 404 for v2 sessions.
+
+For a new file, the create request contains the signed node-metadata record, the signed parent envelope, and the name token.
+The server applies the folder rules from the owner library API.
+For a replacement, the request contains the target file and its current content revision.
+The declared size is the complete ciphertext size, and it must be at least 80 bytes.
+
+The completion request contains these records:
+
+| Field | Record | Signature |
+| --- | --- | --- |
+| `file_key` | `file-key` | None. The manifest signs its hash. |
+| `manifest` | `version-manifest` | Current account identity. |
+| `current_version` | `current-version` | Current account identity. |
+
+The server applies these checks at completion:
+
+- The records name the library, the file node, and its key epoch. A new file uses node epoch 1.
+- The client generates the version identifier. All three records use it.
+- The file-key record and the manifest use the same content identifier. The file-key record uses generation 1.
+- `key_envelope_hash` equals the SHA-256 hash of the file-key record.
+- The manifest header gives a ciphertext size equal to the declared upload size.
+- The manifest and current-version records use the content revision after publication.
+  A new file uses revision 2. A replacement uses its expected revision plus 1.
+
+The publication worker compares the stored header with the manifest header.
+It compares the SHA-256 hash of the stored ciphertext with `ciphertext_hash`.
+A difference sets the session state to `failed` with the code `invalid_encryption`.
+The server cannot authenticate frames, because it has no content key.
+
+Publication stores a new blob for every v2 version. It never deduplicates v2 ciphertext.
+The file version stores the plaintext size from the header and no plaintext hash.
+`file_version_keys` stores the file-key record, the manifest, and the manifest signature.
+The node row stores the current-version record and its signature.
+A changed content revision or key epoch sets the session state to `conflict`.
+
 ## Client account formats
 
 The server stores these formats only as ciphertext. Browser clients must use them exactly.

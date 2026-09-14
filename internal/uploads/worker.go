@@ -109,6 +109,9 @@ func (s *Service) finalize(ctx context.Context, stores *storage.Service, uploadI
 	if upload.State != stateFinalizing {
 		return fmt.Errorf("upload %s is in state %s", upload.PublicID, upload.State)
 	}
+	if upload.EncryptionFormat.String == FormatE2EEV2 {
+		return s.finalizeV2(ctx, stores, upload)
+	}
 	checksum, err := s.hashStaging(upload.StagingKey)
 	if err != nil {
 		return err
@@ -161,10 +164,14 @@ func (s *Service) finalize(ctx context.Context, stores *storage.Service, uploadI
 			s.log.WarnContext(ctx, "delete deduplicated upload object", "upload_id", upload.PublicID, "error", err)
 		}
 	}
+	s.removeStaging(ctx, upload)
+	return nil
+}
+
+func (s *Service) removeStaging(ctx context.Context, upload db.GetUploadPublicationRow) {
 	if err := s.staging.Remove(upload.StagingKey); err != nil && !errors.Is(err, os.ErrNotExist) {
 		s.log.WarnContext(ctx, "remove upload staging file", "upload_id", upload.PublicID, "error", err)
 	}
-	return nil
 }
 
 func (s *Service) validateStagingFraming(key string, ciphertextSize int64) (int64, error) {

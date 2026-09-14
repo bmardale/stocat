@@ -207,15 +207,8 @@ func (s *Service) create(ctx context.Context, input *createInput) (*uploadOutput
 			}
 		}
 		backendName = library.BackendName
-		if err := quota.Admit(ctx, q, user.ID, library.BackendID, input.Body.Size); err != nil {
+		if err := s.admit(ctx, q, user.ID, library.BackendID, input.Body.Size); err != nil {
 			return err
-		}
-		allReserved, err := q.SumAllUploadReservations(ctx)
-		if err != nil {
-			return err
-		}
-		if exceeds(0, allReserved, input.Body.Size, s.capacity) {
-			return errCapacity
 		}
 		publicID := id.New(id.Upload)
 		session, err = q.CreateUploadSession(ctx, db.CreateUploadSessionParams{
@@ -231,29 +224,11 @@ func (s *Service) create(ctx context.Context, input *createInput) (*uploadOutput
 		}
 		return err
 	})
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, huma.Error404NotFound("The library or folder does not exist.")
-	}
-	if errors.Is(err, errInvalidTarget) {
-		return nil, huma.Error422UnprocessableEntity("Select a current file revision to replace.")
-	}
-	if errors.Is(err, quota.ErrExceeded) {
-		return nil, huma.Error413RequestEntityTooLarge(fmt.Sprintf("The upload exceeds your storage quota on %s.", backendName))
-	}
-	if errors.Is(err, errCapacity) {
-		return nil, huma.NewError(http.StatusInsufficientStorage, "The upload staging area is full.")
-	}
 	if err != nil {
-		return nil, s.databaseError(ctx, "create upload", err)
+		return nil, s.createError(ctx, err, backendName)
 	}
-	file, err := s.staging.OpenFile(session.StagingKey, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
-	if err != nil {
-		_ = s.queries.MarkUploadFailed(ctx, db.MarkUploadFailedParams{ID: session.ID, FailureCode: textValue("staging"), FailureMessage: textValue("Create the staging file again.")})
-		return nil, huma.Error503ServiceUnavailable("Upload staging is unavailable.")
-	}
-	if err := file.Close(); err != nil {
-		_ = s.queries.MarkUploadFailed(ctx, db.MarkUploadFailedParams{ID: session.ID, FailureCode: textValue("staging"), FailureMessage: textValue("Create the staging file again.")})
-		return nil, huma.Error503ServiceUnavailable("Upload staging is unavailable.")
+	if err := s.createStagingFile(ctx, session); err != nil {
+		return nil, err
 	}
 	if session.DeclaredSize == 0 && len(session.EncryptedName) == 0 {
 		if err := s.startFinalization(ctx, session.ID, nil); err != nil {
@@ -293,6 +268,9 @@ func (s *Service) complete(ctx context.Context, input *completeInput) (*uploadOu
 	}
 	if err != nil {
 		return nil, s.databaseError(ctx, "get upload for completion", err)
+	}
+	if row.EncryptionFormat.String == FormatE2EEV2 {
+		return nil, huma.Error404NotFound("The upload session does not exist.")
 	}
 	if row.State != stateUploaded {
 		if row.State == stateFinalizing || row.State == stateCompleted {
@@ -414,6 +392,49 @@ func uploadFromRow(row db.UploadSession) Upload {
 		result.FailureMessage = row.FailureMessage.String
 	}
 	return result
+}
+
+func (s *Service) admit(ctx context.Context, q *db.Queries, userID, backendID, size int64) error {
+	if err := quota.Admit(ctx, q, userID, backendID, size); err != nil {
+		return err
+	}
+	allReserved, err := q.SumAllUploadReservations(ctx)
+	if err != nil {
+		return err
+	}
+	if exceeds(0, allReserved, size, s.capacity) {
+		return errCapacity
+	}
+	return nil
+}
+
+func (s *Service) createError(ctx context.Context, err error, backendName string) error {
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		return huma.Error404NotFound("The library or folder does not exist.")
+	case errors.Is(err, errInvalidTarget):
+		return huma.Error422UnprocessableEntity("Select a current file revision to replace.")
+	case errors.Is(err, quota.ErrExceeded):
+		return huma.Error413RequestEntityTooLarge(fmt.Sprintf("The upload exceeds your storage quota on %s.", backendName))
+	case errors.Is(err, errCapacity):
+		return huma.NewError(http.StatusInsufficientStorage, "The upload staging area is full.")
+	}
+	if statusErr, ok := errors.AsType[huma.StatusError](err); ok {
+		return statusErr
+	}
+	return s.databaseError(ctx, "create upload", err)
+}
+
+func (s *Service) createStagingFile(ctx context.Context, session db.UploadSession) error {
+	file, err := s.staging.OpenFile(session.StagingKey, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err == nil {
+		err = file.Close()
+	}
+	if err != nil {
+		_ = s.queries.MarkUploadFailed(ctx, db.MarkUploadFailedParams{ID: session.ID, FailureCode: textValue("staging"), FailureMessage: textValue("Create the staging file again.")})
+		return huma.Error503ServiceUnavailable("Upload staging is unavailable.")
+	}
+	return nil
 }
 
 func validInt(value int64) pgtype.Int8   { return pgtype.Int8{Int64: value, Valid: true} }

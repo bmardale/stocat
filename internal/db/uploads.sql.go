@@ -18,7 +18,7 @@ SET upload_offset = $1,
     updated_at = now()
 WHERE id = $2 AND upload_offset = $3
   AND state IN ('created', 'uploading')
-RETURNING id, public_id, owner_id, library_id, parent_id, target_node_id, expected_revision, name, encrypted_name, name_token, declared_size, upload_offset, staging_key, destination_key, state, dedup_fingerprint, encryption_format, encrypted_file_key, published_node_id, published_version_id, failure_code, failure_message, expires_at, created_at, updated_at, completed_at
+RETURNING id, public_id, owner_id, library_id, parent_id, target_node_id, expected_revision, name, encrypted_name, name_token, declared_size, upload_offset, staging_key, destination_key, state, dedup_fingerprint, encryption_format, encrypted_file_key, published_node_id, published_version_id, failure_code, failure_message, expires_at, created_at, updated_at, completed_at, node_public_id, encrypted_metadata, metadata_signature, parent_envelope, parent_envelope_signature, file_key_record, manifest_record, manifest_signature, current_version_record, current_version_signature
 `
 
 type AdvanceUploadOffsetParams struct {
@@ -57,6 +57,16 @@ func (q *Queries) AdvanceUploadOffset(ctx context.Context, arg AdvanceUploadOffs
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.CompletedAt,
+		&i.NodePublicID,
+		&i.EncryptedMetadata,
+		&i.MetadataSignature,
+		&i.ParentEnvelope,
+		&i.ParentEnvelopeSignature,
+		&i.FileKeyRecord,
+		&i.ManifestRecord,
+		&i.ManifestSignature,
+		&i.CurrentVersionRecord,
+		&i.CurrentVersionSignature,
 	)
 	return i, err
 }
@@ -66,7 +76,7 @@ UPDATE upload_sessions
 SET state = 'cancelled', updated_at = now()
 WHERE public_id = $1 AND owner_id = $2
   AND state IN ('created', 'uploading', 'uploaded', 'failed')
-RETURNING id, public_id, owner_id, library_id, parent_id, target_node_id, expected_revision, name, encrypted_name, name_token, declared_size, upload_offset, staging_key, destination_key, state, dedup_fingerprint, encryption_format, encrypted_file_key, published_node_id, published_version_id, failure_code, failure_message, expires_at, created_at, updated_at, completed_at
+RETURNING id, public_id, owner_id, library_id, parent_id, target_node_id, expected_revision, name, encrypted_name, name_token, declared_size, upload_offset, staging_key, destination_key, state, dedup_fingerprint, encryption_format, encrypted_file_key, published_node_id, published_version_id, failure_code, failure_message, expires_at, created_at, updated_at, completed_at, node_public_id, encrypted_metadata, metadata_signature, parent_envelope, parent_envelope_signature, file_key_record, manifest_record, manifest_signature, current_version_record, current_version_signature
 `
 
 type CancelUploadSessionParams struct {
@@ -104,6 +114,16 @@ func (q *Queries) CancelUploadSession(ctx context.Context, arg CancelUploadSessi
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.CompletedAt,
+		&i.NodePublicID,
+		&i.EncryptedMetadata,
+		&i.MetadataSignature,
+		&i.ParentEnvelope,
+		&i.ParentEnvelopeSignature,
+		&i.FileKeyRecord,
+		&i.ManifestRecord,
+		&i.ManifestSignature,
+		&i.CurrentVersionRecord,
+		&i.CurrentVersionSignature,
 	)
 	return i, err
 }
@@ -186,7 +206,7 @@ INSERT INTO upload_sessions (
     $7, $8, $9, $10, $11, $12,
     'created', $13
 )
-RETURNING id, public_id, owner_id, library_id, parent_id, target_node_id, expected_revision, name, encrypted_name, name_token, declared_size, upload_offset, staging_key, destination_key, state, dedup_fingerprint, encryption_format, encrypted_file_key, published_node_id, published_version_id, failure_code, failure_message, expires_at, created_at, updated_at, completed_at
+RETURNING id, public_id, owner_id, library_id, parent_id, target_node_id, expected_revision, name, encrypted_name, name_token, declared_size, upload_offset, staging_key, destination_key, state, dedup_fingerprint, encryption_format, encrypted_file_key, published_node_id, published_version_id, failure_code, failure_message, expires_at, created_at, updated_at, completed_at, node_public_id, encrypted_metadata, metadata_signature, parent_envelope, parent_envelope_signature, file_key_record, manifest_record, manifest_signature, current_version_record, current_version_signature
 `
 
 type CreateUploadSessionParams struct {
@@ -249,6 +269,16 @@ func (q *Queries) CreateUploadSession(ctx context.Context, arg CreateUploadSessi
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.CompletedAt,
+		&i.NodePublicID,
+		&i.EncryptedMetadata,
+		&i.MetadataSignature,
+		&i.ParentEnvelope,
+		&i.ParentEnvelopeSignature,
+		&i.FileKeyRecord,
+		&i.ManifestRecord,
+		&i.ManifestSignature,
+		&i.CurrentVersionRecord,
+		&i.CurrentVersionSignature,
 	)
 	return i, err
 }
@@ -346,7 +376,7 @@ func (q *Queries) GetPublishedUploadIDs(ctx context.Context, id int64) (GetPubli
 }
 
 const getUploadPublication = `-- name: GetUploadPublication :one
-SELECT u.id, u.public_id, u.owner_id, u.library_id, u.parent_id, u.target_node_id, u.expected_revision, u.name, u.encrypted_name, u.name_token, u.declared_size, u.upload_offset, u.staging_key, u.destination_key, u.state, u.dedup_fingerprint, u.encryption_format, u.encrypted_file_key, u.published_node_id, u.published_version_id, u.failure_code, u.failure_message, u.expires_at, u.created_at, u.updated_at, u.completed_at, l.public_id AS library_public_id, l.backend_id, l.encryption_mode,
+SELECT u.id, u.public_id, u.owner_id, u.library_id, u.parent_id, u.target_node_id, u.expected_revision, u.name, u.encrypted_name, u.name_token, u.declared_size, u.upload_offset, u.staging_key, u.destination_key, u.state, u.dedup_fingerprint, u.encryption_format, u.encrypted_file_key, u.published_node_id, u.published_version_id, u.failure_code, u.failure_message, u.expires_at, u.created_at, u.updated_at, u.completed_at, u.node_public_id, u.encrypted_metadata, u.metadata_signature, u.parent_envelope, u.parent_envelope_signature, u.file_key_record, u.manifest_record, u.manifest_signature, u.current_version_record, u.current_version_signature, l.public_id AS library_public_id, l.backend_id, l.encryption_mode,
        b.public_id AS backend_public_id
 FROM upload_sessions u
 JOIN libraries l ON l.id = u.library_id
@@ -355,36 +385,46 @@ WHERE u.id = $1
 `
 
 type GetUploadPublicationRow struct {
-	ID                 int64
-	PublicID           string
-	OwnerID            int64
-	LibraryID          int64
-	ParentID           int64
-	TargetNodeID       pgtype.Int8
-	ExpectedRevision   pgtype.Int8
-	Name               pgtype.Text
-	EncryptedName      []byte
-	NameToken          []byte
-	DeclaredSize       int64
-	UploadOffset       int64
-	StagingKey         string
-	DestinationKey     string
-	State              string
-	DedupFingerprint   []byte
-	EncryptionFormat   pgtype.Text
-	EncryptedFileKey   []byte
-	PublishedNodeID    pgtype.Int8
-	PublishedVersionID pgtype.Int8
-	FailureCode        pgtype.Text
-	FailureMessage     pgtype.Text
-	ExpiresAt          pgtype.Timestamptz
-	CreatedAt          pgtype.Timestamptz
-	UpdatedAt          pgtype.Timestamptz
-	CompletedAt        pgtype.Timestamptz
-	LibraryPublicID    string
-	BackendID          int64
-	EncryptionMode     string
-	BackendPublicID    string
+	ID                      int64
+	PublicID                string
+	OwnerID                 int64
+	LibraryID               int64
+	ParentID                int64
+	TargetNodeID            pgtype.Int8
+	ExpectedRevision        pgtype.Int8
+	Name                    pgtype.Text
+	EncryptedName           []byte
+	NameToken               []byte
+	DeclaredSize            int64
+	UploadOffset            int64
+	StagingKey              string
+	DestinationKey          string
+	State                   string
+	DedupFingerprint        []byte
+	EncryptionFormat        pgtype.Text
+	EncryptedFileKey        []byte
+	PublishedNodeID         pgtype.Int8
+	PublishedVersionID      pgtype.Int8
+	FailureCode             pgtype.Text
+	FailureMessage          pgtype.Text
+	ExpiresAt               pgtype.Timestamptz
+	CreatedAt               pgtype.Timestamptz
+	UpdatedAt               pgtype.Timestamptz
+	CompletedAt             pgtype.Timestamptz
+	NodePublicID            pgtype.Text
+	EncryptedMetadata       []byte
+	MetadataSignature       []byte
+	ParentEnvelope          []byte
+	ParentEnvelopeSignature []byte
+	FileKeyRecord           []byte
+	ManifestRecord          []byte
+	ManifestSignature       []byte
+	CurrentVersionRecord    []byte
+	CurrentVersionSignature []byte
+	LibraryPublicID         string
+	BackendID               int64
+	EncryptionMode          string
+	BackendPublicID         string
 }
 
 func (q *Queries) GetUploadPublication(ctx context.Context, id int64) (GetUploadPublicationRow, error) {
@@ -417,6 +457,16 @@ func (q *Queries) GetUploadPublication(ctx context.Context, id int64) (GetUpload
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.CompletedAt,
+		&i.NodePublicID,
+		&i.EncryptedMetadata,
+		&i.MetadataSignature,
+		&i.ParentEnvelope,
+		&i.ParentEnvelopeSignature,
+		&i.FileKeyRecord,
+		&i.ManifestRecord,
+		&i.ManifestSignature,
+		&i.CurrentVersionRecord,
+		&i.CurrentVersionSignature,
 		&i.LibraryPublicID,
 		&i.BackendID,
 		&i.EncryptionMode,
@@ -426,7 +476,7 @@ func (q *Queries) GetUploadPublication(ctx context.Context, id int64) (GetUpload
 }
 
 const getUploadSessionByPublicIDAndOwner = `-- name: GetUploadSessionByPublicIDAndOwner :one
-SELECT u.id, u.public_id, u.owner_id, u.library_id, u.parent_id, u.target_node_id, u.expected_revision, u.name, u.encrypted_name, u.name_token, u.declared_size, u.upload_offset, u.staging_key, u.destination_key, u.state, u.dedup_fingerprint, u.encryption_format, u.encrypted_file_key, u.published_node_id, u.published_version_id, u.failure_code, u.failure_message, u.expires_at, u.created_at, u.updated_at, u.completed_at
+SELECT u.id, u.public_id, u.owner_id, u.library_id, u.parent_id, u.target_node_id, u.expected_revision, u.name, u.encrypted_name, u.name_token, u.declared_size, u.upload_offset, u.staging_key, u.destination_key, u.state, u.dedup_fingerprint, u.encryption_format, u.encrypted_file_key, u.published_node_id, u.published_version_id, u.failure_code, u.failure_message, u.expires_at, u.created_at, u.updated_at, u.completed_at, u.node_public_id, u.encrypted_metadata, u.metadata_signature, u.parent_envelope, u.parent_envelope_signature, u.file_key_record, u.manifest_record, u.manifest_signature, u.current_version_record, u.current_version_signature
 FROM upload_sessions u
 WHERE u.public_id = $1 AND u.owner_id = $2
 `
@@ -466,12 +516,22 @@ func (q *Queries) GetUploadSessionByPublicIDAndOwner(ctx context.Context, arg Ge
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.CompletedAt,
+		&i.NodePublicID,
+		&i.EncryptedMetadata,
+		&i.MetadataSignature,
+		&i.ParentEnvelope,
+		&i.ParentEnvelopeSignature,
+		&i.FileKeyRecord,
+		&i.ManifestRecord,
+		&i.ManifestSignature,
+		&i.CurrentVersionRecord,
+		&i.CurrentVersionSignature,
 	)
 	return i, err
 }
 
 const getUploadSessionForUpdate = `-- name: GetUploadSessionForUpdate :one
-SELECT id, public_id, owner_id, library_id, parent_id, target_node_id, expected_revision, name, encrypted_name, name_token, declared_size, upload_offset, staging_key, destination_key, state, dedup_fingerprint, encryption_format, encrypted_file_key, published_node_id, published_version_id, failure_code, failure_message, expires_at, created_at, updated_at, completed_at FROM upload_sessions WHERE id = $1 FOR UPDATE
+SELECT id, public_id, owner_id, library_id, parent_id, target_node_id, expected_revision, name, encrypted_name, name_token, declared_size, upload_offset, staging_key, destination_key, state, dedup_fingerprint, encryption_format, encrypted_file_key, published_node_id, published_version_id, failure_code, failure_message, expires_at, created_at, updated_at, completed_at, node_public_id, encrypted_metadata, metadata_signature, parent_envelope, parent_envelope_signature, file_key_record, manifest_record, manifest_signature, current_version_record, current_version_signature FROM upload_sessions WHERE id = $1 FOR UPDATE
 `
 
 func (q *Queries) GetUploadSessionForUpdate(ctx context.Context, id int64) (UploadSession, error) {
@@ -504,6 +564,16 @@ func (q *Queries) GetUploadSessionForUpdate(ctx context.Context, id int64) (Uplo
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.CompletedAt,
+		&i.NodePublicID,
+		&i.EncryptedMetadata,
+		&i.MetadataSignature,
+		&i.ParentEnvelope,
+		&i.ParentEnvelopeSignature,
+		&i.FileKeyRecord,
+		&i.ManifestRecord,
+		&i.ManifestSignature,
+		&i.CurrentVersionRecord,
+		&i.CurrentVersionSignature,
 	)
 	return i, err
 }
@@ -647,7 +717,7 @@ const setPlainUploadFinalizing = `-- name: SetPlainUploadFinalizing :one
 UPDATE upload_sessions
 SET state = 'finalizing', failure_code = NULL, failure_message = NULL, updated_at = now()
 WHERE id = $1 AND state = 'uploaded' AND upload_offset = declared_size
-RETURNING id, public_id, owner_id, library_id, parent_id, target_node_id, expected_revision, name, encrypted_name, name_token, declared_size, upload_offset, staging_key, destination_key, state, dedup_fingerprint, encryption_format, encrypted_file_key, published_node_id, published_version_id, failure_code, failure_message, expires_at, created_at, updated_at, completed_at
+RETURNING id, public_id, owner_id, library_id, parent_id, target_node_id, expected_revision, name, encrypted_name, name_token, declared_size, upload_offset, staging_key, destination_key, state, dedup_fingerprint, encryption_format, encrypted_file_key, published_node_id, published_version_id, failure_code, failure_message, expires_at, created_at, updated_at, completed_at, node_public_id, encrypted_metadata, metadata_signature, parent_envelope, parent_envelope_signature, file_key_record, manifest_record, manifest_signature, current_version_record, current_version_signature
 `
 
 func (q *Queries) SetPlainUploadFinalizing(ctx context.Context, id int64) (UploadSession, error) {
@@ -680,6 +750,16 @@ func (q *Queries) SetPlainUploadFinalizing(ctx context.Context, id int64) (Uploa
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.CompletedAt,
+		&i.NodePublicID,
+		&i.EncryptedMetadata,
+		&i.MetadataSignature,
+		&i.ParentEnvelope,
+		&i.ParentEnvelopeSignature,
+		&i.FileKeyRecord,
+		&i.ManifestRecord,
+		&i.ManifestSignature,
+		&i.CurrentVersionRecord,
+		&i.CurrentVersionSignature,
 	)
 	return i, err
 }
@@ -691,7 +771,7 @@ SET dedup_fingerprint = $1,
     encrypted_file_key = $3,
     state = 'finalizing', failure_code = NULL, failure_message = NULL, updated_at = now()
 WHERE id = $4 AND state = 'uploaded' AND upload_offset = declared_size
-RETURNING id, public_id, owner_id, library_id, parent_id, target_node_id, expected_revision, name, encrypted_name, name_token, declared_size, upload_offset, staging_key, destination_key, state, dedup_fingerprint, encryption_format, encrypted_file_key, published_node_id, published_version_id, failure_code, failure_message, expires_at, created_at, updated_at, completed_at
+RETURNING id, public_id, owner_id, library_id, parent_id, target_node_id, expected_revision, name, encrypted_name, name_token, declared_size, upload_offset, staging_key, destination_key, state, dedup_fingerprint, encryption_format, encrypted_file_key, published_node_id, published_version_id, failure_code, failure_message, expires_at, created_at, updated_at, completed_at, node_public_id, encrypted_metadata, metadata_signature, parent_envelope, parent_envelope_signature, file_key_record, manifest_record, manifest_signature, current_version_record, current_version_signature
 `
 
 type SetUploadFinalizingParams struct {
@@ -736,6 +816,16 @@ func (q *Queries) SetUploadFinalizing(ctx context.Context, arg SetUploadFinalizi
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.CompletedAt,
+		&i.NodePublicID,
+		&i.EncryptedMetadata,
+		&i.MetadataSignature,
+		&i.ParentEnvelope,
+		&i.ParentEnvelopeSignature,
+		&i.FileKeyRecord,
+		&i.ManifestRecord,
+		&i.ManifestSignature,
+		&i.CurrentVersionRecord,
+		&i.CurrentVersionSignature,
 	)
 	return i, err
 }

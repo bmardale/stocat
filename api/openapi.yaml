@@ -323,6 +323,23 @@ components:
           maxLength: 64
           type: string
       type: object
+    CompleteV2InputBody:
+      additionalProperties: false
+      properties:
+        current_version:
+          $ref: "#/components/schemas/SignedRecord"
+        file_key:
+          maxLength: 21846
+          minLength: 1
+          pattern: ^[A-Za-z0-9_-]+$
+          type: string
+        manifest:
+          $ref: "#/components/schemas/SignedRecord"
+      required:
+        - file_key
+        - manifest
+        - current_version
+      type: object
     ConnectionCheck:
       additionalProperties: false
       properties:
@@ -479,6 +496,40 @@ components:
       required:
         - source_library_id
         - destination_library_id
+      type: object
+    CreateV2Body:
+      additionalProperties: false
+      properties:
+        expected_revision:
+          description: Send the content revision of the target.
+          pattern: ^[1-9][0-9]{0,17}$
+          type: string
+        library_id:
+          maxLength: 64
+          type: string
+        metadata:
+          $ref: "#/components/schemas/SignedRecord"
+          description: Send for a new file.
+        name_token:
+          description: Send for a new file.
+          maxLength: 43
+          pattern: ^[A-Za-z0-9_-]*$
+          type: string
+        parent_envelope:
+          $ref: "#/components/schemas/SignedRecord"
+          description: Send for a new file.
+        size:
+          description: Size of the complete stocat-framed-v2 ciphertext.
+          format: int64
+          minimum: 80
+          type: integer
+        target_node_id:
+          description: Send for a replacement.
+          maxLength: 64
+          type: string
+      required:
+        - library_id
+        - size
       type: object
     EncryptedLibrary:
       additionalProperties: false
@@ -6231,6 +6282,152 @@ paths:
       summary: Replace the metadata of an encrypted file or folder
       tags:
         - Encrypted libraries
+  /api/v2/uploads:
+    post:
+      description: Send the ciphertext to upload_url with the resumable upload protocol.
+      operationId: encrypted-uploads-create
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateV2Body"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Upload"
+          description: Created
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Conflict
+        "413":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Request Entity Too Large
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "507":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Insufficient Storage
+      security:
+        - session: []
+      summary: Create an encrypted upload session
+      tags:
+        - Encrypted uploads
+  /api/v2/uploads/{id}/complete:
+    post:
+      operationId: encrypted-uploads-complete
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompleteV2InputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Upload"
+          description: OK
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Conflict
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+      security:
+        - session: []
+      summary: Complete an encrypted upload transfer
+      tags:
+        - Encrypted uploads
   /healthz:
     get:
       operationId: health
