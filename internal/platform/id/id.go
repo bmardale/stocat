@@ -43,6 +43,8 @@ const (
 	Replication = "rep"
 	// Tag is the prefix of tag identifiers.
 	Tag = "tag"
+	// InviteCode is the prefix of invite code identifiers.
+	InviteCode = "inv"
 	// AuditEvent is the prefix of audit event identifiers.
 	AuditEvent = "aud"
 )

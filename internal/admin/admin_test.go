@@ -171,6 +171,47 @@ func TestAdminQuotaSettings(t *testing.T) {
 	}
 }
 
+func TestAdminRegistrationSettingsAndInviteCodes(t *testing.T) {
+	pool := testutil.NewPostgres(t)
+	env := newAdminTestEnv(t, pool)
+	adminCookie, _ := env.register(t, true)
+	ctx := t.Context()
+
+	response := env.api.GetCtx(ctx, "/api/v1/admin/config", adminCookie)
+	requireStatus(t, response, http.StatusOK)
+	if settings := decode[RegistrationSettings](t, response); settings.InviteOnly {
+		t.Fatal("registration starts in open mode")
+	}
+
+	response = env.api.PostCtx(ctx, "/api/v1/admin/invite-codes", adminCookie)
+	requireStatus(t, response, http.StatusCreated)
+	created := decode[InviteCode](t, response)
+	if len(created.Code) != inviteCodeLength || created.UsedAt != nil || created.ID == "" {
+		t.Fatalf("created invite code = %+v", created)
+	}
+
+	response = env.api.PutCtx(ctx, "/api/v1/admin/config", adminCookie, map[string]any{"invite_only": true})
+	requireStatus(t, response, http.StatusOK)
+	if settings := decode[RegistrationSettings](t, response); !settings.InviteOnly {
+		t.Fatal("registration setting was not enabled")
+	}
+
+	response = env.api.PostCtx(ctx, "/api/v1/auth/register", map[string]string{
+		"name": "Invited User", "email": "invited@example.com", "password": adminTestPassword,
+		"invite_code": created.Code,
+	})
+	requireStatus(t, response, http.StatusCreated)
+	response = env.api.GetCtx(ctx, "/api/v1/admin/invite-codes", adminCookie)
+	requireStatus(t, response, http.StatusOK)
+	codes := decode[[]InviteCode](t, response)
+	if len(codes) != 1 || codes[0].UsedAt == nil {
+		t.Fatalf("invite codes = %+v", codes)
+	}
+
+	response = env.api.DeleteCtx(ctx, "/api/v1/admin/invite-codes/"+created.ID, adminCookie)
+	requireStatus(t, response, http.StatusNotFound)
+}
+
 func TestAdminQuotaAuthorizationAndErrors(t *testing.T) {
 	pool := testutil.NewPostgres(t)
 	env := newAdminTestEnv(t, pool)

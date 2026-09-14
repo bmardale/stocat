@@ -17,6 +17,7 @@ import (
 	"github.com/bmardale/stocat/internal/apierr"
 	"github.com/bmardale/stocat/internal/db"
 	"github.com/bmardale/stocat/internal/platform/id"
+	"github.com/bmardale/stocat/internal/settings"
 	"github.com/bmardale/stocat/internal/testutil"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
@@ -109,6 +110,7 @@ func assertUser(t *testing.T, response *httptest.ResponseRecorder, email string)
 func TestAuth(t *testing.T) {
 	pool := testutil.NewPostgres(t)
 	t.Run("lifecycle", func(t *testing.T) { testLifecycle(t, pool) })
+	t.Run("invite-only registration", func(t *testing.T) { testInviteOnlyRegistration(t, pool) })
 	t.Run("invalid requests", func(t *testing.T) { testInvalidRequests(t, pool) })
 	t.Run("expired and revoked sessions", func(t *testing.T) { testExpiredSessions(t, pool) })
 	t.Run("session management", func(t *testing.T) { testSessions(t, pool) })
@@ -118,6 +120,78 @@ func TestAuth(t *testing.T) {
 	t.Run("concurrent registration", func(t *testing.T) { testConcurrentRegistration(t, pool) })
 	t.Run("database failure", func(t *testing.T) { testDatabaseFailure(t, pool) })
 	t.Run("migration rollback", func(t *testing.T) { testMigrationRollback(t, pool) })
+}
+
+func testInviteOnlyRegistration(t *testing.T, pool *pgxpool.Pool) {
+	t.Helper()
+	queries := db.New(pool)
+	t.Cleanup(func() {
+		if err := settings.SetRegistrationInviteOnly(context.Background(), queries, false); err != nil {
+			t.Error(err)
+		}
+	})
+	admin, err := queries.CreateUser(t.Context(), db.CreateUserParams{
+		PublicID: id.New(id.User), Name: "Invite Admin", Email: "invite-admin@example.com", PasswordHash: "unused",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, err := queries.CreateInviteCode(t.Context(), db.CreateInviteCodeParams{
+		PublicID: id.New(id.InviteCode), Code: "TEST-INVITE-CODE", CreatedBy: admin.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := settings.SetRegistrationInviteOnly(t.Context(), queries, true); err != nil {
+		t.Fatal(err)
+	}
+	_, api, _ := newTestAPI(t, pool, false)
+	response := api.GetCtx(t.Context(), "/api/v1/auth/config")
+	requireStatus(t, response, http.StatusOK)
+	var config PublicConfig
+	if err := json.Unmarshal(response.Body.Bytes(), &config); err != nil {
+		t.Fatal(err)
+	}
+	if !config.InviteOnly {
+		t.Fatal("invite-only setting was not returned")
+	}
+
+	for _, tc := range []struct {
+		name string
+		body map[string]string
+	}{
+		{name: "missing code", body: registration("invite-missing@example.com")},
+		{name: "invalid code", body: func() map[string]string {
+			body := registration("invite-invalid@example.com")
+			body["invite_code"] = "wrong-code"
+			return body
+		}()},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, api, _ := newTestAPI(t, pool, false)
+			response := api.PostCtx(t.Context(), "/api/v1/auth/register", tc.body)
+			requireStatus(t, response, http.StatusUnprocessableEntity)
+		})
+	}
+	body := registration("invite-valid@example.com")
+	body["invite_code"] = code.Code
+	_, api, _ = newTestAPI(t, pool, false)
+	requireStatus(t, api.PostCtx(t.Context(), "/api/v1/auth/register", body), http.StatusCreated)
+	used, err := queries.ListInviteCodes(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(used) != 1 || !used[0].UsedAt.Valid || !used[0].UsedBy.Valid {
+		t.Fatalf("invite code was not consumed: %+v", used)
+	}
+
+	_, api, _ = newTestAPI(t, pool, false)
+	body = registration("invite-reused@example.com")
+	body["invite_code"] = code.Code
+	requireStatus(t, api.PostCtx(t.Context(), "/api/v1/auth/register", body), http.StatusUnprocessableEntity)
+	if _, err := queries.GetUserByEmail(t.Context(), body["email"]); !errors.Is(err, pgx.ErrNoRows) {
+		t.Fatalf("reused invite created a user: %v", err)
+	}
 }
 
 func testLifecycle(t *testing.T, pool *pgxpool.Pool) {
@@ -526,7 +600,7 @@ func TestOpenAPI(t *testing.T) {
 	huma.Register(group, huma.Operation{OperationID: "private", Method: http.MethodGet, Path: "/check"},
 		func(context.Context, *struct{}) (*struct{}, error) { return &struct{}{}, nil })
 	public := []string{
-		"/api/v1/auth/register", "/api/v1/auth/login", "/api/v1/auth/logout",
+		"/api/v1/auth/config", "/api/v1/auth/register", "/api/v1/auth/login", "/api/v1/auth/logout",
 		"/api/v1/auth/passkeys/login/options", "/api/v1/auth/passkeys/login",
 	}
 	for path, item := range api.OpenAPI().Paths {

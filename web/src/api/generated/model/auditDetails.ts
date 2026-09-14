@@ -17,6 +17,7 @@ export interface AuditDetails {
   email?: string;
   /** The library encrypts names, so the event contains no file or tag names. */
   encrypted?: boolean;
+  invite_only?: boolean;
   library_id?: string;
   library_name?: string;
   method?: AuditDetailsMethod;

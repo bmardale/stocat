@@ -70,6 +70,16 @@ type FileVersion struct {
 	CreatedAt             pgtype.Timestamptz
 }
 
+type InviteCode struct {
+	ID        int64
+	PublicID  string
+	Code      string
+	CreatedBy int64
+	UsedBy    pgtype.Int8
+	CreatedAt pgtype.Timestamptz
+	UsedAt    pgtype.Timestamptz
+}
+
 type Library struct {
 	ID             int64
 	PublicID       string
@@ -157,6 +167,11 @@ type Session struct {
 	IpAddress *netip.Addr
 	CreatedAt pgtype.Timestamptz
 	ExpiresAt pgtype.Timestamptz
+}
+
+type Setting struct {
+	Key   string
+	Value string
 }
 
 type StorageBackend struct {

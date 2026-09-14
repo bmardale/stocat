@@ -27,6 +27,7 @@ import type {
   Passkey,
   PasskeyRegistrationOptionsInputBody,
   Problem,
+  PublicConfig,
   RegisterInputBody,
   RenamePasskeyInputBody,
   Session,
@@ -159,6 +160,119 @@ export const useAuthAccountUpdate = <TError = ErrorType<Problem>, TContext = unk
 > => {
   return useMutation(getAuthAccountUpdateMutationOptions(options), queryClient);
 };
+export const getAuthConfigUrl = () => {
+  return `/api/v1/auth/config`;
+};
+
+/**
+ * @summary Get public authentication configuration
+ */
+export const authConfig = async (
+  options?: Parameters<typeof apiFetch>[1],
+): Promise<PublicConfig> => {
+  return apiFetch<PublicConfig>(getAuthConfigUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getAuthConfigQueryKey = () => {
+  return [`/api/v1/auth/config`] as const;
+};
+
+export const getAuthConfigQueryOptions = <
+  TData = Awaited<ReturnType<typeof authConfig>>,
+  TError = ErrorType<Problem>,
+>(options?: {
+  query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof authConfig>>, TError, TData>>;
+  request?: SecondParameter<typeof apiFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getAuthConfigQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof authConfig>>> = ({ signal }) =>
+    authConfig({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof authConfig>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type AuthConfigQueryResult = NonNullable<Awaited<ReturnType<typeof authConfig>>>;
+export type AuthConfigQueryError = ErrorType<Problem>;
+
+export function useAuthConfig<
+  TData = Awaited<ReturnType<typeof authConfig>>,
+  TError = ErrorType<Problem>,
+>(
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof authConfig>>, TError, TData>> &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof authConfig>>,
+          TError,
+          Awaited<ReturnType<typeof authConfig>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useAuthConfig<
+  TData = Awaited<ReturnType<typeof authConfig>>,
+  TError = ErrorType<Problem>,
+>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof authConfig>>, TError, TData>> &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof authConfig>>,
+          TError,
+          Awaited<ReturnType<typeof authConfig>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useAuthConfig<
+  TData = Awaited<ReturnType<typeof authConfig>>,
+  TError = ErrorType<Problem>,
+>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof authConfig>>, TError, TData>>;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary Get public authentication configuration
+ */
+
+export function useAuthConfig<
+  TData = Awaited<ReturnType<typeof authConfig>>,
+  TError = ErrorType<Problem>,
+>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof authConfig>>, TError, TData>>;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getAuthConfigQueryOptions(options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
 export const getAuthLoginUrl = () => {
   return `/api/v1/auth/login`;
 };

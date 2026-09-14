@@ -4,6 +4,7 @@ The `Auth` OpenAPI tag contains these routes:
 
 | Method | Path | Result |
 | --- | --- | --- |
+| GET | `/api/v1/auth/config` | Return public registration settings. |
 | POST | `/api/v1/auth/register` | Create a user and a session. Return the user with status 201. |
 | POST | `/api/v1/auth/login` | Create a session. Return the user with status 200. |
 | GET | `/api/v1/auth/me` | Require a valid session. Return the user with status 200. |
@@ -19,7 +20,8 @@ The `Auth` OpenAPI tag contains these routes:
 | PATCH | `/api/v1/auth/passkeys/{id}` | Require a valid session. Rename one passkey of the user. Return it with status 200. |
 | DELETE | `/api/v1/auth/passkeys/{id}` | Require a valid session. Delete one passkey of the user. Return status 204. |
 
-Registration requires `name`, `email`, and `password`. Login requires `email` and `password`.
+Registration requires `name`, `email`, and `password`. Invite-only registration also requires `invite_code`.
+Login requires `email` and `password`.
 Email comparison ignores case. Registration and login remove leading and trailing spaces from email addresses.
 Registration stores email addresses in lowercase.
 Passwords require at least 15 characters and at most 1024 bytes. Passwords retain spaces and case.
@@ -115,6 +117,10 @@ One IP cannot consume shared email tokens faster than the shared bucket restores
 Clients on the same IP or IPv6 /64 share the stricter bucket for each email.
 Distributed attackers can still exhaust the shared email budget and prevent login while they sustain the attack.
 Rejected attempts do not revoke existing sessions.
+
+Administrators can change registration access at `/api/v1/admin/config`.
+They can create, list, and revoke invite codes at `/api/v1/admin/invite-codes`.
+Each invite code can register one account.
 
 Protected routes share each user's limit across sessions, IP addresses, and child groups.
 Repeated `Protected` calls within nested groups reuse the verified user and consume one user token per request.

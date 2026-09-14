@@ -20,7 +20,14 @@ import type {
   UseQueryResult,
 } from "@tanstack/react-query";
 
-import type { AdminUser, Problem, QuotaSettings, UpdateUserQuotaInputBody } from "../model";
+import type {
+  AdminUser,
+  InviteCode,
+  Problem,
+  QuotaSettings,
+  RegistrationSettings,
+  UpdateUserQuotaInputBody,
+} from "../model";
 
 import { apiFetch } from "../../fetcher.ts";
 import type { ErrorType, BodyType } from "../../fetcher.ts";
@@ -42,6 +49,509 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
   return result;
 };
 
+export const getAdminConfigGetUrl = () => {
+  return `/api/v1/admin/config`;
+};
+
+/**
+ * @summary Get registration settings
+ */
+export const adminConfigGet = async (
+  options?: Parameters<typeof apiFetch>[1],
+): Promise<RegistrationSettings> => {
+  return apiFetch<RegistrationSettings>(getAdminConfigGetUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getAdminConfigGetQueryKey = () => {
+  return [`/api/v1/admin/config`] as const;
+};
+
+export const getAdminConfigGetQueryOptions = <
+  TData = Awaited<ReturnType<typeof adminConfigGet>>,
+  TError = ErrorType<Problem>,
+>(options?: {
+  query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof adminConfigGet>>, TError, TData>>;
+  request?: SecondParameter<typeof apiFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getAdminConfigGetQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof adminConfigGet>>> = ({ signal }) =>
+    adminConfigGet({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof adminConfigGet>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type AdminConfigGetQueryResult = NonNullable<Awaited<ReturnType<typeof adminConfigGet>>>;
+export type AdminConfigGetQueryError = ErrorType<Problem>;
+
+export function useAdminConfigGet<
+  TData = Awaited<ReturnType<typeof adminConfigGet>>,
+  TError = ErrorType<Problem>,
+>(
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof adminConfigGet>>, TError, TData>> &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof adminConfigGet>>,
+          TError,
+          Awaited<ReturnType<typeof adminConfigGet>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useAdminConfigGet<
+  TData = Awaited<ReturnType<typeof adminConfigGet>>,
+  TError = ErrorType<Problem>,
+>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof adminConfigGet>>, TError, TData>> &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof adminConfigGet>>,
+          TError,
+          Awaited<ReturnType<typeof adminConfigGet>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useAdminConfigGet<
+  TData = Awaited<ReturnType<typeof adminConfigGet>>,
+  TError = ErrorType<Problem>,
+>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof adminConfigGet>>, TError, TData>>;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary Get registration settings
+ */
+
+export function useAdminConfigGet<
+  TData = Awaited<ReturnType<typeof adminConfigGet>>,
+  TError = ErrorType<Problem>,
+>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof adminConfigGet>>, TError, TData>>;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getAdminConfigGetQueryOptions(options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getAdminConfigSetUrl = () => {
+  return `/api/v1/admin/config`;
+};
+
+/**
+ * @summary Set registration settings
+ */
+export const adminConfigSet = async (
+  registrationSettings: RegistrationSettings,
+  options?: Parameters<typeof apiFetch>[1],
+): Promise<RegistrationSettings> => {
+  const getHeaders = (
+    h?: NonNullable<RequestInit["headers"]>,
+  ): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(
+          h as Iterable<Iterable<string>>,
+          (entry) => Array.from(entry) as [string, string],
+        ),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+  return apiFetch<RegistrationSettings>(getAdminConfigSetUrl(), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...getHeaders(options?.headers) },
+    body: JSON.stringify(registrationSettings),
+  });
+};
+
+export const getAdminConfigSetMutationKey = () => ["adminConfigSet"] as const;
+
+export const getAdminConfigSetMutationOptions = <
+  TError = ErrorType<Problem>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof adminConfigSet>>,
+    TError,
+    AdminConfigSetMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof apiFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof adminConfigSet>>,
+  TError,
+  AdminConfigSetMutationVariables,
+  TContext
+> => {
+  const mutationKey = getAdminConfigSetMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof adminConfigSet>>,
+    AdminConfigSetMutationVariables
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return adminConfigSet(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AdminConfigSetMutationResult = NonNullable<Awaited<ReturnType<typeof adminConfigSet>>>;
+export type AdminConfigSetMutationBody = BodyType<RegistrationSettings>;
+export type AdminConfigSetMutationError = ErrorType<Problem>;
+export type AdminConfigSetMutationVariables = { data: BodyType<RegistrationSettings> };
+
+/**
+ * @summary Set registration settings
+ */
+export const useAdminConfigSet = <TError = ErrorType<Problem>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof adminConfigSet>>,
+      TError,
+      AdminConfigSetMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof adminConfigSet>>,
+  TError,
+  AdminConfigSetMutationVariables,
+  TContext
+> => {
+  return useMutation(getAdminConfigSetMutationOptions(options), queryClient);
+};
+export const getAdminInviteCodesListUrl = () => {
+  return `/api/v1/admin/invite-codes`;
+};
+
+/**
+ * @summary List invite codes
+ */
+export const adminInviteCodesList = async (
+  options?: Parameters<typeof apiFetch>[1],
+): Promise<InviteCode[]> => {
+  return apiFetch<InviteCode[]>(getAdminInviteCodesListUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getAdminInviteCodesListQueryKey = () => {
+  return [`/api/v1/admin/invite-codes`] as const;
+};
+
+export const getAdminInviteCodesListQueryOptions = <
+  TData = Awaited<ReturnType<typeof adminInviteCodesList>>,
+  TError = ErrorType<Problem>,
+>(options?: {
+  query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof adminInviteCodesList>>, TError, TData>>;
+  request?: SecondParameter<typeof apiFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getAdminInviteCodesListQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof adminInviteCodesList>>> = ({ signal }) =>
+    adminInviteCodesList({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof adminInviteCodesList>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type AdminInviteCodesListQueryResult = NonNullable<
+  Awaited<ReturnType<typeof adminInviteCodesList>>
+>;
+export type AdminInviteCodesListQueryError = ErrorType<Problem>;
+
+export function useAdminInviteCodesList<
+  TData = Awaited<ReturnType<typeof adminInviteCodesList>>,
+  TError = ErrorType<Problem>,
+>(
+  options: {
+    query: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof adminInviteCodesList>>, TError, TData>
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof adminInviteCodesList>>,
+          TError,
+          Awaited<ReturnType<typeof adminInviteCodesList>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useAdminInviteCodesList<
+  TData = Awaited<ReturnType<typeof adminInviteCodesList>>,
+  TError = ErrorType<Problem>,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof adminInviteCodesList>>, TError, TData>
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof adminInviteCodesList>>,
+          TError,
+          Awaited<ReturnType<typeof adminInviteCodesList>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useAdminInviteCodesList<
+  TData = Awaited<ReturnType<typeof adminInviteCodesList>>,
+  TError = ErrorType<Problem>,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof adminInviteCodesList>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary List invite codes
+ */
+
+export function useAdminInviteCodesList<
+  TData = Awaited<ReturnType<typeof adminInviteCodesList>>,
+  TError = ErrorType<Problem>,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof adminInviteCodesList>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getAdminInviteCodesListQueryOptions(options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getAdminInviteCodesCreateUrl = () => {
+  return `/api/v1/admin/invite-codes`;
+};
+
+/**
+ * @summary Create an invite code
+ */
+export const adminInviteCodesCreate = async (
+  options?: Parameters<typeof apiFetch>[1],
+): Promise<InviteCode> => {
+  return apiFetch<InviteCode>(getAdminInviteCodesCreateUrl(), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getAdminInviteCodesCreateMutationKey = () => ["adminInviteCodesCreate"] as const;
+
+export const getAdminInviteCodesCreateMutationOptions = <
+  TError = ErrorType<Problem>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof adminInviteCodesCreate>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof apiFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof adminInviteCodesCreate>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = getAdminInviteCodesCreateMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof adminInviteCodesCreate>>,
+    void
+  > = () => {
+    return adminInviteCodesCreate(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AdminInviteCodesCreateMutationResult = NonNullable<
+  Awaited<ReturnType<typeof adminInviteCodesCreate>>
+>;
+
+export type AdminInviteCodesCreateMutationError = ErrorType<Problem>;
+
+/**
+ * @summary Create an invite code
+ */
+export const useAdminInviteCodesCreate = <TError = ErrorType<Problem>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof adminInviteCodesCreate>>,
+      TError,
+      void,
+      TContext
+    >;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof adminInviteCodesCreate>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getAdminInviteCodesCreateMutationOptions(options), queryClient);
+};
+export const getAdminInviteCodesDeleteUrl = (id: string) => {
+  return `/api/v1/admin/invite-codes/${id}`;
+};
+
+/**
+ * @summary Revoke an unused invite code
+ */
+export const adminInviteCodesDelete = async (
+  id: string,
+  options?: Parameters<typeof apiFetch>[1],
+): Promise<void> => {
+  return apiFetch<void>(getAdminInviteCodesDeleteUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getAdminInviteCodesDeleteMutationKey = () => ["adminInviteCodesDelete"] as const;
+
+export const getAdminInviteCodesDeleteMutationOptions = <
+  TError = ErrorType<Problem>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof adminInviteCodesDelete>>,
+    TError,
+    AdminInviteCodesDeleteMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof apiFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof adminInviteCodesDelete>>,
+  TError,
+  AdminInviteCodesDeleteMutationVariables,
+  TContext
+> => {
+  const mutationKey = getAdminInviteCodesDeleteMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof adminInviteCodesDelete>>,
+    AdminInviteCodesDeleteMutationVariables
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return adminInviteCodesDelete(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AdminInviteCodesDeleteMutationResult = NonNullable<
+  Awaited<ReturnType<typeof adminInviteCodesDelete>>
+>;
+
+export type AdminInviteCodesDeleteMutationError = ErrorType<Problem>;
+export type AdminInviteCodesDeleteMutationVariables = { id: string };
+
+/**
+ * @summary Revoke an unused invite code
+ */
+export const useAdminInviteCodesDelete = <TError = ErrorType<Problem>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof adminInviteCodesDelete>>,
+      TError,
+      AdminInviteCodesDeleteMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof adminInviteCodesDelete>>,
+  TError,
+  AdminInviteCodesDeleteMutationVariables,
+  TContext
+> => {
+  return useMutation(getAdminInviteCodesDeleteMutationOptions(options), queryClient);
+};
 export const getAdminQuotaGetUrl = () => {
   return `/api/v1/admin/quota`;
 };

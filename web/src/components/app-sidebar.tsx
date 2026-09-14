@@ -4,6 +4,7 @@ import {
   Folder01Icon,
   LibraryIcon,
   RestoreBinIcon,
+  Settings01Icon,
   UserAccountIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -109,6 +110,16 @@ export function AppSidebar() {
                 >
                   <HugeiconsIcon icon={UserAccountIcon} strokeWidth={2} />
                   <span>Users</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  tooltip="Registration"
+                  isActive={Boolean(matchRoute({ to: "/admin/settings" }))}
+                  render={<Link to="/admin/settings" onClick={() => setOpenMobile(false)} />}
+                >
+                  <HugeiconsIcon icon={Settings01Icon} strokeWidth={2} />
+                  <span>Registration</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
