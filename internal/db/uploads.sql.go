@@ -129,7 +129,7 @@ func (q *Queries) CompleteUploadSession(ctx context.Context, arg CompleteUploadS
 const createUploadFileNode = `-- name: CreateUploadFileNode :one
 INSERT INTO nodes (public_id, library_id, parent_id, kind, name, encrypted_name, name_token)
 VALUES ($1, $2, $3, 'file', $4, $5, $6)
-RETURNING id, public_id, library_id, parent_id, kind, name, encrypted_name, name_token, current_version_id, revision, trashed_at, created_at, updated_at
+RETURNING id, public_id, library_id, parent_id, kind, name, encrypted_name, name_token, current_version_id, revision, trashed_at, created_at, updated_at, key_epoch, metadata_revision, encrypted_metadata, metadata_signature, current_version_pointer, current_version_signature, visible_encryption_generation
 `
 
 type CreateUploadFileNodeParams struct {
@@ -165,6 +165,13 @@ func (q *Queries) CreateUploadFileNode(ctx context.Context, arg CreateUploadFile
 		&i.TrashedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.KeyEpoch,
+		&i.MetadataRevision,
+		&i.EncryptedMetadata,
+		&i.MetadataSignature,
+		&i.CurrentVersionPointer,
+		&i.CurrentVersionSignature,
+		&i.VisibleEncryptionGeneration,
 	)
 	return i, err
 }
@@ -511,7 +518,7 @@ func (q *Queries) LockLibraryByID(ctx context.Context, id int64) error {
 }
 
 const lockLibraryForUpload = `-- name: LockLibraryForUpload :one
-SELECT l.id, l.public_id, l.owner_id, l.backend_id, l.root_node_id, l.name, l.encryption_mode, l.key_envelope, l.created_at, l.updated_at, b.public_id AS backend_public_id, b.name AS backend_name
+SELECT l.id, l.public_id, l.owner_id, l.backend_id, l.root_node_id, l.name, l.encryption_mode, l.key_envelope, l.created_at, l.updated_at, l.encryption_format, l.encrypted_root_metadata, l.owner_root_envelope, l.access_policy_generation, b.public_id AS backend_public_id, b.name AS backend_name
 FROM libraries l
 JOIN storage_backends b ON b.id = l.backend_id
 WHERE l.public_id = $1 AND l.owner_id = $2 AND b.enabled = true
@@ -524,18 +531,22 @@ type LockLibraryForUploadParams struct {
 }
 
 type LockLibraryForUploadRow struct {
-	ID              int64
-	PublicID        string
-	OwnerID         int64
-	BackendID       int64
-	RootNodeID      int64
-	Name            string
-	EncryptionMode  string
-	KeyEnvelope     []byte
-	CreatedAt       pgtype.Timestamptz
-	UpdatedAt       pgtype.Timestamptz
-	BackendPublicID string
-	BackendName     string
+	ID                     int64
+	PublicID               string
+	OwnerID                int64
+	BackendID              int64
+	RootNodeID             int64
+	Name                   pgtype.Text
+	EncryptionMode         string
+	KeyEnvelope            []byte
+	CreatedAt              pgtype.Timestamptz
+	UpdatedAt              pgtype.Timestamptz
+	EncryptionFormat       string
+	EncryptedRootMetadata  []byte
+	OwnerRootEnvelope      []byte
+	AccessPolicyGeneration int64
+	BackendPublicID        string
+	BackendName            string
 }
 
 func (q *Queries) LockLibraryForUpload(ctx context.Context, arg LockLibraryForUploadParams) (LockLibraryForUploadRow, error) {
@@ -552,6 +563,10 @@ func (q *Queries) LockLibraryForUpload(ctx context.Context, arg LockLibraryForUp
 		&i.KeyEnvelope,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.EncryptionFormat,
+		&i.EncryptedRootMetadata,
+		&i.OwnerRootEnvelope,
+		&i.AccessPolicyGeneration,
 		&i.BackendPublicID,
 		&i.BackendName,
 	)
@@ -559,7 +574,7 @@ func (q *Queries) LockLibraryForUpload(ctx context.Context, arg LockLibraryForUp
 }
 
 const lockNodeForPublication = `-- name: LockNodeForPublication :one
-SELECT id, public_id, library_id, parent_id, kind, name, encrypted_name, name_token, current_version_id, revision, trashed_at, created_at, updated_at FROM nodes WHERE id = $1 FOR UPDATE
+SELECT id, public_id, library_id, parent_id, kind, name, encrypted_name, name_token, current_version_id, revision, trashed_at, created_at, updated_at, key_epoch, metadata_revision, encrypted_metadata, metadata_signature, current_version_pointer, current_version_signature, visible_encryption_generation FROM nodes WHERE id = $1 FOR UPDATE
 `
 
 func (q *Queries) LockNodeForPublication(ctx context.Context, id int64) (Node, error) {
@@ -579,6 +594,13 @@ func (q *Queries) LockNodeForPublication(ctx context.Context, id int64) (Node, e
 		&i.TrashedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.KeyEpoch,
+		&i.MetadataRevision,
+		&i.EncryptedMetadata,
+		&i.MetadataSignature,
+		&i.CurrentVersionPointer,
+		&i.CurrentVersionSignature,
+		&i.VisibleEncryptionGeneration,
 	)
 	return i, err
 }

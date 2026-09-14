@@ -191,7 +191,7 @@ func (q *Queries) CreateReplicatedFileVersion(ctx context.Context, arg CreateRep
 const createReplicatedNode = `-- name: CreateReplicatedNode :one
 INSERT INTO nodes (public_id, library_id, parent_id, kind, name, encrypted_name, name_token, revision, trashed_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-RETURNING id, public_id, library_id, parent_id, kind, name, encrypted_name, name_token, current_version_id, revision, trashed_at, created_at, updated_at
+RETURNING id, public_id, library_id, parent_id, kind, name, encrypted_name, name_token, current_version_id, revision, trashed_at, created_at, updated_at, key_epoch, metadata_revision, encrypted_metadata, metadata_signature, current_version_pointer, current_version_signature, visible_encryption_generation
 `
 
 type CreateReplicatedNodeParams struct {
@@ -233,6 +233,13 @@ func (q *Queries) CreateReplicatedNode(ctx context.Context, arg CreateReplicated
 		&i.TrashedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.KeyEpoch,
+		&i.MetadataRevision,
+		&i.EncryptedMetadata,
+		&i.MetadataSignature,
+		&i.CurrentVersionPointer,
+		&i.CurrentVersionSignature,
+		&i.VisibleEncryptionGeneration,
 	)
 	return i, err
 }
@@ -384,9 +391,9 @@ type GetReplicationByPublicIDAndOwnerRow struct {
 	CreatedAt                 pgtype.Timestamptz
 	UpdatedAt                 pgtype.Timestamptz
 	SourcePublicID            string
-	SourceName                string
+	SourceName                pgtype.Text
 	DestinationPublicID       string
-	DestinationName           string
+	DestinationName           pgtype.Text
 	SourceEncryptionMode      string
 	DestinationEncryptionMode string
 	SourceBackendID           int64
@@ -503,9 +510,9 @@ type ListLibraryReplicationsByOwnerRow struct {
 	CreatedAt            pgtype.Timestamptz
 	UpdatedAt            pgtype.Timestamptz
 	SourcePublicID       string
-	SourceName           string
+	SourceName           pgtype.Text
 	DestinationPublicID  string
-	DestinationName      string
+	DestinationName      pgtype.Text
 }
 
 func (q *Queries) ListLibraryReplicationsByOwner(ctx context.Context, ownerID int64) ([]ListLibraryReplicationsByOwnerRow, error) {
@@ -600,7 +607,7 @@ func (q *Queries) ListReplicationIDs(ctx context.Context) ([]int64, error) {
 }
 
 const listReplicationSourceNodes = `-- name: ListReplicationSourceNodes :many
-SELECT n.id, n.public_id, n.library_id, n.parent_id, n.kind, n.name, n.encrypted_name, n.name_token, n.current_version_id, n.revision, n.trashed_at, n.created_at, n.updated_at, parent_map.destination_node_id AS destination_parent_id,
+SELECT n.id, n.public_id, n.library_id, n.parent_id, n.kind, n.name, n.encrypted_name, n.name_token, n.current_version_id, n.revision, n.trashed_at, n.created_at, n.updated_at, n.key_epoch, n.metadata_revision, n.encrypted_metadata, n.metadata_signature, n.current_version_pointer, n.current_version_signature, n.visible_encryption_generation, parent_map.destination_node_id AS destination_parent_id,
        mapped.destination_node_id, current_version.public_id AS version_public_id,
        current_version.size_bytes, blob.id AS blob_id, blob.public_id AS blob_public_id,
        blob.size_bytes AS stored_size_bytes, blob.ciphertext_sha256, blob.dedup_fingerprint,
@@ -638,6 +645,13 @@ type ListReplicationSourceNodesRow struct {
 	TrashedAt                   pgtype.Timestamptz
 	CreatedAt                   pgtype.Timestamptz
 	UpdatedAt                   pgtype.Timestamptz
+	KeyEpoch                    int64
+	MetadataRevision            int64
+	EncryptedMetadata           []byte
+	MetadataSignature           []byte
+	CurrentVersionPointer       []byte
+	CurrentVersionSignature     []byte
+	VisibleEncryptionGeneration int64
 	DestinationParentID         pgtype.Int8
 	DestinationNodeID           pgtype.Int8
 	VersionPublicID             pgtype.Text
@@ -676,6 +690,13 @@ func (q *Queries) ListReplicationSourceNodes(ctx context.Context, arg ListReplic
 			&i.TrashedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.KeyEpoch,
+			&i.MetadataRevision,
+			&i.EncryptedMetadata,
+			&i.MetadataSignature,
+			&i.CurrentVersionPointer,
+			&i.CurrentVersionSignature,
+			&i.VisibleEncryptionGeneration,
 			&i.DestinationParentID,
 			&i.DestinationNodeID,
 			&i.VersionPublicID,

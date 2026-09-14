@@ -83,7 +83,7 @@ func (s *Service) move(ctx context.Context, input *moveInput) (*nodeOutput, erro
 		}
 		event.ActorID = user.ID
 		event.Details.DestinationLibraryID = destination.PublicID
-		event.Details.DestinationLibraryName = destination.Name
+		event.Details.DestinationLibraryName = destination.Name.String
 		return audit.Record(ctx, queries, event)
 	})
 	if errors.Is(err, pgx.ErrNoRows) {

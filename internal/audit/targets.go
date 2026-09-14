@@ -20,7 +20,7 @@ func FileEvent(ctx context.Context, queries *db.Queries, action Action, nodeID i
 		Action: action, SubjectID: row.OwnerID, TargetID: row.PublicID,
 		Details: Details{
 			Name: row.Name.String, Encrypted: row.EncryptionMode == encryptionE2EE,
-			LibraryID: row.LibraryPublicID, LibraryName: row.LibraryName,
+			LibraryID: row.LibraryPublicID, LibraryName: row.LibraryName.String,
 		},
 	}, nil
 }

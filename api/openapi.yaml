@@ -93,6 +93,7 @@ components:
             - account.signed_out
             - account.updated
             - account.password_changed
+            - account.reauthenticated
             - account.admin_granted
             - account.admin_revoked
             - session.revoked
@@ -100,6 +101,9 @@ components:
             - passkey.added
             - passkey.renamed
             - passkey.deleted
+            - encryption.initialized
+            - encryption.bundle_updated
+            - encryption.identity_rotated
             - library.created
             - library.renamed
             - library.deleted
@@ -234,6 +238,41 @@ components:
       required:
         - backend_id
         - mode
+      type: object
+    Bundle:
+      additionalProperties: false
+      properties:
+        account_id:
+          type: string
+        bundle_revision:
+          type: string
+        deployment_id:
+          description: Bind every record to this installation identifier.
+          type: string
+        generation:
+          type: string
+        identities:
+          description: All identity generations in ascending order.
+          items:
+            $ref: "#/components/schemas/Identity"
+          type: array
+        password_envelope:
+          type: string
+        private_envelope:
+          type: string
+        recovery_envelope:
+          type: string
+        state:
+          enum:
+            - absent
+            - configured
+            - legacy
+          type: string
+      required:
+        - state
+        - deployment_id
+        - account_id
+        - identities
       type: object
     ChangePasswordInputBody:
       additionalProperties: false
@@ -464,6 +503,42 @@ components:
         parent_id:
           maxLength: 64
           type: string
+      type: object
+    Identity:
+      additionalProperties: false
+      properties:
+        continuity_record:
+          type: string
+        continuity_signature:
+          type: string
+        generation:
+          type: string
+        record:
+          type: string
+        signature:
+          type: string
+      required:
+        - generation
+        - record
+        - signature
+      type: object
+    InitializeInputBody:
+      additionalProperties: false
+      properties:
+        identity:
+          $ref: "#/components/schemas/SignedRecord"
+          description: Sign with the identity's own signing key.
+        password_envelope:
+          $ref: "#/components/schemas/SignedRecord"
+        private_envelope:
+          $ref: "#/components/schemas/SignedRecord"
+        recovery_envelope:
+          $ref: "#/components/schemas/SignedRecord"
+      required:
+        - identity
+        - password_envelope
+        - recovery_envelope
+        - private_envelope
       type: object
     InviteCode:
       additionalProperties: false
@@ -762,6 +837,15 @@ components:
       required:
         - default_quota
       type: object
+    ReauthenticateInputBody:
+      additionalProperties: false
+      properties:
+        password:
+          type: string
+          writeOnly: true
+      required:
+        - password
+      type: object
     RegisterInputBody:
       additionalProperties: false
       properties:
@@ -860,6 +944,28 @@ components:
         - state
         - created_at
         - updated_at
+      type: object
+    RotateInputBody:
+      additionalProperties: false
+      properties:
+        continuity:
+          $ref: "#/components/schemas/SignedRecord"
+          description: Sign with the current identity's signing key.
+        identity:
+          $ref: "#/components/schemas/SignedRecord"
+          description: Sign with the new identity's signing key.
+        password_envelope:
+          $ref: "#/components/schemas/SignedRecord"
+        private_envelope:
+          $ref: "#/components/schemas/SignedRecord"
+        recovery_envelope:
+          $ref: "#/components/schemas/SignedRecord"
+      required:
+        - identity
+        - continuity
+        - password_envelope
+        - recovery_envelope
+        - private_envelope
       type: object
     S3Config:
       additionalProperties: false
@@ -967,6 +1073,25 @@ components:
         - ip_address
         - created_at
         - current
+      type: object
+    SignedRecord:
+      additionalProperties: false
+      properties:
+        record:
+          description: Canonical binary record in unpadded base64url.
+          maxLength: 21846
+          minLength: 1
+          pattern: ^[A-Za-z0-9_-]+$
+          type: string
+        signature:
+          description: Detached Ed25519 signature in unpadded base64url.
+          maxLength: 86
+          minLength: 86
+          pattern: ^[A-Za-z0-9_-]+$
+          type: string
+      required:
+        - record
+        - signature
       type: object
     Tag:
       additionalProperties: false
@@ -1108,6 +1233,16 @@ components:
       required:
         - name
         - enabled
+      type: object
+    UpdateInputBody:
+      additionalProperties: false
+      properties:
+        password_envelope:
+          $ref: "#/components/schemas/SignedRecord"
+        private_envelope:
+          $ref: "#/components/schemas/SignedRecord"
+        recovery_envelope:
+          $ref: "#/components/schemas/SignedRecord"
       type: object
     UpdateUserQuotaInputBody:
       additionalProperties: false
@@ -2946,6 +3081,54 @@ paths:
       security:
         - session: []
       summary: Change the current account password
+      tags:
+        - Auth
+  /api/v1/auth/reauthenticate:
+    post:
+      description: Sensitive operations accept the session for 10 minutes after this confirmation or sign-in.
+      operationId: auth-reauthenticate
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReauthenticateInputBody"
+        required: true
+      responses:
+        "204":
+          description: No Content
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+      security:
+        - session: []
+      summary: Confirm the password of the current session
       tags:
         - Auth
   /api/v1/auth/register:
@@ -5099,6 +5282,273 @@ paths:
                 $ref: "#/components/schemas/Problem"
           description: Error
       summary: Get the server version
+  /api/v2/encryption/bundle:
+    get:
+      operationId: encryption-bundle-get
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Bundle"
+          description: OK
+          headers:
+            ETag:
+              schema:
+                type: string
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Error
+      security:
+        - session: []
+      summary: Get the account encryption bundle
+      tags:
+        - Encryption
+    post:
+      description: Requires a recent sign-in or password confirmation.
+      operationId: encryption-bundle-create
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InitializeInputBody"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Bundle"
+          description: Created
+          headers:
+            ETag:
+              schema:
+                type: string
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Forbidden
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Conflict
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+      security:
+        - session: []
+      summary: Set up account encryption
+      tags:
+        - Encryption
+    put:
+      description: Requires a recent sign-in or password confirmation. Each envelope uses the next bundle revision and a signature from the current identity.
+      operationId: encryption-bundle-update
+      parameters:
+        - description: Send the ETag of the current bundle.
+          in: header
+          name: If-Match
+          required: true
+          schema:
+            description: Send the ETag of the current bundle.
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Bundle"
+          description: OK
+          headers:
+            ETag:
+              schema:
+                type: string
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Forbidden
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Conflict
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+      security:
+        - session: []
+      summary: Replace account encryption envelopes
+      tags:
+        - Encryption
+  /api/v2/encryption/identities/rotate:
+    post:
+      description: Requires a recent sign-in or password confirmation. The envelopes use the new generation and bundle revision 1.
+      operationId: encryption-identity-rotate
+      parameters:
+        - description: Send the ETag of the current bundle.
+          in: header
+          name: If-Match
+          required: true
+          schema:
+            description: Send the ETag of the current bundle.
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RotateInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Bundle"
+          description: OK
+          headers:
+            ETag:
+              schema:
+                type: string
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Forbidden
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Conflict
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+      security:
+        - session: []
+      summary: Publish the next account encryption identity
+      tags:
+        - Encryption
   /healthz:
     get:
       operationId: health

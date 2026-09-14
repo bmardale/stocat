@@ -1,6 +1,6 @@
 -- name: CreateSession :exec
-INSERT INTO sessions (token_hash, public_id, user_id, user_agent, ip_address, expires_at)
-VALUES ($1, $2, $3, $4, $5, $6);
+INSERT INTO sessions (token_hash, public_id, user_id, user_agent, ip_address, expires_at, authenticated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7);
 
 -- name: GetSession :one
 SELECT * FROM sessions WHERE token_hash = $1;
@@ -34,3 +34,10 @@ DELETE FROM sessions WHERE user_id = sqlc.arg(user_id) AND token_hash <> sqlc.ar
 -- name: RevokeSession :one
 DELETE FROM sessions WHERE token_hash = $1
 RETURNING user_id, public_id;
+
+-- name: GetSessionAuthenticatedAt :one
+SELECT authenticated_at FROM sessions WHERE token_hash = $1 AND expires_at > now();
+
+-- name: RefreshSessionAuthentication :execrows
+UPDATE sessions SET authenticated_at = now()
+WHERE token_hash = $1 AND user_id = $2 AND expires_at > now();

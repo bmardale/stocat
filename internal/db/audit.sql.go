@@ -93,7 +93,7 @@ type GetFileAuditTargetRow struct {
 	PublicID        string
 	Name            pgtype.Text
 	LibraryPublicID string
-	LibraryName     string
+	LibraryName     pgtype.Text
 	EncryptionMode  string
 	OwnerID         int64
 }

@@ -17,6 +17,9 @@ export default defineConfig({
       "/api/v1": {
         target: "http://localhost:8080",
       },
+      "/api/v2": {
+        target: "http://localhost:8080",
+      },
     },
   },
   fmt: { ignorePatterns: ["src/routeTree.gen.ts"] },

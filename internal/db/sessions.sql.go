@@ -13,17 +13,18 @@ import (
 )
 
 const createSession = `-- name: CreateSession :exec
-INSERT INTO sessions (token_hash, public_id, user_id, user_agent, ip_address, expires_at)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO sessions (token_hash, public_id, user_id, user_agent, ip_address, expires_at, authenticated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
 `
 
 type CreateSessionParams struct {
-	TokenHash []byte
-	PublicID  string
-	UserID    int64
-	UserAgent string
-	IpAddress *netip.Addr
-	ExpiresAt pgtype.Timestamptz
+	TokenHash       []byte
+	PublicID        string
+	UserID          int64
+	UserAgent       string
+	IpAddress       *netip.Addr
+	ExpiresAt       pgtype.Timestamptz
+	AuthenticatedAt pgtype.Timestamptz
 }
 
 func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) error {
@@ -34,6 +35,7 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) er
 		arg.UserAgent,
 		arg.IpAddress,
 		arg.ExpiresAt,
+		arg.AuthenticatedAt,
 	)
 	return err
 }
@@ -79,7 +81,7 @@ func (q *Queries) DeleteUserSession(ctx context.Context, arg DeleteUserSessionPa
 }
 
 const getSession = `-- name: GetSession :one
-SELECT token_hash, public_id, user_id, user_agent, ip_address, created_at, expires_at FROM sessions WHERE token_hash = $1
+SELECT token_hash, public_id, user_id, user_agent, ip_address, created_at, expires_at, authenticated_at FROM sessions WHERE token_hash = $1
 `
 
 func (q *Queries) GetSession(ctx context.Context, tokenHash []byte) (Session, error) {
@@ -93,8 +95,20 @@ func (q *Queries) GetSession(ctx context.Context, tokenHash []byte) (Session, er
 		&i.IpAddress,
 		&i.CreatedAt,
 		&i.ExpiresAt,
+		&i.AuthenticatedAt,
 	)
 	return i, err
+}
+
+const getSessionAuthenticatedAt = `-- name: GetSessionAuthenticatedAt :one
+SELECT authenticated_at FROM sessions WHERE token_hash = $1 AND expires_at > now()
+`
+
+func (q *Queries) GetSessionAuthenticatedAt(ctx context.Context, tokenHash []byte) (pgtype.Timestamptz, error) {
+	row := q.db.QueryRow(ctx, getSessionAuthenticatedAt, tokenHash)
+	var authenticated_at pgtype.Timestamptz
+	err := row.Scan(&authenticated_at)
+	return authenticated_at, err
 }
 
 const getSessionUser = `-- name: GetSessionUser :one
@@ -168,6 +182,24 @@ func (q *Queries) ListUserSessions(ctx context.Context, arg ListUserSessionsPara
 		return nil, err
 	}
 	return items, nil
+}
+
+const refreshSessionAuthentication = `-- name: RefreshSessionAuthentication :execrows
+UPDATE sessions SET authenticated_at = now()
+WHERE token_hash = $1 AND user_id = $2 AND expires_at > now()
+`
+
+type RefreshSessionAuthenticationParams struct {
+	TokenHash []byte
+	UserID    int64
+}
+
+func (q *Queries) RefreshSessionAuthentication(ctx context.Context, arg RefreshSessionAuthenticationParams) (int64, error) {
+	result, err := q.db.Exec(ctx, refreshSessionAuthentication, arg.TokenHash, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const revokeSession = `-- name: RevokeSession :one

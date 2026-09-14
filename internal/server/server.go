@@ -15,6 +15,7 @@ import (
 	"github.com/bmardale/stocat/internal/apierr"
 	"github.com/bmardale/stocat/internal/audit"
 	"github.com/bmardale/stocat/internal/auth"
+	"github.com/bmardale/stocat/internal/encryption"
 	"github.com/bmardale/stocat/internal/files"
 	"github.com/bmardale/stocat/internal/libraries"
 	"github.com/bmardale/stocat/internal/platform/crypt"
@@ -135,6 +136,7 @@ func New(cfg Config, pool *pgxpool.Pool) (*Server, error) {
 		replicationService.UseQueue(queue)
 	}
 	uploadService.Register(protected)
+	encryption.New(pool, authService, log).Register(authService.Protected(api, "/api/v2"))
 
 	s := &Server{api: api, log: log, queue: queue, uploads: uploadService, httpServer: &http.Server{
 		Addr: cfg.Addr, Handler: router,

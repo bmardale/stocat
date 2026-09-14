@@ -190,7 +190,7 @@ func tagEvent(ctx context.Context, action audit.Action, library db.GetLibraryByP
 		Action: action, ActorID: user.ID, TargetID: tag.PublicID,
 		Details: audit.Details{
 			Name: tag.Name.String, Encrypted: library.EncryptionMode == EncryptionE2EE,
-			LibraryID: library.PublicID, LibraryName: library.Name,
+			LibraryID: library.PublicID, LibraryName: library.Name.String,
 		},
 	}
 }

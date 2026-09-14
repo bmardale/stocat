@@ -24,6 +24,7 @@ import { Route as AppAdminUsersRouteImport } from './routes/_app/admin/users'
 import { Route as AppLibrariesIndexRouteImport } from './routes/_app/libraries/index'
 import { Route as AppSettingsIndexRouteImport } from './routes/_app/settings/index'
 import { Route as AppSettingsActivityRouteImport } from './routes/_app/settings/activity'
+import { Route as AppSettingsEncryptionRouteImport } from './routes/_app/settings/encryption'
 import { Route as AppSettingsPasskeysRouteImport } from './routes/_app/settings/passkeys'
 import { Route as AppSettingsSessionsRouteImport } from './routes/_app/settings/sessions'
 
@@ -100,6 +101,11 @@ const AppSettingsActivityRoute = AppSettingsActivityRouteImport.update({
   path: '/activity',
   getParentRoute: () => AppSettingsRouteRoute,
 } as any)
+const AppSettingsEncryptionRoute = AppSettingsEncryptionRouteImport.update({
+  id: '/encryption',
+  path: '/encryption',
+  getParentRoute: () => AppSettingsRouteRoute,
+} as any)
 const AppSettingsPasskeysRoute = AppSettingsPasskeysRouteImport.update({
   id: '/passkeys',
   path: '/passkeys',
@@ -123,6 +129,7 @@ export interface FileRoutesByFullPath {
   '/admin/storage': typeof AppAdminStorageRoute
   '/admin/users': typeof AppAdminUsersRoute
   '/settings/activity': typeof AppSettingsActivityRoute
+  '/settings/encryption': typeof AppSettingsEncryptionRoute
   '/settings/passkeys': typeof AppSettingsPasskeysRoute
   '/settings/sessions': typeof AppSettingsSessionsRoute
   '/libraries/': typeof AppLibrariesIndexRoute
@@ -139,6 +146,7 @@ export interface FileRoutesByTo {
   '/admin/storage': typeof AppAdminStorageRoute
   '/admin/users': typeof AppAdminUsersRoute
   '/settings/activity': typeof AppSettingsActivityRoute
+  '/settings/encryption': typeof AppSettingsEncryptionRoute
   '/settings/passkeys': typeof AppSettingsPasskeysRoute
   '/settings/sessions': typeof AppSettingsSessionsRoute
   '/libraries': typeof AppLibrariesIndexRoute
@@ -159,6 +167,7 @@ export interface FileRoutesById {
   '/_app/admin/storage': typeof AppAdminStorageRoute
   '/_app/admin/users': typeof AppAdminUsersRoute
   '/_app/settings/activity': typeof AppSettingsActivityRoute
+  '/_app/settings/encryption': typeof AppSettingsEncryptionRoute
   '/_app/settings/passkeys': typeof AppSettingsPasskeysRoute
   '/_app/settings/sessions': typeof AppSettingsSessionsRoute
   '/_app/libraries/': typeof AppLibrariesIndexRoute
@@ -178,6 +187,7 @@ export interface FileRouteTypes {
     | '/admin/storage'
     | '/admin/users'
     | '/settings/activity'
+    | '/settings/encryption'
     | '/settings/passkeys'
     | '/settings/sessions'
     | '/libraries/'
@@ -194,6 +204,7 @@ export interface FileRouteTypes {
     | '/admin/storage'
     | '/admin/users'
     | '/settings/activity'
+    | '/settings/encryption'
     | '/settings/passkeys'
     | '/settings/sessions'
     | '/libraries'
@@ -213,6 +224,7 @@ export interface FileRouteTypes {
     | '/_app/admin/storage'
     | '/_app/admin/users'
     | '/_app/settings/activity'
+    | '/_app/settings/encryption'
     | '/_app/settings/passkeys'
     | '/_app/settings/sessions'
     | '/_app/libraries/'
@@ -331,6 +343,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSettingsActivityRouteImport
       parentRoute: typeof AppSettingsRouteRoute
     }
+    '/_app/settings/encryption': {
+      id: '/_app/settings/encryption'
+      path: '/encryption'
+      fullPath: '/settings/encryption'
+      preLoaderRoute: typeof AppSettingsEncryptionRouteImport
+      parentRoute: typeof AppSettingsRouteRoute
+    }
     '/_app/settings/passkeys': {
       id: '/_app/settings/passkeys'
       path: '/passkeys'
@@ -368,6 +387,7 @@ const AppAdminRouteRouteWithChildren = AppAdminRouteRoute._addFileChildren(
 
 interface AppSettingsRouteRouteChildren {
   AppSettingsActivityRoute: typeof AppSettingsActivityRoute
+  AppSettingsEncryptionRoute: typeof AppSettingsEncryptionRoute
   AppSettingsPasskeysRoute: typeof AppSettingsPasskeysRoute
   AppSettingsSessionsRoute: typeof AppSettingsSessionsRoute
   AppSettingsIndexRoute: typeof AppSettingsIndexRoute
@@ -375,6 +395,7 @@ interface AppSettingsRouteRouteChildren {
 
 const AppSettingsRouteRouteChildren: AppSettingsRouteRouteChildren = {
   AppSettingsActivityRoute: AppSettingsActivityRoute,
+  AppSettingsEncryptionRoute: AppSettingsEncryptionRoute,
   AppSettingsPasskeysRoute: AppSettingsPasskeysRoute,
   AppSettingsSessionsRoute: AppSettingsSessionsRoute,
   AppSettingsIndexRoute: AppSettingsIndexRoute,

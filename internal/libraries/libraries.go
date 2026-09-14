@@ -227,7 +227,7 @@ func (s *Service) create(ctx context.Context, input *createLibraryInput) (*libra
 		}
 		_, err = queries.CreateLibrary(ctx, db.CreateLibraryParams{
 			ID: libraryID, PublicID: publicID, OwnerID: user.ID, BackendID: backend.ID, RootNodeID: rootID,
-			Name: name, EncryptionMode: input.Body.EncryptionMode, KeyEnvelope: input.Body.KeyEnvelope,
+			Name: pgtype.Text{String: name, Valid: true}, EncryptionMode: input.Body.EncryptionMode, KeyEnvelope: input.Body.KeyEnvelope,
 		})
 		if err != nil {
 			return err
@@ -272,13 +272,13 @@ func (s *Service) rename(ctx context.Context, input *renameLibraryInput) (*libra
 			return err
 		}
 		if _, err = queries.RenameLibrary(ctx, db.RenameLibraryParams{
-			PublicID: input.ID, OwnerID: user.ID, Name: name,
+			PublicID: input.ID, OwnerID: user.ID, Name: pgtype.Text{String: name, Valid: true},
 		}); err != nil {
 			return err
 		}
 		return audit.Record(ctx, queries, audit.Event{
 			Action: audit.LibraryRenamed, ActorID: user.ID, TargetID: input.ID,
-			Details: audit.Details{Name: name, PreviousName: library.Name},
+			Details: audit.Details{Name: name, PreviousName: library.Name.String},
 		})
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -314,7 +314,7 @@ func (s *Service) remove(ctx context.Context, input *libraryInput) (*struct{}, e
 		}
 		return audit.Record(ctx, queries, audit.Event{
 			Action: audit.LibraryDeleted, ActorID: user.ID, TargetID: input.ID,
-			Details: audit.Details{Name: library.Name},
+			Details: audit.Details{Name: library.Name.String},
 		})
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -375,7 +375,7 @@ func (s *Service) createFolder(ctx context.Context, input *folderInput) (*nodeOu
 			Action: audit.FolderCreated, ActorID: user.ID, TargetID: row.PublicID,
 			Details: audit.Details{
 				Name: name.String, Encrypted: library.EncryptionMode == EncryptionE2EE,
-				LibraryID: library.PublicID, LibraryName: library.Name,
+				LibraryID: library.PublicID, LibraryName: library.Name.String,
 			},
 		})
 	})
@@ -501,7 +501,7 @@ func ValidateNodeName(mode, plain string, encrypted, token []byte) (pgtype.Text,
 
 func libraryFromListRow(row db.ListLibrariesByOwnerRow) Library {
 	return Library{
-		ID: row.PublicID, Name: row.Name, EncryptionMode: row.EncryptionMode, KeyEnvelope: row.KeyEnvelope,
+		ID: row.PublicID, Name: row.Name.String, EncryptionMode: row.EncryptionMode, KeyEnvelope: row.KeyEnvelope,
 		RootNodeID: row.RootNodePublicID,
 		Backend:    LibraryBackend{ID: row.BackendPublicID, Name: row.BackendName, Type: row.BackendType},
 		CreatedAt:  row.CreatedAt.Time, UpdatedAt: row.UpdatedAt.Time,
@@ -510,7 +510,7 @@ func libraryFromListRow(row db.ListLibrariesByOwnerRow) Library {
 
 func libraryFromGetRow(row db.GetLibraryByPublicIDAndOwnerRow) Library {
 	return Library{
-		ID: row.PublicID, Name: row.Name, EncryptionMode: row.EncryptionMode, KeyEnvelope: row.KeyEnvelope,
+		ID: row.PublicID, Name: row.Name.String, EncryptionMode: row.EncryptionMode, KeyEnvelope: row.KeyEnvelope,
 		RootNodeID: row.RootNodePublicID,
 		Backend:    LibraryBackend{ID: row.BackendPublicID, Name: row.BackendName, Type: row.BackendType},
 		CreatedAt:  row.CreatedAt.Time, UpdatedAt: row.UpdatedAt.Time,
