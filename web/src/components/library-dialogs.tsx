@@ -15,6 +15,7 @@ import {
   getNodesListQueryKey,
   librariesCreate,
 } from "@/api/generated/libraries/libraries";
+import { getStorageUsageListQueryKey } from "@/api/generated/quota/quota";
 import type {
   CreateLibraryInputBody,
   FolderInputBody,
@@ -171,7 +172,10 @@ function CreateLibraryForm({
         unlock(library.id, keys);
       }
       toast.add({ type: "success", description: "Library created." });
-      await queryClient.invalidateQueries({ queryKey: getLibrariesListQueryKey() });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: getLibrariesListQueryKey() }),
+        queryClient.invalidateQueries({ queryKey: getStorageUsageListQueryKey() }),
+      ]);
     },
   });
   const defaultValues: LibraryFormValues = {

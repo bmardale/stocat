@@ -7,14 +7,12 @@ package db
 
 import (
 	"context"
-
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (public_id, name, email, password_hash)
 VALUES ($1, $2, $3, $4)
-RETURNING id, public_id, name, email, password_hash, created_at, updated_at, is_admin, default_quota_mb
+RETURNING id, public_id, name, email, password_hash, created_at, updated_at, is_admin
 `
 
 type CreateUserParams struct {
@@ -41,13 +39,12 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.IsAdmin,
-		&i.DefaultQuotaMb,
 	)
 	return i, err
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, public_id, name, email, password_hash, created_at, updated_at, is_admin, default_quota_mb FROM users WHERE lower(email) = lower($1::text)
+SELECT id, public_id, name, email, password_hash, created_at, updated_at, is_admin FROM users WHERE lower(email) = lower($1::text)
 `
 
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
@@ -62,13 +59,12 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.IsAdmin,
-		&i.DefaultQuotaMb,
 	)
 	return i, err
 }
 
 const getUserByEmailForUpdate = `-- name: GetUserByEmailForUpdate :one
-SELECT id, public_id, name, email, password_hash, created_at, updated_at, is_admin, default_quota_mb FROM users WHERE lower(email) = lower($1::text) FOR UPDATE
+SELECT id, public_id, name, email, password_hash, created_at, updated_at, is_admin FROM users WHERE lower(email) = lower($1::text) FOR UPDATE
 `
 
 func (q *Queries) GetUserByEmailForUpdate(ctx context.Context, email string) (User, error) {
@@ -83,13 +79,12 @@ func (q *Queries) GetUserByEmailForUpdate(ctx context.Context, email string) (Us
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.IsAdmin,
-		&i.DefaultQuotaMb,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, public_id, name, email, password_hash, created_at, updated_at, is_admin, default_quota_mb FROM users WHERE id = $1
+SELECT id, public_id, name, email, password_hash, created_at, updated_at, is_admin FROM users WHERE id = $1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id int64) (User, error) {
@@ -104,13 +99,12 @@ func (q *Queries) GetUserByID(ctx context.Context, id int64) (User, error) {
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.IsAdmin,
-		&i.DefaultQuotaMb,
 	)
 	return i, err
 }
 
 const getUserByIDForUpdate = `-- name: GetUserByIDForUpdate :one
-SELECT id, public_id, name, email, password_hash, created_at, updated_at, is_admin, default_quota_mb FROM users WHERE id = $1 FOR UPDATE
+SELECT id, public_id, name, email, password_hash, created_at, updated_at, is_admin FROM users WHERE id = $1 FOR UPDATE
 `
 
 func (q *Queries) GetUserByIDForUpdate(ctx context.Context, id int64) (User, error) {
@@ -125,13 +119,12 @@ func (q *Queries) GetUserByIDForUpdate(ctx context.Context, id int64) (User, err
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.IsAdmin,
-		&i.DefaultQuotaMb,
 	)
 	return i, err
 }
 
 const getUserByPublicID = `-- name: GetUserByPublicID :one
-SELECT id, public_id, name, email, password_hash, created_at, updated_at, is_admin, default_quota_mb FROM users WHERE public_id = $1
+SELECT id, public_id, name, email, password_hash, created_at, updated_at, is_admin FROM users WHERE public_id = $1
 `
 
 func (q *Queries) GetUserByPublicID(ctx context.Context, publicID string) (User, error) {
@@ -146,13 +139,32 @@ func (q *Queries) GetUserByPublicID(ctx context.Context, publicID string) (User,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.IsAdmin,
-		&i.DefaultQuotaMb,
+	)
+	return i, err
+}
+
+const getUserByPublicIDForUpdate = `-- name: GetUserByPublicIDForUpdate :one
+SELECT id, public_id, name, email, password_hash, created_at, updated_at, is_admin FROM users WHERE public_id = $1 FOR UPDATE
+`
+
+func (q *Queries) GetUserByPublicIDForUpdate(ctx context.Context, publicID string) (User, error) {
+	row := q.db.QueryRow(ctx, getUserByPublicIDForUpdate, publicID)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.PublicID,
+		&i.Name,
+		&i.Email,
+		&i.PasswordHash,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.IsAdmin,
 	)
 	return i, err
 }
 
 const listUsers = `-- name: ListUsers :many
-SELECT id, public_id, name, email, password_hash, created_at, updated_at, is_admin, default_quota_mb FROM users ORDER BY name, id
+SELECT id, public_id, name, email, password_hash, created_at, updated_at, is_admin FROM users ORDER BY name, id
 `
 
 func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
@@ -173,7 +185,6 @@ func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.IsAdmin,
-			&i.DefaultQuotaMb,
 		); err != nil {
 			return nil, err
 		}
@@ -188,7 +199,7 @@ func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
 const setUserAdminByEmail = `-- name: SetUserAdminByEmail :one
 UPDATE users SET is_admin = $1
 WHERE lower(email) = lower($2::text)
-RETURNING id, public_id, name, email, password_hash, created_at, updated_at, is_admin, default_quota_mb
+RETURNING id, public_id, name, email, password_hash, created_at, updated_at, is_admin
 `
 
 type SetUserAdminByEmailParams struct {
@@ -208,7 +219,6 @@ func (q *Queries) SetUserAdminByEmail(ctx context.Context, arg SetUserAdminByEma
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.IsAdmin,
-		&i.DefaultQuotaMb,
 	)
 	return i, err
 }
@@ -217,7 +227,7 @@ const updateUserAccount = `-- name: UpdateUserAccount :one
 UPDATE users
 SET name = $2, email = $3
 WHERE id = $1
-RETURNING id, public_id, name, email, password_hash, created_at, updated_at, is_admin, default_quota_mb
+RETURNING id, public_id, name, email, password_hash, created_at, updated_at, is_admin
 `
 
 type UpdateUserAccountParams struct {
@@ -238,36 +248,6 @@ func (q *Queries) UpdateUserAccount(ctx context.Context, arg UpdateUserAccountPa
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.IsAdmin,
-		&i.DefaultQuotaMb,
-	)
-	return i, err
-}
-
-const updateUserDefaultQuota = `-- name: UpdateUserDefaultQuota :one
-UPDATE users
-SET default_quota_mb = $1
-WHERE public_id = $2
-RETURNING id, public_id, name, email, password_hash, created_at, updated_at, is_admin, default_quota_mb
-`
-
-type UpdateUserDefaultQuotaParams struct {
-	DefaultQuotaMb pgtype.Int8
-	PublicID       string
-}
-
-func (q *Queries) UpdateUserDefaultQuota(ctx context.Context, arg UpdateUserDefaultQuotaParams) (User, error) {
-	row := q.db.QueryRow(ctx, updateUserDefaultQuota, arg.DefaultQuotaMb, arg.PublicID)
-	var i User
-	err := row.Scan(
-		&i.ID,
-		&i.PublicID,
-		&i.Name,
-		&i.Email,
-		&i.PasswordHash,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.IsAdmin,
-		&i.DefaultQuotaMb,
 	)
 	return i, err
 }

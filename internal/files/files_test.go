@@ -439,11 +439,13 @@ func (f fixture) createUploadSession(t *testing.T, target pgtype.Int8) db.Upload
 
 func (f fixture) storedBytes(t *testing.T) int64 {
 	t.Helper()
-	stored, err := f.queries.SumLibraryStoredBytes(t.Context(), f.library.ID)
+	usage, err := f.queries.GetUserBackendQuota(t.Context(), db.GetUserBackendQuotaParams{
+		UserID: f.ownerID, BackendID: f.library.BackendID,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return stored
+	return usage.StoredBytes
 }
 
 func (f fixture) waitForObjectDeletion(t *testing.T, key string) {

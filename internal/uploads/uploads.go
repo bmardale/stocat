@@ -17,6 +17,7 @@ import (
 	"github.com/bmardale/stocat/internal/auth"
 	"github.com/bmardale/stocat/internal/db"
 	"github.com/bmardale/stocat/internal/platform/id"
+	"github.com/bmardale/stocat/internal/quota"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -167,6 +168,7 @@ func (s *Service) create(ctx context.Context, input *createInput) (*uploadOutput
 		return nil, huma.Error413RequestEntityTooLarge("The file exceeds the upload limit.")
 	}
 	var session db.UploadSession
+	var backendName string
 	err := db.InTx(ctx, s.pool, func(q *db.Queries) error {
 		if err := q.LockUploadAdmission(ctx); err != nil {
 			return err
@@ -200,20 +202,9 @@ func (s *Service) create(ctx context.Context, input *createInput) (*uploadOutput
 				return err
 			}
 		}
-		stored, err := q.SumLibraryStoredBytes(ctx, library.ID)
-		if err != nil {
+		backendName = library.BackendName
+		if err := quota.Admit(ctx, q, user.ID, library.BackendID, input.Body.Size); err != nil {
 			return err
-		}
-		reserved, err := q.SumLibraryUploadReservations(ctx, library.ID)
-		if err != nil {
-			return err
-		}
-		quotaMB := library.DefaultQuotaMb
-		if library.QuotaMb.Valid {
-			quotaMB = library.QuotaMb
-		}
-		if quotaMB.Valid && exceeds(stored, reserved, input.Body.Size, quotaMB.Int64*1_000_000) {
-			return errQuota
 		}
 		allReserved, err := q.SumAllUploadReservations(ctx)
 		if err != nil {
@@ -242,8 +233,8 @@ func (s *Service) create(ctx context.Context, input *createInput) (*uploadOutput
 	if errors.Is(err, errInvalidTarget) {
 		return nil, huma.Error422UnprocessableEntity("Select a current file revision to replace.")
 	}
-	if errors.Is(err, errQuota) {
-		return nil, huma.Error413RequestEntityTooLarge("The upload exceeds the storage quota.")
+	if errors.Is(err, quota.ErrExceeded) {
+		return nil, huma.Error413RequestEntityTooLarge(fmt.Sprintf("The upload exceeds your storage quota on %s.", backendName))
 	}
 	if errors.Is(err, errCapacity) {
 		return nil, huma.NewError(http.StatusInsufficientStorage, "The upload staging area is full.")
@@ -429,7 +420,6 @@ func exceeds(first, second, add, limit int64) bool {
 
 var (
 	errInvalidTarget = errors.New("invalid upload target")
-	errQuota         = errors.New("upload quota exceeded")
 	errCapacity      = errors.New("upload staging capacity exceeded")
 )
 

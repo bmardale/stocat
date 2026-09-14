@@ -6,6 +6,8 @@ Send `Tus-Resumable: 1.0.0` with each tus request. Send patches with `applicatio
 
 The server stores incoming bytes in `UPLOAD_STAGING_DIR`. It reserves the declared size before it creates a session.
 
+If the declared size does not fit in the storage quota of the user on the library backend, the server returns status 413. Refer to `internal/quota`.
+
 Plain uploads enter finalization when the last patch commits. Encrypted uploads wait for `POST /api/v1/uploads/{id}/complete`.
 
 River runs publication jobs from PostgreSQL. Run `make migrate-up` to install both application and River migrations.

@@ -4,17 +4,16 @@
  * stocat
  * OpenAPI spec version: 0.0.1
  */
-import type { LibraryQuota } from "./libraryQuota.ts";
+import type { BackendQuota } from "./backendQuota.ts";
+import type { Quota } from "./quota.ts";
 
 export interface AdminUser {
-  /**
-   * Default quota in megabytes. A null value means no limit.
-   * @nullable
-   */
-  default_quota_mb: number | null;
+  /** A backend without an override uses the default quota of the user. */
+  backend_quotas: BackendQuota[];
+  /** The inherit mode uses the global default quota. */
+  default_quota: Quota;
   email: string;
   id: string;
   is_admin: boolean;
-  libraries: LibraryQuota[];
   name: string;
 }

@@ -11,6 +11,7 @@ import logoMark from "@/assets/logo-mark.svg";
 import logo from "@/assets/logo.svg";
 import { useAuth } from "@/components/auth-provider";
 import { NavUser } from "@/components/nav-user";
+import { StorageUsage } from "@/components/storage-usage";
 import {
   Sidebar,
   SidebarContent,
@@ -112,6 +113,7 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroup>
         )}
+        <StorageUsage />
       </SidebarContent>
       <SidebarFooter>{user && <NavUser user={user} />}</SidebarFooter>
       <SidebarRail />

@@ -4,15 +4,15 @@
  * stocat
  * OpenAPI spec version: 0.0.1
  */
-import type { LibraryQuotaInput } from "./libraryQuotaInput.ts";
+import type { BackendQuota } from "./backendQuota.ts";
+import type { Quota } from "./quota.ts";
 
 export interface UpdateUserQuotaInputBody {
   /**
-   * Default quota in megabytes. Send null for no limit.
-   * @minimum 0
-   * @nullable
+   * The list replaces all backend overrides. The inherit mode removes an override.
+   * @maxItems 1000
    */
-  default_quota_mb: number | null;
-  /** Library quota overrides to update atomically with the user quota. */
-  libraries?: LibraryQuotaInput[];
+  backend_quotas: BackendQuota[];
+  /** The inherit mode uses the global default quota. */
+  default_quota: Quota;
 }

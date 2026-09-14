@@ -22,6 +22,7 @@ import (
 	"github.com/bmardale/stocat/internal/testutil"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 func TestTusUploadsPublishFiles(t *testing.T) {
@@ -199,6 +200,19 @@ func TestTusUploadsPublishFiles(t *testing.T) {
 	decodeBody(t, createdUpload.Body.Bytes(), &upload)
 	response = api.Do(http.MethodDelete, "/api/v1/uploads/"+upload.ID, cookie)
 	requireStatus(t, response, http.StatusNoContent)
+
+	if _, err := queries.CreateUserBackendQuota(t.Context(), db.CreateUserBackendQuotaParams{
+		UserID: user.ID, BackendPublicID: backendID, LimitBytes: pgtype.Int8{Int64: 64, Valid: true},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	overQuota := api.Post("/api/v1/uploads", cookie, map[string]any{
+		"library_id": cancelTarget.ID, "name": "large.txt", "size": 64,
+	})
+	requireStatus(t, overQuota, http.StatusRequestEntityTooLarge)
+	if !strings.Contains(overQuota.Body.String(), "storage quota on Local") {
+		t.Fatalf("quota error = %s", overQuota.Body)
+	}
 }
 
 func waitForUpload(t *testing.T, queries *db.Queries, ownerID int64, uploadID string) db.UploadSession {

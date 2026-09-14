@@ -170,7 +170,7 @@ func (q *Queries) EnsurePasskeyUser(ctx context.Context, arg EnsurePasskeyUserPa
 }
 
 const getPasskeyUserByHandle = `-- name: GetPasskeyUserByHandle :one
-SELECT users.id, users.public_id, users.name, users.email, users.password_hash, users.created_at, users.updated_at, users.is_admin, users.default_quota_mb, passkey_users.handle
+SELECT users.id, users.public_id, users.name, users.email, users.password_hash, users.created_at, users.updated_at, users.is_admin, passkey_users.handle
 FROM passkey_users
 JOIN users ON users.id = passkey_users.user_id
 WHERE passkey_users.handle = $1
@@ -193,7 +193,6 @@ func (q *Queries) GetPasskeyUserByHandle(ctx context.Context, handle []byte) (Ge
 		&i.User.CreatedAt,
 		&i.User.UpdatedAt,
 		&i.User.IsAdmin,
-		&i.User.DefaultQuotaMb,
 		&i.Handle,
 	)
 	return i, err

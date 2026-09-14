@@ -3,22 +3,20 @@ components:
     AdminUser:
       additionalProperties: false
       properties:
-        default_quota_mb:
-          description: Default quota in megabytes. A null value means no limit.
-          format: int64
-          type:
-            - integer
-            - "null"
+        backend_quotas:
+          description: A backend without an override uses the default quota of the user.
+          items:
+            $ref: "#/components/schemas/BackendQuota"
+          type: array
+        default_quota:
+          $ref: "#/components/schemas/Quota"
+          description: The inherit mode uses the global default quota.
         email:
           type: string
         id:
           type: string
         is_admin:
           type: boolean
-        libraries:
-          items:
-            $ref: "#/components/schemas/LibraryQuota"
-          type: array
         name:
           type: string
       required:
@@ -26,8 +24,8 @@ components:
         - name
         - email
         - is_admin
-        - default_quota_mb
-        - libraries
+        - default_quota
+        - backend_quotas
       type: object
     Backend:
       additionalProperties: false
@@ -56,6 +54,27 @@ components:
         - name
         - type
         - enabled
+      type: object
+    BackendQuota:
+      additionalProperties: false
+      properties:
+        backend_id:
+          maxLength: 64
+          type: string
+        limit_bytes:
+          description: Send the limit only with the limited mode.
+          format: int64
+          minimum: 0
+          type: integer
+        mode:
+          enum:
+            - inherit
+            - unlimited
+            - limited
+          type: string
+      required:
+        - backend_id
+        - mode
       type: object
     ChangePasswordInputBody:
       additionalProperties: false
@@ -294,12 +313,6 @@ components:
           type: string
         name:
           type: string
-        quota_mb:
-          description: Quota override in megabytes. A null value uses the user default quota.
-          format: int64
-          type:
-            - integer
-            - "null"
         root_node_id:
           type: string
         updated_at:
@@ -311,7 +324,6 @@ components:
         - encryption_mode
         - root_node_id
         - backend
-        - quota_mb
         - created_at
         - updated_at
       type: object
@@ -331,41 +343,6 @@ components:
         - id
         - name
         - type
-      type: object
-    LibraryQuota:
-      additionalProperties: false
-      properties:
-        id:
-          type: string
-        name:
-          type: string
-        quota_mb:
-          description: Quota in megabytes. A null value uses the user default quota.
-          format: int64
-          type:
-            - integer
-            - "null"
-      required:
-        - id
-        - name
-        - quota_mb
-      type: object
-    LibraryQuotaInput:
-      additionalProperties: false
-      properties:
-        id:
-          maxLength: 64
-          type: string
-        quota_mb:
-          description: Quota in megabytes. A null value uses the user default quota.
-          format: int64
-          minimum: 0
-          type:
-            - integer
-            - "null"
-      required:
-        - id
-        - quota_mb
       type: object
     LocalConfig:
       additionalProperties: false
@@ -531,6 +508,32 @@ components:
             - https://example.com/errors/example
           format: uri
           type: string
+      type: object
+    Quota:
+      additionalProperties: false
+      properties:
+        limit_bytes:
+          description: Send the limit only with the limited mode.
+          format: int64
+          minimum: 0
+          type: integer
+        mode:
+          enum:
+            - inherit
+            - unlimited
+            - limited
+          type: string
+      required:
+        - mode
+      type: object
+    QuotaSettings:
+      additionalProperties: false
+      properties:
+        default_quota:
+          $ref: "#/components/schemas/Quota"
+          description: The global default quota. The inherit mode is not allowed.
+      required:
+        - default_quota
       type: object
     RegisterInputBody:
       additionalProperties: false
@@ -771,36 +774,21 @@ components:
         - name
         - enabled
       type: object
-    UpdateLibraryQuotaInputBody:
-      additionalProperties: false
-      properties:
-        quota_mb:
-          description: Quota in megabytes. Send null to use the user default quota.
-          format: int64
-          minimum: 0
-          type:
-            - integer
-            - "null"
-      required:
-        - quota_mb
-      type: object
     UpdateUserQuotaInputBody:
       additionalProperties: false
       properties:
-        default_quota_mb:
-          description: Default quota in megabytes. Send null for no limit.
-          format: int64
-          minimum: 0
-          type:
-            - integer
-            - "null"
-        libraries:
-          description: Library quota overrides to update atomically with the user quota.
+        backend_quotas:
+          description: The list replaces all backend overrides. The inherit mode removes an override.
           items:
-            $ref: "#/components/schemas/LibraryQuotaInput"
+            $ref: "#/components/schemas/BackendQuota"
+          maxItems: 1000
           type: array
+        default_quota:
+          $ref: "#/components/schemas/Quota"
+          description: The inherit mode uses the global default quota.
       required:
-        - default_quota_mb
+        - default_quota
+        - backend_quotas
       type: object
     Upload:
       additionalProperties: false
@@ -835,6 +823,26 @@ components:
         - declared_size
         - offset
         - expires_at
+      type: object
+    Usage:
+      additionalProperties: false
+      properties:
+        backend:
+          $ref: "#/components/schemas/LibraryBackend"
+        limit_bytes:
+          description: A null value means no limit.
+          format: int64
+          type:
+            - integer
+            - "null"
+        used_bytes:
+          description: Stored bytes of all file versions and trashed files, plus bytes of unfinished uploads.
+          format: int64
+          type: integer
+      required:
+        - backend
+        - used_bytes
+        - limit_bytes
       type: object
     User:
       additionalProperties: false
@@ -871,28 +879,15 @@ info:
   version: 0.0.1
 openapi: 3.1.0
 paths:
-  /api/v1/admin/libraries/{id}/quota:
-    put:
-      operationId: admin-libraries-quota-set
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema:
-            maxLength: 64
-            type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/UpdateLibraryQuotaInputBody"
-        required: true
+  /api/v1/admin/quota:
+    get:
+      operationId: admin-quota-get
       responses:
         "200":
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/LibraryQuota"
+                $ref: "#/components/schemas/QuotaSettings"
           description: OK
         "401":
           content:
@@ -906,12 +901,62 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
           description: Forbidden
-        "404":
+        "429":
           content:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
-          description: Not Found
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Error
+      security:
+        - session: []
+      summary: Get the global quota settings
+      tags:
+        - Admin
+    put:
+      operationId: admin-quota-set
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QuotaSettings"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuotaSettings"
+          description: OK
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Forbidden
         "422":
           content:
             application/problem+json:
@@ -938,7 +983,7 @@ paths:
           description: Internal Server Error
       security:
         - session: []
-      summary: Set the quota override of a library
+      summary: Set the global quota settings
       tags:
         - Admin
   /api/v1/admin/storage-backends:
@@ -1510,7 +1555,7 @@ paths:
           description: Internal Server Error
       security:
         - session: []
-      summary: Set user and library quotas
+      summary: Set the quotas of a user
       tags:
         - Admin
   /api/v1/auth/account:
@@ -3139,6 +3184,54 @@ paths:
       summary: List storage backends for new libraries
       tags:
         - Libraries
+  /api/v1/storage-usage:
+    get:
+      description: The list contains each storage backend that a library of the current user uses.
+      operationId: storage-usage-list
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/Usage"
+                type: array
+          description: OK
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Error
+      security:
+        - session: []
+      summary: List storage usage and quotas
+      tags:
+        - Quota
   /api/v1/uploads:
     post:
       operationId: uploads-create

@@ -29,9 +29,8 @@ SELECT * FROM file_versions WHERE id = $1;
 SELECT * FROM upload_sessions WHERE id = $1 FOR UPDATE;
 
 -- name: LockLibraryForUpload :one
-SELECT l.*, u.default_quota_mb, b.public_id AS backend_public_id
+SELECT l.*, b.public_id AS backend_public_id, b.name AS backend_name
 FROM libraries l
-JOIN users u ON u.id = l.owner_id
 JOIN storage_backends b ON b.id = l.backend_id
 WHERE l.public_id = $1 AND l.owner_id = $2 AND b.enabled = true
 FOR UPDATE OF l;
@@ -113,21 +112,10 @@ SET state = 'completed', published_node_id = $2, published_version_id = $3,
     completed_at = now(), updated_at = now(), failure_code = NULL, failure_message = NULL
 WHERE id = $1 AND state = 'finalizing';
 
--- name: SumLibraryUploadReservations :one
-SELECT coalesce(sum(declared_size), 0)::bigint
-FROM upload_sessions
-WHERE library_id = sqlc.arg(library_id)
-  AND state IN ('created', 'uploading', 'uploaded', 'finalizing', 'failed');
-
 -- name: SumAllUploadReservations :one
 SELECT coalesce(sum(declared_size), 0)::bigint
 FROM upload_sessions
 WHERE state IN ('created', 'uploading', 'uploaded', 'finalizing', 'failed');
-
--- name: SumLibraryStoredBytes :one
-SELECT coalesce(sum(size_bytes), 0)::bigint
-FROM blobs
-WHERE library_id = $1;
 
 -- name: NextFileVersionOrdinal :one
 SELECT coalesce(max(ordinal), 0)::bigint + 1

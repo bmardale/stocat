@@ -21,6 +21,7 @@ import {
   getFilesTrashListQueryKey,
 } from "@/api/generated/files/files";
 import { getNodesListQueryKey } from "@/api/generated/libraries/libraries";
+import { getStorageUsageListQueryKey } from "@/api/generated/quota/quota";
 import type { Library, TrashedFile, TrashPage } from "@/api/generated/model";
 import { librariesQueryOptions } from "@/api/libraries";
 import { UnlockLibraryDialog } from "@/components/library-dialogs";
@@ -107,6 +108,7 @@ function Trash() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: getFilesTrashListQueryKey() }),
       queryClient.invalidateQueries({ queryKey: getNodesListQueryKey(libraryID) }),
+      queryClient.invalidateQueries({ queryKey: getStorageUsageListQueryKey() }),
     ]);
   };
   const removeFromTrash = (id: string) => {

@@ -20,7 +20,6 @@ const documents: Library = {
   encryption_mode: "none",
   root_node_id: "nod_root",
   backend,
-  quota_mb: null,
   created_at: "2026-09-10T10:00:00Z",
   updated_at: "2026-09-10T10:00:00Z",
 };
@@ -288,7 +287,7 @@ describe("files", () => {
     expect(
       await within(dialog).findByText("Do not use slashes, NUL, dot, or dot-dot."),
     ).toBeDefined();
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
   it("shows the server error when a folder already exists", async () => {
@@ -350,7 +349,7 @@ describe("files", () => {
     await renderApp("/?library=lib_private");
     expect(await screen.findByText("Private is locked")).toBeDefined();
     expect(screen.queryByRole("button", { name: "New folder" })).toBeNull();
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
 
     fireEvent.click(screen.getByRole("button", { name: "Unlock" }));
     const dialog = await screen.findByRole("dialog");
@@ -738,7 +737,7 @@ describe("library setup", () => {
       await within(dialog).findByText("Use a passphrase with 12 or more characters."),
     ).toBeDefined();
     expect(within(dialog).getByText("The passphrases do not match.")).toBeDefined();
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
   it("creates an encrypted library that stays unlocked in Files", async () => {

@@ -511,9 +511,8 @@ func (q *Queries) LockLibraryByID(ctx context.Context, id int64) error {
 }
 
 const lockLibraryForUpload = `-- name: LockLibraryForUpload :one
-SELECT l.id, l.public_id, l.owner_id, l.backend_id, l.root_node_id, l.name, l.encryption_mode, l.key_envelope, l.created_at, l.updated_at, l.quota_mb, u.default_quota_mb, b.public_id AS backend_public_id
+SELECT l.id, l.public_id, l.owner_id, l.backend_id, l.root_node_id, l.name, l.encryption_mode, l.key_envelope, l.created_at, l.updated_at, b.public_id AS backend_public_id, b.name AS backend_name
 FROM libraries l
-JOIN users u ON u.id = l.owner_id
 JOIN storage_backends b ON b.id = l.backend_id
 WHERE l.public_id = $1 AND l.owner_id = $2 AND b.enabled = true
 FOR UPDATE OF l
@@ -535,9 +534,8 @@ type LockLibraryForUploadRow struct {
 	KeyEnvelope     []byte
 	CreatedAt       pgtype.Timestamptz
 	UpdatedAt       pgtype.Timestamptz
-	QuotaMb         pgtype.Int8
-	DefaultQuotaMb  pgtype.Int8
 	BackendPublicID string
+	BackendName     string
 }
 
 func (q *Queries) LockLibraryForUpload(ctx context.Context, arg LockLibraryForUploadParams) (LockLibraryForUploadRow, error) {
@@ -554,9 +552,8 @@ func (q *Queries) LockLibraryForUpload(ctx context.Context, arg LockLibraryForUp
 		&i.KeyEnvelope,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.QuotaMb,
-		&i.DefaultQuotaMb,
 		&i.BackendPublicID,
+		&i.BackendName,
 	)
 	return i, err
 }
@@ -753,33 +750,6 @@ WHERE state IN ('created', 'uploading', 'uploaded', 'finalizing', 'failed')
 
 func (q *Queries) SumAllUploadReservations(ctx context.Context) (int64, error) {
 	row := q.db.QueryRow(ctx, sumAllUploadReservations)
-	var column_1 int64
-	err := row.Scan(&column_1)
-	return column_1, err
-}
-
-const sumLibraryStoredBytes = `-- name: SumLibraryStoredBytes :one
-SELECT coalesce(sum(size_bytes), 0)::bigint
-FROM blobs
-WHERE library_id = $1
-`
-
-func (q *Queries) SumLibraryStoredBytes(ctx context.Context, libraryID int64) (int64, error) {
-	row := q.db.QueryRow(ctx, sumLibraryStoredBytes, libraryID)
-	var column_1 int64
-	err := row.Scan(&column_1)
-	return column_1, err
-}
-
-const sumLibraryUploadReservations = `-- name: SumLibraryUploadReservations :one
-SELECT coalesce(sum(declared_size), 0)::bigint
-FROM upload_sessions
-WHERE library_id = $1
-  AND state IN ('created', 'uploading', 'uploaded', 'finalizing', 'failed')
-`
-
-func (q *Queries) SumLibraryUploadReservations(ctx context.Context, libraryID int64) (int64, error) {
-	row := q.db.QueryRow(ctx, sumLibraryUploadReservations, libraryID)
 	var column_1 int64
 	err := row.Scan(&column_1)
 	return column_1, err
