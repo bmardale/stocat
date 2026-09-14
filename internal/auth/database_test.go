@@ -24,6 +24,7 @@ func testDatabaseFailure(t *testing.T, pool *pgxpool.Pool) {
 		method, path string
 		body         any
 	}{
+		{http.MethodGet, "/api/v1/auth/config", nil},
 		{http.MethodPost, "/api/v1/auth/register", registration("unavailable@example.com")},
 		{http.MethodPost, "/api/v1/auth/login", credentials("user@example.com")},
 		{http.MethodGet, "/api/v1/auth/me", nil},

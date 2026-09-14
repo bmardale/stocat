@@ -110,6 +110,7 @@ func (s *Service) Register(api huma.API) {
 		Summary: "Set the global quota settings", MaxBodyBytes: 4096,
 		Errors: []int{http.StatusUnprocessableEntity},
 	}, s.setQuotaSettings)
+	s.registerRegistration(api)
 }
 
 func (s *Service) list(ctx context.Context, _ *struct{}) (*usersOutput, error) {

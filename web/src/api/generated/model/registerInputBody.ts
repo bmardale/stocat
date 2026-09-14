@@ -8,6 +8,8 @@
 export interface RegisterInputBody {
   /** @maxLength 254 */
   email: string;
+  /** @maxLength 64 */
+  invite_code?: string;
   /**
    * @minLength 1
    * @maxLength 200

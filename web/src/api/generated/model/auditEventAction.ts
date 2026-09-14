@@ -44,4 +44,7 @@ export const AuditEventAction = {
   storage_backenddeleted: "storage_backend.deleted",
   quotauser_updated: "quota.user_updated",
   quotadefault_updated: "quota.default_updated",
+  registrationsettings_updated: "registration.settings_updated",
+  registrationinvite_code_created: "registration.invite_code_created",
+  registrationinvite_code_revoked: "registration.invite_code_revoked",
 } as const;

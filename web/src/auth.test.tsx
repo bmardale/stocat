@@ -75,21 +75,29 @@ describe("auth", () => {
   });
 
   it("rejects a short password on registration", async () => {
-    const fetchMock = stubApi({ "GET /api/v1/auth/me": unauthorized });
+    const fetchMock = stubApi({
+      "GET /api/v1/auth/me": unauthorized,
+      "GET /api/v1/auth/config": () => jsonResponse(200, { invite_only: false }),
+    });
     await renderApp("/register");
     fill("Name", "Ada Lovelace");
     fill("Email", "ada@example.com");
     fill("Password", "too short");
     fireEvent.click(screen.getByRole("button", { name: "Create account" }));
     expect(await screen.findByText("The password is too short.")).toBeDefined();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("registers and opens home", async () => {
+    let body: unknown;
     stubApi({
       "GET /api/v1/auth/me": unauthorized,
+      "GET /api/v1/auth/config": () => jsonResponse(200, { invite_only: false }),
       "GET /api/v1/libraries": noLibraries,
-      "POST /api/v1/auth/register": () => jsonResponse(201, testUser),
+      "POST /api/v1/auth/register": (init) => {
+        body = JSON.parse(init?.body as string);
+        return jsonResponse(201, testUser);
+      },
     });
     const router = await renderApp("/register");
     fill("Name", "Ada Lovelace");
@@ -98,6 +106,39 @@ describe("auth", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create account" }));
     expect(await screen.findByRole("heading", { name: "Files" })).toBeDefined();
     expect(router.state.location.pathname).toBe("/");
+    expect(body).toEqual({
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      password: "correct horse battery staple",
+    });
+  });
+
+  it("requires and sends an invite code when registration is restricted", async () => {
+    let body: unknown;
+    stubApi({
+      "GET /api/v1/auth/me": unauthorized,
+      "GET /api/v1/auth/config": () => jsonResponse(200, { invite_only: true }),
+      "GET /api/v1/libraries": noLibraries,
+      "POST /api/v1/auth/register": (init) => {
+        body = JSON.parse(init?.body as string);
+        return jsonResponse(201, testUser);
+      },
+    });
+    const router = await renderApp("/register");
+    expect(screen.getByLabelText("Invite code")).toBeDefined();
+    fill("Name", "Ada Lovelace");
+    fill("Email", "ada@example.com");
+    fill("Invite code", "TEST-INVITE");
+    fill("Password", "correct horse battery staple");
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+    expect(await screen.findByRole("heading", { name: "Files" })).toBeDefined();
+    expect(router.state.location.pathname).toBe("/");
+    expect(body).toEqual({
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      password: "correct horse battery staple",
+      invite_code: "TEST-INVITE",
+    });
   });
 
   it("signs out and opens sign in", async () => {

@@ -11,16 +11,19 @@ import (
 	"github.com/bmardale/stocat/internal/db"
 	"github.com/bmardale/stocat/internal/platform/id"
 	"github.com/bmardale/stocat/internal/platform/ratelimit"
+	"github.com/bmardale/stocat/internal/settings"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type registerInput struct {
 	Body struct {
-		Name     string `json:"name" minLength:"1" maxLength:"200"`
-		Email    string `json:"email" format:"email" maxLength:"254"`
-		Password string `json:"password" writeOnly:"true" doc:"Use at least 15 characters and at most 1024 bytes."`
+		Name       string `json:"name" minLength:"1" maxLength:"200"`
+		Email      string `json:"email" format:"email" maxLength:"254"`
+		Password   string `json:"password" writeOnly:"true" doc:"Use at least 15 characters and at most 1024 bytes."`
+		InviteCode string `json:"invite_code,omitempty" maxLength:"64"`
 	}
 }
 
@@ -44,7 +47,18 @@ type logoutOutput struct {
 	SetCookie http.Cookie `header:"Set-Cookie"`
 }
 
-var errInvalidCredentials = errors.New("invalid credentials")
+type PublicConfig struct {
+	InviteOnly bool `json:"invite_only"`
+}
+
+type configOutput struct {
+	Body PublicConfig
+}
+
+var (
+	errInvalidCredentials = errors.New("invalid credentials")
+	errInvalidInviteCode  = errors.New("invalid invite code")
+)
 
 func (s *Service) Register(api huma.API) {
 	group := huma.NewGroup(api, "/api/v1/auth")
@@ -54,6 +68,11 @@ func (s *Service) Register(api huma.API) {
 	})
 	group.UseMiddleware(captureMetadata)
 	group.UseTransformer(apierr.RedactValues)
+	huma.Register(group, huma.Operation{
+		OperationID: "auth-config", Method: http.MethodGet, Path: "/config",
+		Summary: "Get public authentication configuration",
+		Errors:  []int{http.StatusInternalServerError},
+	}, s.config)
 	huma.Register(group, huma.Operation{
 		OperationID: "auth-register", Method: http.MethodPost, Path: "/register",
 		Middlewares: huma.Middlewares{s.limitCredentials(api, s.authIP, s.registerIP)},
@@ -146,6 +165,14 @@ func (s *Service) Register(api huma.API) {
 	}, s.deletePasskey)
 }
 
+func (s *Service) config(ctx context.Context, _ *struct{}) (*configOutput, error) {
+	inviteOnly, err := settings.RegistrationInviteOnly(ctx, s.queries)
+	if err != nil {
+		return nil, s.internalError(ctx, "load authentication configuration", err)
+	}
+	return &configOutput{Body: PublicConfig{InviteOnly: inviteOnly}}, nil
+}
+
 func (s *Service) register(ctx context.Context, input *registerInput) (*sessionOutput, error) {
 	name := strings.TrimSpace(input.Body.Name)
 	if name == "" {
@@ -158,9 +185,28 @@ func (s *Service) register(ctx context.Context, input *registerInput) (*sessionO
 	if delay := s.registerEmail.Allow(normalizeEmail(input.Body.Email)); delay > 0 {
 		return nil, ratelimit.Error(delay)
 	}
+	inviteOnly, err := settings.RegistrationInviteOnly(ctx, s.queries)
+	if err != nil {
+		return nil, s.internalError(ctx, "load registration settings", err)
+	}
+	inviteCode := strings.TrimSpace(input.Body.InviteCode)
+	if inviteOnly && inviteCode == "" {
+		return nil, huma.Error422UnprocessableEntity("Enter an invite code.")
+	}
 	passwordHash := hashPassword(input.Body.Password)
 	output := &sessionOutput{}
-	err := db.InTx(ctx, s.pool, func(queries *db.Queries) error {
+	err = db.InTx(ctx, s.pool, func(queries *db.Queries) error {
+		var invite db.InviteCode
+		if inviteOnly {
+			var err error
+			invite, err = queries.LockUnusedInviteCode(ctx, inviteCode)
+			if errors.Is(err, pgx.ErrNoRows) {
+				return errInvalidInviteCode
+			}
+			if err != nil {
+				return err
+			}
+		}
 		user, err := queries.CreateUser(ctx, db.CreateUserParams{
 			PublicID: id.New(id.User), Name: name,
 			Email: normalizeEmail(input.Body.Email), PasswordHash: passwordHash,
@@ -172,8 +218,18 @@ func (s *Service) register(ctx context.Context, input *registerInput) (*sessionO
 		if output.SetCookie, err = s.createSession(ctx, queries, user.ID); err != nil {
 			return err
 		}
+		if inviteOnly {
+			if err := queries.MarkInviteCodeUsed(ctx, db.MarkInviteCodeUsedParams{
+				UsedBy: pgtype.Int8{Int64: user.ID, Valid: true}, ID: invite.ID,
+			}); err != nil {
+				return err
+			}
+		}
 		return audit.Record(ctx, queries, audit.Event{Action: audit.AccountRegistered, ActorID: user.ID})
 	})
+	if errors.Is(err, errInvalidInviteCode) {
+		return nil, huma.Error422UnprocessableEntity("Enter a valid invite code.")
+	}
 	if err != nil {
 		if isEmailConflict(err) {
 			return nil, huma.Error409Conflict("An account with this email already exists.")

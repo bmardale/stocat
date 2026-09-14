@@ -18,6 +18,7 @@ import { Route as AppTrashRouteImport } from './routes/_app/trash'
 import { Route as AuthLoginRouteImport } from './routes/_auth/login'
 import { Route as AuthRegisterRouteImport } from './routes/_auth/register'
 import { Route as AppAdminAuditRouteImport } from './routes/_app/admin/audit'
+import { Route as AppAdminSettingsRouteImport } from './routes/_app/admin/settings'
 import { Route as AppAdminStorageRouteImport } from './routes/_app/admin/storage'
 import { Route as AppAdminUsersRouteImport } from './routes/_app/admin/users'
 import { Route as AppLibrariesIndexRouteImport } from './routes/_app/libraries/index'
@@ -69,6 +70,11 @@ const AppAdminAuditRoute = AppAdminAuditRouteImport.update({
   path: '/audit',
   getParentRoute: () => AppAdminRouteRoute,
 } as any)
+const AppAdminSettingsRoute = AppAdminSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AppAdminRouteRoute,
+} as any)
 const AppAdminStorageRoute = AppAdminStorageRouteImport.update({
   id: '/storage',
   path: '/storage',
@@ -113,6 +119,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof AuthLoginRoute
   '/register': typeof AuthRegisterRoute
   '/admin/audit': typeof AppAdminAuditRoute
+  '/admin/settings': typeof AppAdminSettingsRoute
   '/admin/storage': typeof AppAdminStorageRoute
   '/admin/users': typeof AppAdminUsersRoute
   '/settings/activity': typeof AppSettingsActivityRoute
@@ -128,6 +135,7 @@ export interface FileRoutesByTo {
   '/login': typeof AuthLoginRoute
   '/register': typeof AuthRegisterRoute
   '/admin/audit': typeof AppAdminAuditRoute
+  '/admin/settings': typeof AppAdminSettingsRoute
   '/admin/storage': typeof AppAdminStorageRoute
   '/admin/users': typeof AppAdminUsersRoute
   '/settings/activity': typeof AppSettingsActivityRoute
@@ -147,6 +155,7 @@ export interface FileRoutesById {
   '/_auth/register': typeof AuthRegisterRoute
   '/_app/': typeof AppIndexRoute
   '/_app/admin/audit': typeof AppAdminAuditRoute
+  '/_app/admin/settings': typeof AppAdminSettingsRoute
   '/_app/admin/storage': typeof AppAdminStorageRoute
   '/_app/admin/users': typeof AppAdminUsersRoute
   '/_app/settings/activity': typeof AppSettingsActivityRoute
@@ -165,6 +174,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/register'
     | '/admin/audit'
+    | '/admin/settings'
     | '/admin/storage'
     | '/admin/users'
     | '/settings/activity'
@@ -180,6 +190,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/register'
     | '/admin/audit'
+    | '/admin/settings'
     | '/admin/storage'
     | '/admin/users'
     | '/settings/activity'
@@ -198,6 +209,7 @@ export interface FileRouteTypes {
     | '/_auth/register'
     | '/_app/'
     | '/_app/admin/audit'
+    | '/_app/admin/settings'
     | '/_app/admin/storage'
     | '/_app/admin/users'
     | '/_app/settings/activity'
@@ -277,6 +289,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAdminAuditRouteImport
       parentRoute: typeof AppAdminRouteRoute
     }
+    '/_app/admin/settings': {
+      id: '/_app/admin/settings'
+      path: '/settings'
+      fullPath: '/admin/settings'
+      preLoaderRoute: typeof AppAdminSettingsRouteImport
+      parentRoute: typeof AppAdminRouteRoute
+    }
     '/_app/admin/storage': {
       id: '/_app/admin/storage'
       path: '/storage'
@@ -331,12 +350,14 @@ declare module '@tanstack/react-router' {
 
 interface AppAdminRouteRouteChildren {
   AppAdminAuditRoute: typeof AppAdminAuditRoute
+  AppAdminSettingsRoute: typeof AppAdminSettingsRoute
   AppAdminStorageRoute: typeof AppAdminStorageRoute
   AppAdminUsersRoute: typeof AppAdminUsersRoute
 }
 
 const AppAdminRouteRouteChildren: AppAdminRouteRouteChildren = {
   AppAdminAuditRoute: AppAdminAuditRoute,
+  AppAdminSettingsRoute: AppAdminSettingsRoute,
   AppAdminStorageRoute: AppAdminStorageRoute,
   AppAdminUsersRoute: AppAdminUsersRoute,
 }

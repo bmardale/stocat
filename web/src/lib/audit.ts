@@ -39,6 +39,9 @@ export const auditActionLabels: Record<AuditEventAction, string> = {
   "storage_backend.deleted": "Storage backend deleted",
   "quota.user_updated": "User quota changed",
   "quota.default_updated": "Global default quota changed",
+  "registration.settings_updated": "Registration settings changed",
+  "registration.invite_code_created": "Invite code created",
+  "registration.invite_code_revoked": "Invite code revoked",
 };
 
 const quote = (value: string) => `“${value}”`;
@@ -63,6 +66,8 @@ export function auditEventSummary({ action, details }: AuditEvent) {
       `${details.backend_quota_count} backend ${details.backend_quota_count === 1 ? "override" : "overrides"}`,
     details.backend_type && (details.backend_type === "s3" ? "S3" : "Local disk"),
     details.backend_enabled === false && "Disabled",
+    details.invite_only !== undefined &&
+      (details.invite_only ? "Invite-only registration" : "Open registration"),
   ];
   return parts.filter(Boolean).join(" · ");
 }
