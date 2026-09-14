@@ -1,6 +1,9 @@
+import { ArrowRight01Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { queryOptions, useQuery } from "@tanstack/react-query";
 import type { Usage } from "@/api/generated/model";
 import { getStorageUsageListQueryKey, storageUsageList } from "@/api/generated/quota/quota";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { SidebarGroup, SidebarGroupLabel } from "@/components/ui/sidebar";
 import { formatBytes } from "@/lib/utils";
 import { cn } from "cn";
@@ -18,12 +21,26 @@ export function StorageUsage() {
 
   return (
     <SidebarGroup className="mt-auto group-data-[collapsible=icon]:hidden">
-      <SidebarGroupLabel>Storage</SidebarGroupLabel>
-      <ul className="flex flex-col gap-3 px-2">
-        {usage.map((item) => (
-          <UsageMeter key={item.backend.id} usage={item} />
-        ))}
-      </ul>
+      <Collapsible defaultOpen>
+        <SidebarGroupLabel
+          render={<CollapsibleTrigger />}
+          className="group/storage-trigger w-full hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+        >
+          Storage
+          <HugeiconsIcon
+            icon={ArrowRight01Icon}
+            strokeWidth={2}
+            className="ml-auto transition-transform group-data-[panel-open]/storage-trigger:rotate-90"
+          />
+        </SidebarGroupLabel>
+        <CollapsibleContent>
+          <ul className="flex flex-col gap-3 px-2 pt-1">
+            {usage.map((item) => (
+              <UsageMeter key={item.backend.id} usage={item} />
+            ))}
+          </ul>
+        </CollapsibleContent>
+      </Collapsible>
     </SidebarGroup>
   );
 }
