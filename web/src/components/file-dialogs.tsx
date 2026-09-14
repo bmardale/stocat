@@ -165,7 +165,7 @@ export function DeleteFileDialog({
   const remove = useFilesDelete({
     mutation: {
       onSuccess: async () => {
-        toast.add({ type: "success", description: "File deleted." });
+        toast.add({ type: "success", description: "File moved to trash." });
         await queryClient.invalidateQueries({ queryKey: getNodesListQueryKey(library.id) });
       },
     },
@@ -185,7 +185,7 @@ export function DeleteFileDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>Delete {file?.name}?</AlertDialogTitle>
           <AlertDialogDescription>
-            The server permanently deletes the file and its versions. You cannot undo this action.
+            You can restore this file from Trash for 30 days.
           </AlertDialogDescription>
         </AlertDialogHeader>
         {remove.error && <FieldError>{remove.error.message}</FieldError>}
@@ -198,7 +198,7 @@ export function DeleteFileDialog({
               file && remove.mutate({ id: file.id }, { onSuccess: () => onOpenChange(false) })
             }
           >
-            Delete
+            Move to trash
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

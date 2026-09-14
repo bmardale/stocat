@@ -22,7 +22,9 @@ import (
 	"github.com/bmardale/stocat/internal/testutil"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/humatest"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 )
@@ -140,10 +142,28 @@ func TestDeleteFile(t *testing.T) {
 	requireFileStatus(t, f.api.Get("/api/v1/files/"+first.PublicID, f.cookie), http.StatusNotFound)
 	requireFileStatus(t, f.api.Delete("/api/v1/files/"+first.PublicID, f.cookie), http.StatusNotFound)
 	if stored := f.storedBytes(t); stored != shared.SizeBytes {
-		t.Fatalf("stored bytes after the first deletion = %d, want %d", stored, shared.SizeBytes)
+		t.Fatalf("stored bytes after trashing = %d, want %d", stored, shared.SizeBytes)
+	}
+	trashResponse := f.api.Get("/api/v1/files/trash", f.cookie)
+	requireFileStatus(t, trashResponse, http.StatusOK)
+	var trash trashPage
+	decodeFile(t, trashResponse, &trash)
+	if len(trash.Items) != 1 || trash.Items[0].ID != first.PublicID || trash.Items[0].Name != "first.txt" {
+		t.Fatalf("trash = %+v", trash)
+	}
+	if trash.Items[0].DeleteAfter.Sub(trash.Items[0].TrashedAt) != trashLifetime {
+		t.Fatalf("delete after = %v, trashed at = %v", trash.Items[0].DeleteAfter, trash.Items[0].TrashedAt)
+	}
+	requireFileStatus(t, f.api.Post("/api/v1/files/"+first.PublicID+"/restore", f.cookie), http.StatusOK)
+	requireFileStatus(t, f.api.Get("/api/v1/files/"+first.PublicID, f.cookie), http.StatusOK)
+	requireFileStatus(t, f.api.Delete("/api/v1/files/"+first.PublicID, f.cookie), http.StatusNoContent)
+	requireFileStatus(t, f.api.Delete("/api/v1/files/"+first.PublicID+"/permanent", f.cookie), http.StatusNoContent)
+	if stored := f.storedBytes(t); stored != shared.SizeBytes {
+		t.Fatalf("stored bytes after the first permanent deletion = %d, want %d", stored, shared.SizeBytes)
 	}
 
 	requireFileStatus(t, f.api.Delete("/api/v1/files/"+second.PublicID, f.cookie), http.StatusNoContent)
+	requireFileStatus(t, f.api.Delete("/api/v1/files/"+second.PublicID+"/permanent", f.cookie), http.StatusNoContent)
 	if stored := f.storedBytes(t); stored != 0 {
 		t.Fatalf("stored bytes after the last deletion = %d", stored)
 	}
@@ -159,6 +179,32 @@ func TestDeleteFile(t *testing.T) {
 			t.Fatalf("upload session = %+v", row)
 		}
 	}
+}
+
+func TestPurgeExpiredTrash(t *testing.T) {
+	f := newFixture(t)
+	const objectKey = "blobs/test/expired"
+	node, _ := f.createFile(t, "expired.txt", f.storeBlob(t, objectKey, []byte("expired")))
+	if err := f.queries.SetFileTrashedAt(t.Context(), db.SetFileTrashedAtParams{
+		ID: node.ID, TrashedAt: pgtype.Timestamptz{Time: time.Now().Add(-31 * 24 * time.Hour), Valid: true},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	worker := purgeTrashWorker{service: &Service{pool: f.pool, queries: f.queries, stores: f.stores, queue: f.queue}}
+	if err := worker.Work(t.Context(), nil); err != nil {
+		t.Fatal(err)
+	}
+	response := f.api.Get("/api/v1/files/trash", f.cookie)
+	requireFileStatus(t, response, http.StatusOK)
+	var trash trashPage
+	decodeFile(t, response, &trash)
+	if len(trash.Items) != 0 {
+		t.Fatalf("trash after purge = %+v", trash)
+	}
+	if stored := f.storedBytes(t); stored != 0 {
+		t.Fatalf("stored bytes after purge = %d", stored)
+	}
+	f.waitForObjectDeletion(t, objectKey)
 }
 
 func TestPresentation(t *testing.T) {
@@ -235,8 +281,10 @@ func TestParseRange(t *testing.T) {
 type fixture struct {
 	api       humatest.TestAPI
 	cookie    string
+	pool      *pgxpool.Pool
 	queries   *db.Queries
 	stores    *storage.Service
+	queue     *river.Client[pgx.Tx]
 	backendID string
 	ownerID   int64
 	library   db.GetLibraryByPublicIDAndOwnerRow
@@ -307,7 +355,7 @@ func newFixture(t *testing.T) fixture {
 		t.Fatal(err)
 	}
 	return fixture{
-		api: api, cookie: cookie, queries: queries, stores: stores,
+		api: api, cookie: cookie, pool: pool, queries: queries, stores: stores, queue: queue,
 		backendID: backendID, ownerID: owner.ID, library: libraryRow,
 	}
 }

@@ -32,6 +32,67 @@ JOIN nodes parent ON parent.id = n.parent_id
 WHERE n.public_id = sqlc.arg(node_public_id) AND n.kind = 'file' AND n.trashed_at IS NULL
   AND l.owner_id = sqlc.arg(owner_id);
 
+-- name: GetTrashedFileNodeByPublicIDAndOwner :one
+SELECT n.id, n.library_id, n.trashed_at, l.public_id AS library_public_id,
+       parent.public_id AS parent_public_id
+FROM nodes n
+JOIN libraries l ON l.id = n.library_id
+JOIN nodes parent ON parent.id = n.parent_id
+WHERE n.public_id = sqlc.arg(node_public_id) AND n.kind = 'file' AND n.trashed_at IS NOT NULL
+  AND l.owner_id = sqlc.arg(owner_id);
+
+-- name: TrashFileNode :one
+UPDATE nodes
+SET trashed_at = now(), updated_at = now()
+WHERE id = $1 AND kind = 'file' AND trashed_at IS NULL
+RETURNING *;
+
+-- name: SetFileTrashedAt :exec
+UPDATE nodes SET trashed_at = $2, updated_at = now() WHERE id = $1 AND kind = 'file';
+
+-- name: RestoreFileNode :one
+UPDATE nodes
+SET trashed_at = NULL, updated_at = now()
+WHERE id = $1 AND kind = 'file' AND trashed_at IS NOT NULL
+RETURNING *;
+
+-- name: ListTrashedFilesByOwner :many
+SELECT n.*, l.public_id AS library_public_id, l.name AS library_name,
+       l.encryption_mode, parent.public_id AS parent_public_id
+FROM nodes n
+JOIN libraries l ON l.id = n.library_id
+JOIN nodes parent ON parent.id = n.parent_id
+WHERE l.owner_id = sqlc.arg(owner_id) AND n.kind = 'file' AND n.trashed_at IS NOT NULL
+  AND n.id > sqlc.arg(after_id)
+ORDER BY n.id
+LIMIT sqlc.arg(page_limit);
+
+-- name: GetTrashedFileCursorByPublicIDAndOwner :one
+SELECT n.id
+FROM nodes n
+JOIN libraries l ON l.id = n.library_id
+WHERE n.public_id = sqlc.arg(node_public_id) AND n.kind = 'file' AND n.trashed_at IS NOT NULL
+  AND l.owner_id = sqlc.arg(owner_id);
+
+-- name: ListExpiredTrashedFileIDs :many
+SELECT id
+FROM nodes
+WHERE kind = 'file' AND trashed_at <= now() - INTERVAL '30 days'
+ORDER BY trashed_at, id
+LIMIT $1;
+
+-- name: GetExpiredTrashedFileForUpdate :one
+SELECT id, library_id
+FROM nodes
+WHERE id = $1 AND kind = 'file' AND trashed_at <= now() - INTERVAL '30 days'
+FOR UPDATE;
+
+-- name: GetTrashedFileForUpdate :one
+SELECT id, library_id
+FROM nodes
+WHERE id = $1 AND kind = 'file' AND trashed_at IS NOT NULL
+FOR UPDATE;
+
 -- name: RenameFileNode :one
 UPDATE nodes
 SET name = $2, encrypted_name = $3, name_token = $4, updated_at = now()

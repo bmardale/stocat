@@ -2,6 +2,7 @@ import {
   DatabaseIcon,
   Folder01Icon,
   LibraryIcon,
+  RestoreBinIcon,
   UserAccountIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -60,6 +61,16 @@ export function AppSidebar() {
               >
                 <HugeiconsIcon icon={Folder01Icon} strokeWidth={2} />
                 <span>Files</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                tooltip="Trash"
+                isActive={Boolean(matchRoute({ to: "/trash" }))}
+                render={<Link to="/trash" onClick={() => setOpenMobile(false)} />}
+              >
+                <HugeiconsIcon icon={RestoreBinIcon} strokeWidth={2} />
+                <span>Trash</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>

@@ -68,12 +68,17 @@ func (w *finalizeWorker) Work(ctx context.Context, job *river.Job[FinalizeArgs])
 }
 
 // ConfigureQueue creates the River client. Each register function adds the workers of another service.
-func (s *Service) ConfigureQueue(stores *storage.Service, register ...func(*river.Workers)) (*river.Client[pgx.Tx], error) {
+func (s *Service) ConfigureQueue(stores *storage.Service, register ...func(*river.Workers) []*river.PeriodicJob) (*river.Client[pgx.Tx], error) {
 	workers := river.NewWorkers()
 	river.AddWorker(workers, &finalizeWorker{service: s, stores: stores})
 	river.AddWorker(workers, &expireWorker{service: s})
+	periodicJobs := []*river.PeriodicJob{
+		river.NewPeriodicJob(river.PeriodicInterval(time.Hour), func() (river.JobArgs, *river.InsertOpts) {
+			return expireArgs{}, &river.InsertOpts{Queue: "maintenance", MaxAttempts: 8}
+		}, &river.PeriodicJobOpts{ID: "expire-uploads", RunOnStart: true}),
+	}
 	for _, add := range register {
-		add(workers)
+		periodicJobs = append(periodicJobs, add(workers)...)
 	}
 	client, err := river.NewClient(riverpgxv5.New(s.pool), &river.Config{
 		Logger: s.log, Workers: workers, JobTimeout: -1,
@@ -82,11 +87,7 @@ func (s *Service) ConfigureQueue(stores *storage.Service, register ...func(*rive
 			"publication": {MaxWorkers: 2},
 			"maintenance": {MaxWorkers: 1},
 		},
-		PeriodicJobs: []*river.PeriodicJob{
-			river.NewPeriodicJob(river.PeriodicInterval(time.Hour), func() (river.JobArgs, *river.InsertOpts) {
-				return expireArgs{}, &river.InsertOpts{Queue: "maintenance", MaxAttempts: 8}
-			}, &river.PeriodicJobOpts{ID: "expire-uploads", RunOnStart: true}),
-		},
+		PeriodicJobs: periodicJobs,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create River client: %w", err)

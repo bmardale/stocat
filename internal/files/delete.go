@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/bmardale/stocat/internal/auth"
 	"github.com/bmardale/stocat/internal/db"
 	"github.com/bmardale/stocat/internal/storage"
 	"github.com/danielgtaylor/huma/v2"
@@ -31,6 +33,32 @@ type deleteObjectsWorker struct {
 	stores *storage.Service
 }
 
+type purgeTrashArgs struct{}
+
+func (purgeTrashArgs) Kind() string { return "purge-trash" }
+
+type purgeTrashWorker struct {
+	river.WorkerDefaults[purgeTrashArgs]
+	service *Service
+}
+
+func (w *purgeTrashWorker) Work(ctx context.Context, _ *river.Job[purgeTrashArgs]) error {
+	for {
+		ids, err := w.service.queries.ListExpiredTrashedFileIDs(ctx, 100)
+		if err != nil {
+			return fmt.Errorf("list expired trash: %w", err)
+		}
+		if len(ids) == 0 {
+			return nil
+		}
+		for _, fileID := range ids {
+			if err := w.service.permanentlyDelete(ctx, fileID, true); err != nil {
+				return fmt.Errorf("purge file %d: %w", fileID, err)
+			}
+		}
+	}
+}
+
 func (w *deleteObjectsWorker) Work(ctx context.Context, job *river.Job[deleteObjectsArgs]) error {
 	store, err := w.stores.ObjectStore(ctx, job.Args.BackendID)
 	if err != nil {
@@ -45,40 +73,73 @@ func (w *deleteObjectsWorker) Work(ctx context.Context, job *river.Job[deleteObj
 	return nil
 }
 
-func (s *Service) AddWorkers(workers *river.Workers) {
+func (s *Service) AddWorkers(workers *river.Workers) []*river.PeriodicJob {
 	river.AddWorker(workers, &deleteObjectsWorker{stores: s.stores})
+	river.AddWorker(workers, &purgeTrashWorker{service: s})
+	return []*river.PeriodicJob{
+		river.NewPeriodicJob(river.PeriodicInterval(time.Hour), func() (river.JobArgs, *river.InsertOpts) {
+			return purgeTrashArgs{}, &river.InsertOpts{Queue: "maintenance", MaxAttempts: 8}
+		}, &river.PeriodicJobOpts{ID: "purge-trash", RunOnStart: true}),
+	}
 }
 
 func (s *Service) UseQueue(queue *river.Client[pgx.Tx]) { s.queue = queue }
 
-// remove deletes the file rows in one transaction. A River job deletes the stored objects after the commit.
+// remove moves an active file to the trash.
 func (s *Service) remove(ctx context.Context, input *fileInput) (*struct{}, error) {
-	if s.queue == nil {
-		return nil, huma.Error503ServiceUnavailable("File deletion is temporarily unavailable.")
-	}
 	file, err := s.loadNode(ctx, input.ID)
 	if err != nil {
 		return nil, err
 	}
-	err = pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+	if _, err := s.queries.TrashFileNode(ctx, file.ID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fileNotFound()
+		}
+		return nil, s.internalError(ctx, "trash file", err)
+	}
+	return nil, nil
+}
+
+func (s *Service) permanentlyDelete(ctx context.Context, fileID int64, expiredOnly bool) error {
+	if s.queue == nil {
+		return errors.New("file deletion queue is unavailable")
+	}
+	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		q := db.New(tx)
+		var libraryID int64
+		if expiredOnly {
+			row, err := q.GetExpiredTrashedFileForUpdate(ctx, fileID)
+			if err != nil {
+				if errors.Is(err, pgx.ErrNoRows) {
+					return nil
+				}
+				return fmt.Errorf("lock expired file: %w", err)
+			}
+			libraryID = row.LibraryID
+		} else {
+			row, err := q.GetTrashedFileForUpdate(ctx, fileID)
+			if err != nil {
+				return fmt.Errorf("lock trashed file: %w", err)
+			}
+			libraryID = row.LibraryID
+		}
 		// Publication locks its upload session before the library. Keep the same order to prevent a deadlock.
-		if err := q.DetachUploadSessionsFromNode(ctx, pgtype.Int8{Int64: file.ID, Valid: true}); err != nil {
+		if err := q.DetachUploadSessionsFromNode(ctx, pgtype.Int8{Int64: fileID, Valid: true}); err != nil {
 			return fmt.Errorf("detach upload sessions: %w", err)
 		}
 		// The library lock stops publication from reusing a blob while this transaction deletes it.
-		if err := q.LockLibraryByID(ctx, file.LibraryID); err != nil {
+		if err := q.LockLibraryByID(ctx, libraryID); err != nil {
 			return fmt.Errorf("lock library: %w", err)
 		}
 		// PostgreSQL checks a RESTRICT foreign key at once, also when the constraint is deferrable.
-		if err := q.ClearFileCurrentVersion(ctx, file.ID); err != nil {
+		if err := q.ClearFileCurrentVersion(ctx, fileID); err != nil {
 			return fmt.Errorf("clear current version: %w", err)
 		}
-		blobIDs, err := q.DeleteFileVersions(ctx, file.ID)
+		blobIDs, err := q.DeleteFileVersions(ctx, fileID)
 		if err != nil {
 			return fmt.Errorf("delete file versions: %w", err)
 		}
-		deleted, err := q.DeleteFileNode(ctx, file.ID)
+		deleted, err := q.DeleteFileNode(ctx, fileID)
 		if err != nil {
 			return fmt.Errorf("delete file node: %w", err)
 		}
@@ -94,6 +155,23 @@ func (s *Service) remove(ctx context.Context, input *fileInput) (*struct{}, erro
 		}
 		return s.enqueueObjectDeletion(ctx, tx, locations)
 	})
+}
+
+func (s *Service) deletePermanently(ctx context.Context, input *fileInput) (*struct{}, error) {
+	if s.queue == nil {
+		return nil, huma.Error503ServiceUnavailable("File deletion is temporarily unavailable.")
+	}
+	user, _ := auth.UserFromContext(ctx)
+	file, err := s.queries.GetTrashedFileNodeByPublicIDAndOwner(ctx, db.GetTrashedFileNodeByPublicIDAndOwnerParams{
+		NodePublicID: input.ID, OwnerID: user.ID,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, fileNotFound()
+	}
+	if err != nil {
+		return nil, s.internalError(ctx, "load trashed file", err)
+	}
+	err = s.permanentlyDelete(ctx, file.ID, false)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, fileNotFound()
 	}
