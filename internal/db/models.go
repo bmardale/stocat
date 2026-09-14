@@ -237,6 +237,7 @@ type User struct {
 	CreatedAt    pgtype.Timestamptz
 	UpdatedAt    pgtype.Timestamptz
 	IsAdmin      bool
+	DisabledAt   pgtype.Timestamptz
 }
 
 type UserBackendQuota struct {

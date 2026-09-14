@@ -8,7 +8,7 @@ SELECT * FROM sessions WHERE token_hash = $1;
 -- name: GetSessionUser :one
 SELECT users.* FROM sessions
 JOIN users ON users.id = sessions.user_id
-WHERE sessions.token_hash = $1 AND sessions.expires_at > now();
+WHERE sessions.token_hash = $1 AND sessions.expires_at > now() AND users.disabled_at IS NULL;
 
 -- name: ListUserSessions :many
 SELECT
@@ -30,6 +30,9 @@ RETURNING token_hash;
 
 -- name: DeleteOtherUserSessions :exec
 DELETE FROM sessions WHERE user_id = sqlc.arg(user_id) AND token_hash <> sqlc.arg(current_token_hash);
+
+-- name: DeleteAllUserSessions :exec
+DELETE FROM sessions WHERE user_id = $1;
 
 -- name: RevokeSession :one
 DELETE FROM sessions WHERE token_hash = $1

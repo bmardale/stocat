@@ -17,6 +17,8 @@ LEFT JOIN users subject ON subject.id = e.subject_id
 WHERE (sqlc.arg(before_id)::bigint = 0 OR e.id < sqlc.arg(before_id)::bigint)
   AND (sqlc.arg(user_id)::bigint = 0 OR e.actor_id = sqlc.arg(user_id)::bigint OR e.subject_id = sqlc.arg(user_id)::bigint)
   AND (sqlc.arg(action)::text = '' OR e.action = sqlc.arg(action)::text)
+  AND (sqlc.narg(from_time)::timestamptz IS NULL OR e.created_at >= sqlc.narg(from_time)::timestamptz)
+  AND (sqlc.narg(to_time)::timestamptz IS NULL OR e.created_at < sqlc.narg(to_time)::timestamptz)
 ORDER BY e.id DESC
 LIMIT sqlc.arg(page_limit);
 

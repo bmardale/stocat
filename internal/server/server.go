@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/bmardale/stocat/internal/accountdeletion"
 	"github.com/bmardale/stocat/internal/activity"
 	"github.com/bmardale/stocat/internal/admin"
 	"github.com/bmardale/stocat/internal/apierr"
@@ -106,7 +107,13 @@ func New(cfg Config, pool *pgxpool.Pool) (*Server, error) {
 	adminGroup := authService.Admin(api, "/api/v1/admin")
 	storageService := storage.New(pool, storage.Config{Encrypter: cfg.Encrypter, Logger: log})
 	storageService.Register(adminGroup)
-	admin.New(pool, log).Register(adminGroup)
+	deletionService := authService.UserDeletion()
+	deletionService.UseObjectCleaner(func(ctx context.Context, objects []accountdeletion.ObjectTarget) error {
+		return cleanAccountObjects(ctx, storageService, objects)
+	})
+	adminService := admin.New(pool, log)
+	adminService.UseUserDeletion(deletionService)
+	adminService.Register(adminGroup)
 	activityService := activity.New(pool, log)
 	activityService.RegisterAdmin(adminGroup)
 	protected := authService.Protected(api, "/api/v1")
@@ -126,11 +133,15 @@ func New(cfg Config, pool *pgxpool.Pool) (*Server, error) {
 	}
 	var queue *river.Client[pgx.Tx]
 	if pool != nil {
-		queue, err = uploadService.ConfigureQueue(storageService, fileService.AddWorkers, replicationService.AddWorkers, audit.Workers(pool))
+		queue, err = uploadService.ConfigureQueue(
+			storageService, deletionService.Workers(), fileService.AddWorkers, replicationService.AddWorkers, audit.Workers(pool),
+		)
 		if err != nil {
 			_ = uploadService.Close()
 			return nil, err
 		}
+		deletionService.UseQueue(queue)
+		deletionService.UseStagingCleaner(uploadService.RemoveStagingFiles)
 		fileService.UseQueue(queue)
 		replicationService.UseQueue(queue)
 	}
@@ -198,6 +209,29 @@ func probeOK() *probeOutput {
 	output := &probeOutput{}
 	output.Body.Status = "ok"
 	return output
+}
+
+func cleanAccountObjects(ctx context.Context, stores *storage.Service, objects []accountdeletion.ObjectTarget) error {
+	byBackend := make(map[string][]string)
+	for _, object := range objects {
+		byBackend[object.BackendID] = append(byBackend[object.BackendID], object.Key)
+	}
+	for backendID, keys := range byBackend {
+		store, err := stores.ObjectStore(ctx, backendID)
+		if err != nil {
+			return fmt.Errorf("open backend %s: %w", backendID, err)
+		}
+		for _, key := range keys {
+			if err := store.Delete(ctx, key); err != nil && !errors.Is(err, storage.ErrMissing) {
+				_ = store.Close()
+				return fmt.Errorf("delete object %s: %w", key, err)
+			}
+		}
+		if err := store.Close(); err != nil {
+			return fmt.Errorf("close backend %s: %w", backendID, err)
+		}
+	}
+	return nil
 }
 
 func (s *Server) Run(ctx context.Context, shutdownTimeout time.Duration) error {

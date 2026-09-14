@@ -7,12 +7,14 @@ package db
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (public_id, name, email, password_hash)
 VALUES ($1, $2, $3, $4)
-RETURNING id, public_id, name, email, password_hash, created_at, updated_at, is_admin
+RETURNING id, public_id, name, email, password_hash, created_at, updated_at, is_admin, disabled_at
 `
 
 type CreateUserParams struct {
@@ -39,12 +41,13 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.IsAdmin,
+		&i.DisabledAt,
 	)
 	return i, err
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, public_id, name, email, password_hash, created_at, updated_at, is_admin FROM users WHERE lower(email) = lower($1::text)
+SELECT id, public_id, name, email, password_hash, created_at, updated_at, is_admin, disabled_at FROM users WHERE lower(email) = lower($1::text)
 `
 
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
@@ -59,12 +62,13 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.IsAdmin,
+		&i.DisabledAt,
 	)
 	return i, err
 }
 
 const getUserByEmailForUpdate = `-- name: GetUserByEmailForUpdate :one
-SELECT id, public_id, name, email, password_hash, created_at, updated_at, is_admin FROM users WHERE lower(email) = lower($1::text) FOR UPDATE
+SELECT id, public_id, name, email, password_hash, created_at, updated_at, is_admin, disabled_at FROM users WHERE lower(email) = lower($1::text) FOR UPDATE
 `
 
 func (q *Queries) GetUserByEmailForUpdate(ctx context.Context, email string) (User, error) {
@@ -79,12 +83,13 @@ func (q *Queries) GetUserByEmailForUpdate(ctx context.Context, email string) (Us
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.IsAdmin,
+		&i.DisabledAt,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, public_id, name, email, password_hash, created_at, updated_at, is_admin FROM users WHERE id = $1
+SELECT id, public_id, name, email, password_hash, created_at, updated_at, is_admin, disabled_at FROM users WHERE id = $1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id int64) (User, error) {
@@ -99,12 +104,13 @@ func (q *Queries) GetUserByID(ctx context.Context, id int64) (User, error) {
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.IsAdmin,
+		&i.DisabledAt,
 	)
 	return i, err
 }
 
 const getUserByIDForUpdate = `-- name: GetUserByIDForUpdate :one
-SELECT id, public_id, name, email, password_hash, created_at, updated_at, is_admin FROM users WHERE id = $1 FOR UPDATE
+SELECT id, public_id, name, email, password_hash, created_at, updated_at, is_admin, disabled_at FROM users WHERE id = $1 FOR UPDATE
 `
 
 func (q *Queries) GetUserByIDForUpdate(ctx context.Context, id int64) (User, error) {
@@ -119,12 +125,13 @@ func (q *Queries) GetUserByIDForUpdate(ctx context.Context, id int64) (User, err
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.IsAdmin,
+		&i.DisabledAt,
 	)
 	return i, err
 }
 
 const getUserByPublicID = `-- name: GetUserByPublicID :one
-SELECT id, public_id, name, email, password_hash, created_at, updated_at, is_admin FROM users WHERE public_id = $1
+SELECT id, public_id, name, email, password_hash, created_at, updated_at, is_admin, disabled_at FROM users WHERE public_id = $1
 `
 
 func (q *Queries) GetUserByPublicID(ctx context.Context, publicID string) (User, error) {
@@ -139,12 +146,13 @@ func (q *Queries) GetUserByPublicID(ctx context.Context, publicID string) (User,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.IsAdmin,
+		&i.DisabledAt,
 	)
 	return i, err
 }
 
 const getUserByPublicIDForUpdate = `-- name: GetUserByPublicIDForUpdate :one
-SELECT id, public_id, name, email, password_hash, created_at, updated_at, is_admin FROM users WHERE public_id = $1 FOR UPDATE
+SELECT id, public_id, name, email, password_hash, created_at, updated_at, is_admin, disabled_at FROM users WHERE public_id = $1 FOR UPDATE
 `
 
 func (q *Queries) GetUserByPublicIDForUpdate(ctx context.Context, publicID string) (User, error) {
@@ -159,12 +167,84 @@ func (q *Queries) GetUserByPublicIDForUpdate(ctx context.Context, publicID strin
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.IsAdmin,
+		&i.DisabledAt,
 	)
 	return i, err
 }
 
+const listUserAdminDetails = `-- name: ListUserAdminDetails :many
+SELECT u.id,
+       (
+           SELECT coalesce(sum(bl.size_bytes), 0)::bigint
+           FROM blobs bl
+           JOIN libraries l ON l.id = bl.library_id
+           WHERE l.owner_id = u.id
+       ) AS storage_used_bytes,
+       (
+           SELECT coalesce(sum(us.declared_size), 0)::bigint
+           FROM upload_sessions us
+           WHERE us.owner_id = u.id
+             AND us.state IN ('created', 'uploading', 'uploaded', 'finalizing', 'failed')
+       ) AS storage_reserved_bytes,
+       nullif(
+           greatest(
+               coalesce((SELECT max(s.created_at) FROM sessions s WHERE s.user_id = u.id), 'epoch'::timestamptz),
+               coalesce((SELECT max(e.created_at) FROM audit_events e WHERE e.actor_id = u.id OR e.subject_id = u.id), 'epoch'::timestamptz)
+           ),
+           'epoch'::timestamptz
+       )::timestamptz AS last_active_at,
+       (
+           SELECT count(*)::bigint
+           FROM sessions s
+           WHERE s.user_id = u.id AND s.expires_at > now()
+       ) AS active_sessions,
+       (
+           SELECT count(*)::bigint
+           FROM passkeys p
+           WHERE p.user_id = u.id
+       ) AS passkey_count
+FROM users u
+WHERE u.id = ANY($1::bigint[])
+`
+
+type ListUserAdminDetailsRow struct {
+	ID                   int64
+	StorageUsedBytes     int64
+	StorageReservedBytes int64
+	LastActiveAt         pgtype.Timestamptz
+	ActiveSessions       int64
+	PasskeyCount         int64
+}
+
+func (q *Queries) ListUserAdminDetails(ctx context.Context, userIds []int64) ([]ListUserAdminDetailsRow, error) {
+	rows, err := q.db.Query(ctx, listUserAdminDetails, userIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListUserAdminDetailsRow
+	for rows.Next() {
+		var i ListUserAdminDetailsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.StorageUsedBytes,
+			&i.StorageReservedBytes,
+			&i.LastActiveAt,
+			&i.ActiveSessions,
+			&i.PasskeyCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listUsers = `-- name: ListUsers :many
-SELECT id, public_id, name, email, password_hash, created_at, updated_at, is_admin FROM users ORDER BY name, id
+SELECT id, public_id, name, email, password_hash, created_at, updated_at, is_admin, disabled_at FROM users ORDER BY name, id
 `
 
 func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
@@ -185,6 +265,93 @@ func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.IsAdmin,
+			&i.DisabledAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUsersPage = `-- name: ListUsersPage :many
+SELECT id, public_id, name, email, password_hash, created_at, updated_at, is_admin, disabled_at FROM users
+WHERE (
+    $1::text = '' OR
+    name ILIKE '%' || $1::text || '%' OR
+    email ILIKE '%' || $1::text || '%' OR
+    public_id ILIKE '%' || $1::text || '%'
+)
+AND ($2::bigint = 0 OR id < $2::bigint)
+ORDER BY id DESC
+LIMIT $3
+`
+
+type ListUsersPageParams struct {
+	Search    string
+	BeforeID  int64
+	PageLimit int32
+}
+
+func (q *Queries) ListUsersPage(ctx context.Context, arg ListUsersPageParams) ([]User, error) {
+	rows, err := q.db.Query(ctx, listUsersPage, arg.Search, arg.BeforeID, arg.PageLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []User
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(
+			&i.ID,
+			&i.PublicID,
+			&i.Name,
+			&i.Email,
+			&i.PasswordHash,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.IsAdmin,
+			&i.DisabledAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockActiveAdministrators = `-- name: LockActiveAdministrators :many
+SELECT id, public_id, name, email, password_hash, created_at, updated_at, is_admin, disabled_at FROM users
+WHERE is_admin AND disabled_at IS NULL
+ORDER BY id
+FOR UPDATE
+`
+
+func (q *Queries) LockActiveAdministrators(ctx context.Context) ([]User, error) {
+	rows, err := q.db.Query(ctx, lockActiveAdministrators)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []User
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(
+			&i.ID,
+			&i.PublicID,
+			&i.Name,
+			&i.Email,
+			&i.PasswordHash,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.IsAdmin,
+			&i.DisabledAt,
 		); err != nil {
 			return nil, err
 		}
@@ -199,7 +366,7 @@ func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
 const setUserAdminByEmail = `-- name: SetUserAdminByEmail :one
 UPDATE users SET is_admin = $1
 WHERE lower(email) = lower($2::text)
-RETURNING id, public_id, name, email, password_hash, created_at, updated_at, is_admin
+RETURNING id, public_id, name, email, password_hash, created_at, updated_at, is_admin, disabled_at
 `
 
 type SetUserAdminByEmailParams struct {
@@ -219,6 +386,45 @@ func (q *Queries) SetUserAdminByEmail(ctx context.Context, arg SetUserAdminByEma
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.IsAdmin,
+		&i.DisabledAt,
+	)
+	return i, err
+}
+
+const updateAdminUser = `-- name: UpdateAdminUser :one
+UPDATE users
+SET name = $2, email = $3, is_admin = $4, disabled_at = $5
+WHERE id = $1
+RETURNING id, public_id, name, email, password_hash, created_at, updated_at, is_admin, disabled_at
+`
+
+type UpdateAdminUserParams struct {
+	ID         int64
+	Name       string
+	Email      string
+	IsAdmin    bool
+	DisabledAt pgtype.Timestamptz
+}
+
+func (q *Queries) UpdateAdminUser(ctx context.Context, arg UpdateAdminUserParams) (User, error) {
+	row := q.db.QueryRow(ctx, updateAdminUser,
+		arg.ID,
+		arg.Name,
+		arg.Email,
+		arg.IsAdmin,
+		arg.DisabledAt,
+	)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.PublicID,
+		&i.Name,
+		&i.Email,
+		&i.PasswordHash,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.IsAdmin,
+		&i.DisabledAt,
 	)
 	return i, err
 }
@@ -227,7 +433,7 @@ const updateUserAccount = `-- name: UpdateUserAccount :one
 UPDATE users
 SET name = $2, email = $3
 WHERE id = $1
-RETURNING id, public_id, name, email, password_hash, created_at, updated_at, is_admin
+RETURNING id, public_id, name, email, password_hash, created_at, updated_at, is_admin, disabled_at
 `
 
 type UpdateUserAccountParams struct {
@@ -248,6 +454,7 @@ func (q *Queries) UpdateUserAccount(ctx context.Context, arg UpdateUserAccountPa
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.IsAdmin,
+		&i.DisabledAt,
 	)
 	return i, err
 }

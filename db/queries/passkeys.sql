@@ -8,7 +8,7 @@ RETURNING handle;
 SELECT sqlc.embed(users), passkey_users.handle
 FROM passkey_users
 JOIN users ON users.id = passkey_users.user_id
-WHERE passkey_users.handle = $1;
+WHERE passkey_users.handle = $1 AND users.disabled_at IS NULL;
 
 -- name: ListPasskeys :many
 SELECT * FROM passkeys
@@ -36,6 +36,12 @@ RETURNING *;
 -- name: DeletePasskey :one
 DELETE FROM passkeys WHERE public_id = sqlc.arg(public_id) AND user_id = sqlc.arg(user_id)
 RETURNING name;
+
+-- name: DeleteAllUserPasskeys :execrows
+DELETE FROM passkeys WHERE user_id = $1;
+
+-- name: DeleteUserPasskeyUser :exec
+DELETE FROM passkey_users WHERE user_id = $1;
 
 -- name: CreateWebAuthnCeremony :exec
 INSERT INTO webauthn_ceremonies (challenge, kind, user_id, session_data, expires_at)

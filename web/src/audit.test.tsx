@@ -78,6 +78,11 @@ describe("audit log", () => {
       name: testUser.name,
       email: testUser.email,
       is_admin: false,
+      is_disabled: false,
+      active_sessions: 0,
+      passkey_count: 0,
+      storage_used_bytes: 0,
+      storage_reserved_bytes: 0,
       default_quota: { mode: "inherit" },
       backend_quotas: [],
     },
@@ -94,10 +99,14 @@ describe("audit log", () => {
   });
 
   it("lists and filters the events of all users", async () => {
+    const laterUser = { ...users[0], id: "usr_later", name: "Later User" };
     stubApi({
       "GET /api/v1/auth/me": () => jsonResponse(200, adminUser),
       "GET /api/v1/libraries": noLibraries,
-      "GET /api/v1/admin/users": () => jsonResponse(200, users),
+      "GET /api/v1/admin/users?limit=100": () =>
+        jsonResponse(200, { items: users, next_cursor: users[0].id }),
+      "GET /api/v1/admin/users?limit=100&cursor=usr_test": () =>
+        jsonResponse(200, { items: [laterUser] }),
       "GET /api/v1/admin/audit-events": () => jsonResponse(200, { items: [quotaChanged, purged] }),
       "GET /api/v1/admin/audit-events?action=file.deleted": () =>
         jsonResponse(200, { items: [purged] }),
@@ -112,6 +121,7 @@ describe("audit log", () => {
     expect(within(table).getByText("Grace Hopper")).toBeDefined();
     expect(within(table).getByText("System")).toBeDefined();
     expect(within(table).getAllByText("For Ada Lovelace")).toHaveLength(2);
+    expect(screen.getByRole("option", { name: "Later User (ada@example.com)" })).toBeDefined();
 
     fireEvent.change(screen.getByLabelText("Action"), { target: { value: "file.deleted" } });
     await waitFor(() =>

@@ -5,7 +5,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { z } from "zod";
 import { adminUsersList, getAdminUsersListQueryKey } from "@/api/generated/admin/admin";
 import { auditEventsList, getAuditEventsListQueryKey } from "@/api/generated/audit/audit";
-import { AuditEventAction, type AuditEvent } from "@/api/generated/model";
+import { AuditEventAction, type AdminUser, type AuditEvent } from "@/api/generated/model";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -16,6 +16,7 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -29,14 +30,27 @@ import { auditActionLabels, auditActorName, auditEventSummary } from "@/lib/audi
 import { parseUserAgent } from "@/lib/user-agent";
 
 const usersQueryOptions = queryOptions({
-  queryKey: getAdminUsersListQueryKey(),
-  queryFn: ({ signal }) => adminUsersList({ signal }),
+  queryKey: [...getAdminUsersListQueryKey(), "audit-filter"],
+  queryFn: ({ signal }) => listAuditUsers(signal),
 });
+
+async function listAuditUsers(signal: AbortSignal) {
+  const users: AdminUser[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await adminUsersList({ limit: 100, ...(cursor ? { cursor } : {}) }, { signal });
+    users.push(...page.items);
+    cursor = page.next_cursor;
+  } while (cursor);
+  return users;
+}
 
 export const Route = createFileRoute("/_app/admin/audit")({
   validateSearch: z.object({
     action: z.enum(AuditEventAction).optional().catch(undefined),
     user: z.string().optional(),
+    from: z.string().optional(),
+    to: z.string().optional(),
   }),
   loader: ({ context }) => context.queryClient.ensureQueryData(usersQueryOptions),
   component: AuditLog,
@@ -47,13 +61,18 @@ const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", tim
 const selectClass =
   "h-8 w-full min-w-0 rounded-lg border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30";
 
-type Filters = { action?: AuditEventAction; user?: string };
+type Filters = { action?: AuditEventAction; user?: string; from?: string; to?: string };
 
 function AuditLog() {
   const search = Route.useSearch();
   const navigate = useNavigate();
   const { data: users } = useSuspenseQuery(usersQueryOptions);
-  const filters: Filters = { action: search.action, user: search.user };
+  const filters: Filters = {
+    action: search.action,
+    user: search.user,
+    from: search.from,
+    to: search.to,
+  };
   const audit = useInfiniteQuery({
     queryKey: getAuditEventsListQueryKey(filters),
     queryFn: ({ pageParam, signal }) =>
@@ -64,6 +83,7 @@ function AuditLog() {
   const events = audit.data?.pages.flatMap((page) => page.items) ?? [];
   const setFilters = (next: Filters) =>
     void navigate({ to: "/admin/audit", search: { ...filters, ...next } });
+  const hasFilters = Object.values(filters).some(Boolean);
 
   return (
     <section className="flex max-w-6xl flex-col gap-6">
@@ -74,41 +94,77 @@ function AuditLog() {
           days.
         </p>
       </div>
-      <div className="flex flex-wrap gap-4">
-        <Field className="w-auto min-w-56">
-          <FieldLabel htmlFor="audit-action">Action</FieldLabel>
-          <select
-            id="audit-action"
-            className={selectClass}
-            value={search.action ?? ""}
-            onChange={(event) =>
-              setFilters({ action: (event.target.value || undefined) as AuditEventAction })
-            }
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div className="flex flex-wrap gap-4">
+          <Field className="w-auto min-w-56">
+            <FieldLabel htmlFor="audit-action">Action</FieldLabel>
+            <select
+              id="audit-action"
+              className={selectClass}
+              value={search.action ?? ""}
+              onChange={(event) =>
+                setFilters({ action: (event.target.value || undefined) as AuditEventAction })
+              }
+            >
+              <option value="">All actions</option>
+              {Object.entries(auditActionLabels).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field className="w-auto min-w-56">
+            <FieldLabel htmlFor="audit-user">User</FieldLabel>
+            <select
+              id="audit-user"
+              className={selectClass}
+              value={search.user ?? ""}
+              onChange={(event) => setFilters({ user: event.target.value || undefined })}
+            >
+              <option value="">All users</option>
+              {users.map((user) => (
+                <option key={user.id} value={user.id}>
+                  {user.name} ({user.email})
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field className="w-40">
+            <FieldLabel htmlFor="audit-from">From</FieldLabel>
+            <Input
+              id="audit-from"
+              type="date"
+              value={dateInputValue(search.from)}
+              onChange={(event) => setFilters({ from: startOfDay(event.target.value) })}
+            />
+          </Field>
+          <Field className="w-40">
+            <FieldLabel htmlFor="audit-to">To</FieldLabel>
+            <Input
+              id="audit-to"
+              type="date"
+              value={dateInputValue(search.to, true)}
+              onChange={(event) => setFilters({ to: endOfDay(event.target.value) })}
+            />
+          </Field>
+        </div>
+        <div className="flex gap-2">
+          {hasFilters && (
+            <Button
+              variant="ghost"
+              onClick={() => void navigate({ to: "/admin/audit", search: {} })}
+            >
+              Clear filters
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            render={<a href={auditExportUrl(filters)} download="audit-log.csv" />}
           >
-            <option value="">All actions</option>
-            {Object.entries(auditActionLabels).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field className="w-auto min-w-56">
-          <FieldLabel htmlFor="audit-user">User</FieldLabel>
-          <select
-            id="audit-user"
-            className={selectClass}
-            value={search.user ?? ""}
-            onChange={(event) => setFilters({ user: event.target.value || undefined })}
-          >
-            <option value="">All users</option>
-            {users.map((user) => (
-              <option key={user.id} value={user.id}>
-                {user.name} ({user.email})
-              </option>
-            ))}
-          </select>
-        </Field>
+            Export CSV
+          </Button>
+        </div>
       </div>
       {audit.isPending ? (
         <div className="flex flex-col gap-2" aria-busy>
@@ -125,7 +181,7 @@ function AuditLog() {
             </EmptyMedia>
             <EmptyTitle>No audit events</EmptyTitle>
             <EmptyDescription>
-              {filters.action || filters.user
+              {hasFilters
                 ? "No events match the filters."
                 : "Events appear here after users make changes."}
             </EmptyDescription>
@@ -163,6 +219,33 @@ function AuditLog() {
       )}
     </section>
   );
+}
+
+function dateInputValue(value: string | undefined, exclusive = false) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (exclusive) date.setUTCDate(date.getUTCDate() - 1);
+  return date.toISOString().slice(0, 10);
+}
+
+function startOfDay(value: string) {
+  return value ? `${value}T00:00:00.000Z` : undefined;
+}
+
+function endOfDay(value: string) {
+  if (!value) return undefined;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString();
+}
+
+function auditExportUrl(filters: Filters) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value) params.set(key, value);
+  }
+  const query = params.toString();
+  return `/api/v1/admin/audit-events/export${query ? `?${query}` : ""}`;
 }
 
 function AuditRow({ event }: { event: AuditEvent }) {

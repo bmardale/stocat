@@ -7,7 +7,7 @@ import type { User } from "@/api/generated/model";
 
 type AuthState = {
   user: User | null;
-  setUser: (user: User) => void;
+  setUser: (user: User | null) => void;
   logout: () => Promise<void>;
 };
 

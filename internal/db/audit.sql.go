@@ -123,14 +123,18 @@ LEFT JOIN users subject ON subject.id = e.subject_id
 WHERE ($1::bigint = 0 OR e.id < $1::bigint)
   AND ($2::bigint = 0 OR e.actor_id = $2::bigint OR e.subject_id = $2::bigint)
   AND ($3::text = '' OR e.action = $3::text)
+  AND ($4::timestamptz IS NULL OR e.created_at >= $4::timestamptz)
+  AND ($5::timestamptz IS NULL OR e.created_at < $5::timestamptz)
 ORDER BY e.id DESC
-LIMIT $4
+LIMIT $6
 `
 
 type ListAuditEventsParams struct {
 	BeforeID  int64
 	UserID    int64
 	Action    string
+	FromTime  pgtype.Timestamptz
+	ToTime    pgtype.Timestamptz
 	PageLimit int32
 }
 
@@ -159,6 +163,8 @@ func (q *Queries) ListAuditEvents(ctx context.Context, arg ListAuditEventsParams
 		arg.BeforeID,
 		arg.UserID,
 		arg.Action,
+		arg.FromTime,
+		arg.ToTime,
 		arg.PageLimit,
 	)
 	if err != nil {
