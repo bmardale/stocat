@@ -17,6 +17,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/bmardale/stocat/internal/accountdeletion"
 	"github.com/bmardale/stocat/internal/apierr"
 	"github.com/bmardale/stocat/internal/db"
 	"github.com/bmardale/stocat/internal/platform/id"
@@ -58,6 +59,7 @@ type Service struct {
 	loginEmailIP  *ratelimit.Limiter
 	registerEmail *ratelimit.Limiter
 	userLimit     *ratelimit.Limiter
+	deletion      *accountdeletion.Service
 }
 
 type User struct {
@@ -85,6 +87,7 @@ func New(pool *pgxpool.Pool, cfg Config) (*Service, error) {
 	}
 	s := &Service{
 		pool: pool, queries: db.New(pool), secureCookies: cfg.SecureCookies, rpID: cfg.WebAuthn.RPID, log: log,
+		deletion: accountdeletion.New(pool, log),
 	}
 	if cfg.WebAuthn.RPID != "" {
 		relyingParty, err := newWebAuthn(cfg.WebAuthn)
@@ -116,6 +119,14 @@ func New(pool *pgxpool.Pool, cfg Config) (*Service, error) {
 func UserFromContext(ctx context.Context) (User, bool) {
 	user, ok := ctx.Value(userKey{}).(User)
 	return user, ok
+}
+
+func (s *Service) UserDeletion() *accountdeletion.Service { return s.deletion }
+
+// SessionTokenHash returns the authenticated session hash from the request context.
+func SessionTokenHash(ctx context.Context) []byte {
+	hash, _ := ctx.Value(sessionKey{}).([]byte)
+	return hash
 }
 
 // Protected applies session authentication and documents it for every route in the group.

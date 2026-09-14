@@ -1,7 +1,9 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { z } from "zod";
 import {
+  useAuthAccountDelete,
   getAuthSessionsListQueryKey,
   useAuthAccountUpdate,
   useAuthPasswordChange,
@@ -9,6 +11,15 @@ import {
 import { useAuth } from "@/components/auth-provider";
 import { AppVersion } from "@/components/app-version";
 import { useAppForm } from "@/components/form";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { FieldError, FieldGroup } from "@/components/ui/field";
@@ -56,6 +67,7 @@ function Account() {
       </div>
       <ProfileForm name={user.name} email={user.email} />
       <PasswordForm />
+      {!user.is_admin && <DeleteAccountCard />}
       <AppVersion />
     </div>
   );
@@ -191,5 +203,92 @@ function PasswordForm() {
         </form>
       </CardContent>
     </Card>
+  );
+}
+
+const deleteAccountSchema = z.object({
+  currentPassword: z.string().min(1, "Enter your current password."),
+});
+
+function DeleteAccountCard() {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Delete account</CardTitle>
+        <CardDescription>
+          Permanently delete your account, libraries, files, sessions, and passkeys.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Button variant="destructive" onClick={() => setOpen(true)}>
+          Delete my account
+        </Button>
+      </CardContent>
+      <AlertDialog open={open} onOpenChange={setOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete your account?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. Enter your current password to confirm.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <DeleteAccountForm onClose={() => setOpen(false)} />
+        </AlertDialogContent>
+      </AlertDialog>
+    </Card>
+  );
+}
+
+function DeleteAccountForm({ onClose }: { onClose: () => void }) {
+  const { setUser } = useAuth();
+  const router = useRouter();
+  const deleteAccount = useAuthAccountDelete({
+    mutation: {
+      onSuccess: () => {
+        onClose();
+        setUser(null);
+        void router.navigate({ to: "/login" });
+      },
+    },
+  });
+  const form = useAppForm({
+    defaultValues: { currentPassword: "" },
+    validators: { onSubmit: deleteAccountSchema },
+    onSubmit: ({ value }) => {
+      deleteAccount.mutate({ data: { current_password: value.currentPassword } });
+    },
+  });
+
+  return (
+    <form
+      noValidate
+      onSubmit={(event) => {
+        event.preventDefault();
+        void form.handleSubmit();
+      }}
+    >
+      <FieldGroup>
+        <form.AppField name="currentPassword">
+          {(field) => (
+            <field.TextField
+              label="Current password"
+              type="password"
+              autoComplete="current-password"
+            />
+          )}
+        </form.AppField>
+        {deleteAccount.error && <FieldError>{deleteAccount.error.message}</FieldError>}
+      </FieldGroup>
+      <AlertDialogFooter className="mt-5">
+        <AlertDialogCancel type="button" onClick={onClose}>
+          Cancel
+        </AlertDialogCancel>
+        <Button type="submit" variant="destructive" disabled={deleteAccount.isPending}>
+          {deleteAccount.isPending ? "Deleting…" : "Delete account"}
+        </Button>
+      </AlertDialogFooter>
+    </form>
   );
 }

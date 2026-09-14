@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/bmardale/stocat/internal/accountdeletion"
 	"github.com/bmardale/stocat/internal/audit"
 	"github.com/bmardale/stocat/internal/db"
 	"github.com/danielgtaylor/huma/v2"
@@ -28,6 +29,14 @@ type changePasswordInput struct {
 		NewPassword     string `json:"new_password" writeOnly:"true" doc:"Use at least 15 characters and at most 1024 bytes."`
 	}
 }
+
+type deleteAccountInput struct {
+	Body struct {
+		CurrentPassword string `json:"current_password" writeOnly:"true"`
+	}
+}
+
+var errAdministratorAccount = errors.New("administrator account cannot be deleted here")
 
 func (s *Service) updateAccount(ctx context.Context, input *updateAccountInput) (*userOutput, error) {
 	current, _ := UserFromContext(ctx)
@@ -107,4 +116,36 @@ func (s *Service) changePassword(ctx context.Context, input *changePasswordInput
 		return nil, s.internalError(ctx, "change password", err)
 	}
 	return &struct{}{}, nil
+}
+
+func (s *Service) deleteAccount(ctx context.Context, input *deleteAccountInput) (*logoutOutput, error) {
+	if input.Body.CurrentPassword == "" || len(input.Body.CurrentPassword) > 1024 {
+		return nil, huma.Error422UnprocessableEntity("The current password is incorrect.")
+	}
+	current, _ := UserFromContext(ctx)
+	if current.IsAdmin {
+		return nil, huma.Error409Conflict("Administrators cannot delete their account here.")
+	}
+	err := s.deletion.DeleteUserWithCheck(ctx, current.ID, current.ID, func(_ context.Context, _ *db.Queries, user db.User) error {
+		if user.IsAdmin {
+			return errAdministratorAccount
+		}
+		if !verifyPassword(input.Body.CurrentPassword, user.PasswordHash) {
+			return errCurrentPassword
+		}
+		return nil
+	})
+	if errors.Is(err, errCurrentPassword) {
+		return nil, huma.Error422UnprocessableEntity("The current password is incorrect.")
+	}
+	if errors.Is(err, errAdministratorAccount) {
+		return nil, huma.Error409Conflict("Administrators cannot delete their account here.")
+	}
+	if errors.Is(err, accountdeletion.ErrQueueUnavailable) {
+		return nil, huma.Error503ServiceUnavailable("Account deletion is temporarily unavailable.")
+	}
+	if err != nil {
+		return nil, s.internalError(ctx, "delete account", err)
+	}
+	return &logoutOutput{SetCookie: s.clearedCookie()}, nil
 }

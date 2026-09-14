@@ -126,6 +126,11 @@ func (s *Service) Register(api huma.API) {
 		MaxBodyBytes: 4096, Errors: []int{http.StatusUnprocessableEntity},
 	}, s.changePassword)
 	huma.Register(protected, huma.Operation{
+		OperationID: "auth-account-delete", Method: http.MethodDelete, Path: "/account",
+		Summary: "Delete the current account", DefaultStatus: http.StatusNoContent,
+		MaxBodyBytes: 4096, Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity, http.StatusServiceUnavailable},
+	}, s.deleteAccount)
+	huma.Register(protected, huma.Operation{
 		OperationID: "auth-sessions-list", Method: http.MethodGet, Path: "/sessions",
 		Summary: "List the active sessions of the current user",
 	}, s.listSessions)
@@ -318,6 +323,9 @@ func isEmailConflict(err error) bool {
 	return errors.As(err, &pgErr) && pgErr.Code == "23505" &&
 		(pgErr.ConstraintName == "users_email_key" || pgErr.ConstraintName == "users_email_lower_key")
 }
+
+// IsEmailConflict reports whether a database error uses an existing account email.
+func IsEmailConflict(err error) bool { return isEmailConflict(err) }
 
 func (s *Service) internalError(ctx context.Context, operation string, err error) error {
 	s.log.ErrorContext(ctx, operation, "error", err)

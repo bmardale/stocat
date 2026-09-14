@@ -16,6 +16,14 @@ func validNewPassword(password string) bool {
 	return utf8.RuneCountInString(password) >= 15 && len(password) <= 1024
 }
 
+// NewPasswordHash returns a hash when the password meets the password policy.
+func NewPasswordHash(password string) (string, bool) {
+	if !validNewPassword(password) {
+		return "", false
+	}
+	return hashPassword(password), true
+}
+
 func hashPassword(password string) string {
 	salt := make([]byte, 16)
 	_, _ = rand.Read(salt)

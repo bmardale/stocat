@@ -1,4 +1,10 @@
-import { PencilEdit01Icon, UserAccountIcon } from "@hugeicons/core-free-icons";
+import {
+  Add01Icon,
+  Delete02Icon,
+  PencilEdit01Icon,
+  Settings01Icon,
+  UserAccountIcon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { queryOptions, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
@@ -18,6 +24,8 @@ import {
   storageBackendsList,
 } from "@/api/generated/storage/storage";
 import { useAppForm } from "@/components/form";
+import { useAuth } from "@/components/auth-provider";
+import { AdminUserDeleteDialog, AdminUserDialog } from "@/components/admin-user-dialogs";
 import { QuotaPicker } from "@/components/quota-picker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -67,19 +75,30 @@ export const Route = createFileRoute("/_app/admin/users")({
 });
 
 function Users() {
+  const { user: currentUser } = useAuth();
   const { data: users } = useSuspenseQuery(usersQueryOptions);
   const { data: settings } = useSuspenseQuery(quotaSettingsQueryOptions);
   const { data: backends } = useSuspenseQuery(backendsQueryOptions);
   const [editing, setEditing] = useState<AdminUser>();
+  const [userEditing, setUserEditing] = useState<AdminUser>();
+  const [deleting, setDeleting] = useState<AdminUser>();
+  const [creating, setCreating] = useState(false);
   const globalLabel = `Global (${quotaLabel(settings.default_quota, "")})`;
 
   return (
     <section className="flex max-w-5xl flex-col gap-6">
-      <div className="flex flex-col gap-2">
-        <h1 className="font-heading text-4xl font-bold tracking-tighter">Users</h1>
-        <p className="leading-relaxed text-muted-foreground">
-          Set the storage quota of each user. A quota applies to each storage backend separately.
-        </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex flex-col gap-2">
+          <h1 className="font-heading text-4xl font-bold tracking-tighter">Users</h1>
+          <p className="leading-relaxed text-muted-foreground">
+            Manage accounts and set storage quotas. A quota applies to each storage backend
+            separately.
+          </p>
+        </div>
+        <Button onClick={() => setCreating(true)}>
+          <HugeiconsIcon icon={Add01Icon} strokeWidth={2} />
+          New user
+        </Button>
       </div>
       <GlobalQuotaForm settings={settings} />
       {users.length === 0 ? (
@@ -102,7 +121,7 @@ function Users() {
                 <TableHead>Role</TableHead>
                 <TableHead>Default quota</TableHead>
                 <TableHead>Backend overrides</TableHead>
-                <TableHead className="w-12 pr-4">
+                <TableHead className="w-28 pr-4">
                   <span className="sr-only">Actions</span>
                 </TableHead>
               </TableRow>
@@ -122,14 +141,35 @@ function Users() {
                     <OverrideList user={user} backends={backends} />
                   </TableCell>
                   <TableCell className="pr-4 text-right">
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={`Edit quotas for ${user.name}`}
-                      onClick={() => setEditing(user)}
-                    >
-                      <HugeiconsIcon icon={PencilEdit01Icon} strokeWidth={2} />
-                    </Button>
+                    <div className="flex justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`Edit user ${user.name}`}
+                        onClick={() => setUserEditing(user)}
+                      >
+                        <HugeiconsIcon icon={PencilEdit01Icon} strokeWidth={2} />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`Edit quotas for ${user.name}`}
+                        onClick={() => setEditing(user)}
+                      >
+                        <HugeiconsIcon icon={Settings01Icon} strokeWidth={2} />
+                      </Button>
+                      {user.id !== currentUser?.id && (
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className="text-destructive hover:text-destructive"
+                          aria-label={`Delete user ${user.name}`}
+                          onClick={() => setDeleting(user)}
+                        >
+                          <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} />
+                        </Button>
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -146,6 +186,23 @@ function Users() {
           if (!open) {
             setEditing(undefined);
           }
+        }}
+      />
+      <AdminUserDialog
+        open={creating || userEditing !== undefined}
+        user={userEditing}
+        onOpenChange={(open) => {
+          if (!open) {
+            setCreating(false);
+            setUserEditing(undefined);
+          }
+        }}
+      />
+      <AdminUserDeleteDialog
+        open={deleting !== undefined}
+        user={deleting}
+        onOpenChange={(open) => {
+          if (!open) setDeleting(undefined);
         }}
       />
     </section>

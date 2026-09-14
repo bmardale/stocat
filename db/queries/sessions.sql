@@ -31,6 +31,9 @@ RETURNING token_hash;
 -- name: DeleteOtherUserSessions :exec
 DELETE FROM sessions WHERE user_id = sqlc.arg(user_id) AND token_hash <> sqlc.arg(current_token_hash);
 
+-- name: DeleteAllUserSessions :exec
+DELETE FROM sessions WHERE user_id = $1;
+
 -- name: RevokeSession :one
 DELETE FROM sessions WHERE token_hash = $1
 RETURNING user_id, public_id;

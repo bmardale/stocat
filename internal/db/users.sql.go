@@ -196,6 +196,39 @@ func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
 	return items, nil
 }
 
+const lockAdministrators = `-- name: LockAdministrators :many
+SELECT id, public_id, name, email, password_hash, created_at, updated_at, is_admin FROM users WHERE is_admin = true ORDER BY id FOR UPDATE
+`
+
+func (q *Queries) LockAdministrators(ctx context.Context) ([]User, error) {
+	rows, err := q.db.Query(ctx, lockAdministrators)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []User
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(
+			&i.ID,
+			&i.PublicID,
+			&i.Name,
+			&i.Email,
+			&i.PasswordHash,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.IsAdmin,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const setUserAdminByEmail = `-- name: SetUserAdminByEmail :one
 UPDATE users SET is_admin = $1
 WHERE lower(email) = lower($2::text)
@@ -209,6 +242,41 @@ type SetUserAdminByEmailParams struct {
 
 func (q *Queries) SetUserAdminByEmail(ctx context.Context, arg SetUserAdminByEmailParams) (User, error) {
 	row := q.db.QueryRow(ctx, setUserAdminByEmail, arg.IsAdmin, arg.Email)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.PublicID,
+		&i.Name,
+		&i.Email,
+		&i.PasswordHash,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.IsAdmin,
+	)
+	return i, err
+}
+
+const updateAdminUser = `-- name: UpdateAdminUser :one
+UPDATE users
+SET name = $2, email = $3, is_admin = $4
+WHERE id = $1
+RETURNING id, public_id, name, email, password_hash, created_at, updated_at, is_admin
+`
+
+type UpdateAdminUserParams struct {
+	ID      int64
+	Name    string
+	Email   string
+	IsAdmin bool
+}
+
+func (q *Queries) UpdateAdminUser(ctx context.Context, arg UpdateAdminUserParams) (User, error) {
+	row := q.db.QueryRow(ctx, updateAdminUser,
+		arg.ID,
+		arg.Name,
+		arg.Email,
+		arg.IsAdmin,
+	)
 	var i User
 	err := row.Scan(
 		&i.ID,

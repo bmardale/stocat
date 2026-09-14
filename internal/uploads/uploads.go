@@ -139,6 +139,14 @@ func New(pool *pgxpool.Pool, queue *river.Client[pgx.Tx], cfg Config) (*Service,
 
 func (s *Service) Close() error { return s.staging.Close() }
 
+func (s *Service) RemoveStagingFiles(keys []string) {
+	for _, key := range keys {
+		if err := s.staging.Remove(key); err != nil && !errors.Is(err, os.ErrNotExist) {
+			s.log.Warn("remove deleted user upload", "staging_key", key, "error", err)
+		}
+	}
+}
+
 func (s *Service) Register(api huma.API) {
 	s.api = api
 	group := huma.NewGroup(api, "/uploads")

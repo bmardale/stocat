@@ -137,6 +137,46 @@ func TestAdminUserQuotas(t *testing.T) {
 	requireQuotas(t, findUser(t, decode[[]AdminUser](t, response), target.PublicID), Quota{Mode: ModeUnlimited}, nil)
 }
 
+func TestAdminUserManagement(t *testing.T) {
+	pool := testutil.NewPostgres(t)
+	env := newAdminTestEnv(t, pool)
+	adminCookie, admin := env.register(t, true)
+	ctx := t.Context()
+
+	response := env.api.PostCtx(ctx, "/api/v1/admin/users", adminCookie, map[string]any{
+		"name": "Created User", "email": "created@example.com", "password": adminTestPassword, "is_admin": false,
+	})
+	requireStatus(t, response, http.StatusCreated)
+	created := decode[AdminUser](t, response)
+	if created.Name != "Created User" || created.Email != "created@example.com" || created.IsAdmin {
+		t.Fatalf("created user = %+v", created)
+	}
+
+	response = env.api.PatchCtx(ctx, "/api/v1/admin/users/"+created.ID, adminCookie, map[string]any{
+		"name": "Updated User", "email": "updated@example.com", "password": "a new secure password", "is_admin": true,
+	})
+	requireStatus(t, response, http.StatusOK)
+	updated := decode[AdminUser](t, response)
+	if updated.Name != "Updated User" || updated.Email != "updated@example.com" || !updated.IsAdmin {
+		t.Fatalf("updated user = %+v", updated)
+	}
+
+	response = env.api.PatchCtx(ctx, "/api/v1/admin/users/"+created.ID, adminCookie, map[string]any{
+		"name": "Updated User", "email": "updated@example.com", "is_admin": false,
+	})
+	requireStatus(t, response, http.StatusOK)
+	if user := decode[AdminUser](t, response); user.IsAdmin {
+		t.Fatal("administrator role was not removed")
+	}
+
+	response = env.api.DeleteCtx(ctx, "/api/v1/admin/users/"+created.ID, adminCookie)
+	requireStatus(t, response, http.StatusNoContent)
+	if _, err := env.queries.GetUserByPublicID(ctx, created.ID); err == nil {
+		t.Fatal("deleted user still exists")
+	}
+	requireStatus(t, env.api.DeleteCtx(ctx, "/api/v1/admin/users/"+admin.PublicID, adminCookie), http.StatusConflict)
+}
+
 func TestAdminQuotaSettings(t *testing.T) {
 	pool := testutil.NewPostgres(t)
 	env := newAdminTestEnv(t, pool)

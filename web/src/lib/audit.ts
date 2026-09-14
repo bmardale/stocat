@@ -8,6 +8,7 @@ export const auditActionLabels: Record<AuditEventAction, string> = {
   "account.signed_out": "Signed out",
   "account.updated": "Account details changed",
   "account.password_changed": "Password changed",
+  "account.deleted": "Account deleted",
   "account.admin_granted": "Administrator role granted",
   "account.admin_revoked": "Administrator role removed",
   "session.revoked": "Session revoked",

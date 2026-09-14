@@ -48,6 +48,7 @@ var (
 	AccountSignedOut            = newAction("account.signed_out")
 	AccountUpdated              = newAction("account.updated")
 	AccountPasswordChanged      = newAction("account.password_changed")
+	AccountDeleted              = newAction("account.deleted")
 	AccountAdminGranted         = newAction("account.admin_granted")
 	AccountAdminRevoked         = newAction("account.admin_revoked")
 	SessionRevoked              = newAction("session.revoked")

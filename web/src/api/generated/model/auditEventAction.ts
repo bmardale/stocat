@@ -13,6 +13,7 @@ export const AuditEventAction = {
   accountsigned_out: "account.signed_out",
   accountupdated: "account.updated",
   accountpassword_changed: "account.password_changed",
+  accountdeleted: "account.deleted",
   accountadmin_granted: "account.admin_granted",
   accountadmin_revoked: "account.admin_revoked",
   sessionrevoked: "session.revoked",

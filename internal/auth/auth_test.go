@@ -533,6 +533,25 @@ func testAccount(t *testing.T, pool *pgxpool.Pool) {
 		"email": "updated@example.com", "password": newPassword,
 	})
 	requireStatus(t, response, http.StatusOK)
+
+	response = api.PostCtx(t.Context(), "/api/v1/auth/register", registration("delete-me@example.com"))
+	requireStatus(t, response, http.StatusCreated)
+	deleteCookie := responseCookie(t, response)
+	response = api.DeleteCtx(t.Context(), "/api/v1/auth/account", map[string]string{
+		"current_password": "wrong password",
+	}, "Cookie: "+deleteCookie.String())
+	requireStatus(t, response, http.StatusUnprocessableEntity)
+	response = api.DeleteCtx(t.Context(), "/api/v1/auth/account", map[string]string{
+		"current_password": testPassword,
+	}, "Cookie: "+deleteCookie.String())
+	requireStatus(t, response, http.StatusNoContent)
+	if cleared := responseCookie(t, response); cleared.Value != "" || cleared.MaxAge != -1 {
+		t.Fatalf("account deletion did not clear the cookie: %s", cleared)
+	}
+	requireStatus(t, api.GetCtx(t.Context(), "/api/v1/auth/me", "Cookie: "+deleteCookie.String()), http.StatusUnauthorized)
+	if _, err := db.New(pool).GetUserByEmail(t.Context(), "delete-me@example.com"); err == nil {
+		t.Fatal("deleted account still exists")
+	}
 }
 
 func testUserAgent(t *testing.T, pool *pgxpool.Pool) {

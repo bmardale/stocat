@@ -93,6 +93,7 @@ components:
             - account.signed_out
             - account.updated
             - account.password_changed
+            - account.deleted
             - account.admin_granted
             - account.admin_revoked
             - session.revoked
@@ -402,6 +403,38 @@ components:
       required:
         - source_library_id
         - destination_library_id
+      type: object
+    CreateUserInputBody:
+      additionalProperties: false
+      properties:
+        email:
+          format: email
+          maxLength: 254
+          type: string
+        is_admin:
+          type: boolean
+        name:
+          maxLength: 200
+          minLength: 1
+          type: string
+        password:
+          description: Use at least 15 characters and at most 1024 bytes.
+          type: string
+          writeOnly: true
+      required:
+        - name
+        - email
+        - password
+        - is_admin
+      type: object
+    DeleteAccountInputBody:
+      additionalProperties: false
+      properties:
+        current_password:
+          type: string
+          writeOnly: true
+      required:
+        - current_password
       type: object
     ErrorDetail:
       additionalProperties: false
@@ -1108,6 +1141,28 @@ components:
       required:
         - name
         - enabled
+      type: object
+    UpdateUserInputBody:
+      additionalProperties: false
+      properties:
+        email:
+          format: email
+          maxLength: 254
+          type: string
+        is_admin:
+          type: boolean
+        name:
+          maxLength: 200
+          minLength: 1
+          type: string
+        password:
+          description: Leave empty to keep the current password. Use at least 15 characters and at most 1024 bytes.
+          type: string
+          writeOnly: true
+      required:
+        - name
+        - email
+        - is_admin
       type: object
     UpdateUserQuotaInputBody:
       additionalProperties: false
@@ -2235,6 +2290,215 @@ paths:
       summary: List users with their quotas
       tags:
         - Admin
+    post:
+      operationId: admin-users-create
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUserInputBody"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUser"
+          description: Created
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Forbidden
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Conflict
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+      security:
+        - session: []
+      summary: Create a user
+      tags:
+        - Admin
+  /api/v1/admin/users/{id}:
+    delete:
+      operationId: admin-users-delete
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      responses:
+        "204":
+          description: No Content
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Forbidden
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Conflict
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
+      security:
+        - session: []
+      summary: Delete a user
+      tags:
+        - Admin
+    patch:
+      operationId: admin-users-update
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUser"
+          description: OK
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Forbidden
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Conflict
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+      security:
+        - session: []
+      summary: Update a user
+      tags:
+        - Admin
   /api/v1/admin/users/{id}/quota:
     put:
       operationId: admin-users-quota-set
@@ -2306,6 +2570,68 @@ paths:
       tags:
         - Admin
   /api/v1/auth/account:
+    delete:
+      operationId: auth-account-delete
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeleteAccountInputBody"
+        required: true
+      responses:
+        "204":
+          description: No Content
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Conflict
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
+      security:
+        - session: []
+      summary: Delete the current account
+      tags:
+        - Auth
     patch:
       operationId: auth-account-update
       requestBody:

@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vite-plus/test";
 import { jsonResponse, renderApp, serverVersion, stubApi, testUser } from "@/test/app";
 
@@ -84,5 +84,29 @@ describe("account settings", () => {
     fill("Confirm new password", "a different secure password");
     fireEvent.click(screen.getByRole("button", { name: "Change password" }));
     expect(await screen.findByText("The current password is incorrect.")).toBeDefined();
+  });
+
+  it("deletes a normal user account after password confirmation", async () => {
+    let deleted = false;
+    const fetchMock = stubApi({
+      "GET /api/v1/auth/me": () => jsonResponse(200, testUser),
+      "GET /api/v1/version": serverVersion,
+      "DELETE /api/v1/auth/account": () => {
+        deleted = true;
+        return jsonResponse(204);
+      },
+    });
+    await renderApp("/settings");
+    fireEvent.click(screen.getByRole("button", { name: "Delete my account" }));
+    const dialog = await screen.findByRole("alertdialog");
+    fireEvent.change(within(dialog).getByLabelText("Current password"), {
+      target: { value: "correct horse battery staple" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete account" }));
+    await waitFor(() => expect(deleted).toBe(true));
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/auth/account",
+      expect.objectContaining({ method: "DELETE" }),
+    );
   });
 });

@@ -6,10 +6,13 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 
+	"github.com/bmardale/stocat/internal/accountdeletion"
 	"github.com/bmardale/stocat/internal/audit"
 	"github.com/bmardale/stocat/internal/auth"
 	"github.com/bmardale/stocat/internal/db"
+	"github.com/bmardale/stocat/internal/platform/id"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -23,12 +26,18 @@ const (
 )
 
 type Service struct {
-	pool    *pgxpool.Pool
-	queries *db.Queries
-	log     *slog.Logger
+	pool     *pgxpool.Pool
+	queries  *db.Queries
+	log      *slog.Logger
+	deletion *accountdeletion.Service
 }
 
-var errBackendNotFound = errors.New("quota backend not found")
+var (
+	errBackendNotFound = errors.New("quota backend not found")
+	errLastAdmin       = errors.New("last administrator cannot be removed")
+	errSelfRoleChange  = errors.New("administrator cannot change own role")
+	errSelfDeletion    = errors.New("administrator cannot delete own account")
+)
 
 type Quota struct {
 	Mode       string `json:"mode" enum:"inherit,unlimited,limited"`
@@ -62,6 +71,29 @@ type updateUserQuotaInput struct {
 	}
 }
 
+type createUserInput struct {
+	Body struct {
+		Name     string `json:"name" minLength:"1" maxLength:"200"`
+		Email    string `json:"email" format:"email" maxLength:"254"`
+		Password string `json:"password" writeOnly:"true" doc:"Use at least 15 characters and at most 1024 bytes."`
+		IsAdmin  bool   `json:"is_admin"`
+	}
+}
+
+type updateUserInput struct {
+	ID   string `path:"id" maxLength:"64"`
+	Body struct {
+		Name     string `json:"name" minLength:"1" maxLength:"200"`
+		Email    string `json:"email" format:"email" maxLength:"254"`
+		Password string `json:"password,omitempty" writeOnly:"true" doc:"Leave empty to keep the current password. Use at least 15 characters and at most 1024 bytes."`
+		IsAdmin  bool   `json:"is_admin"`
+	}
+}
+
+type userPathInput struct {
+	ID string `path:"id" maxLength:"64"`
+}
+
 type updateQuotaSettingsInput struct {
 	Body QuotaSettings
 }
@@ -78,8 +110,10 @@ func New(pool *pgxpool.Pool, logger *slog.Logger) *Service {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Service{pool: pool, queries: db.New(pool), log: logger}
+	return &Service{pool: pool, queries: db.New(pool), log: logger, deletion: accountdeletion.New(pool, logger)}
 }
+
+func (s *Service) UseUserDeletion(deletion *accountdeletion.Service) { s.deletion = deletion }
 
 // Register adds the routes to api. The caller must restrict api to administrators.
 func (s *Service) Register(api huma.API) {
@@ -91,6 +125,21 @@ func (s *Service) Register(api huma.API) {
 		OperationID: "admin-users-list", Method: http.MethodGet, Path: "",
 		Summary: "List users with their quotas",
 	}, s.list)
+	huma.Register(group, huma.Operation{
+		OperationID: "admin-users-create", Method: http.MethodPost, Path: "",
+		Summary: "Create a user", DefaultStatus: http.StatusCreated, MaxBodyBytes: 8192,
+		Errors: []int{http.StatusConflict, http.StatusUnprocessableEntity},
+	}, s.createUser)
+	huma.Register(group, huma.Operation{
+		OperationID: "admin-users-update", Method: http.MethodPatch, Path: "/{id}",
+		Summary: "Update a user", MaxBodyBytes: 8192,
+		Errors: []int{http.StatusConflict, http.StatusNotFound, http.StatusUnprocessableEntity},
+	}, s.updateUser)
+	huma.Register(group, huma.Operation{
+		OperationID: "admin-users-delete", Method: http.MethodDelete, Path: "/{id}",
+		Summary: "Delete a user", DefaultStatus: http.StatusNoContent,
+		Errors: []int{http.StatusConflict, http.StatusNotFound, http.StatusServiceUnavailable},
+	}, s.deleteUser)
 	huma.Register(group, huma.Operation{
 		OperationID: "admin-users-quota-set", Method: http.MethodPut, Path: "/{id}/quota",
 		Summary: "Set the quotas of a user", MaxBodyBytes: 131072,
@@ -154,6 +203,241 @@ func (s *Service) list(ctx context.Context, _ *struct{}) (*usersOutput, error) {
 	}
 	return output, nil
 }
+
+func (s *Service) createUser(ctx context.Context, input *createUserInput) (*userOutput, error) {
+	name := strings.TrimSpace(input.Body.Name)
+	if name == "" {
+		return nil, huma.Error422UnprocessableEntity("Enter a name.")
+	}
+	passwordHash, valid := auth.NewPasswordHash(input.Body.Password)
+	if !valid {
+		return nil, huma.Error422UnprocessableEntity("Use a password with at least 15 characters and at most 1024 bytes.")
+	}
+	admin, _ := auth.UserFromContext(ctx)
+	var user db.User
+	err := db.InTx(ctx, s.pool, func(queries *db.Queries) error {
+		var err error
+		user, err = queries.CreateUser(ctx, db.CreateUserParams{
+			PublicID: id.New(id.User), Name: name, Email: normalizeEmail(input.Body.Email), PasswordHash: passwordHash,
+		})
+		if err != nil {
+			return err
+		}
+		if input.Body.IsAdmin {
+			user, err = queries.UpdateAdminUser(ctx, db.UpdateAdminUserParams{
+				ID: user.ID, Name: user.Name, Email: user.Email, IsAdmin: true,
+			})
+			if err != nil {
+				return err
+			}
+		}
+		if err := audit.Record(ctx, queries, audit.Event{
+			Action: audit.AccountRegistered, ActorID: admin.ID, SubjectID: user.ID, TargetID: user.PublicID,
+		}); err != nil {
+			return err
+		}
+		if !input.Body.IsAdmin {
+			return nil
+		}
+		return audit.Record(ctx, queries, audit.Event{
+			Action: audit.AccountAdminGranted, ActorID: admin.ID, SubjectID: user.ID, TargetID: user.PublicID,
+		})
+	})
+	if auth.IsEmailConflict(err) {
+		return nil, huma.Error409Conflict("An account with this email already exists.")
+	}
+	if err != nil {
+		return nil, s.internalError(ctx, "create user", err)
+	}
+	managed, err := s.adminUser(ctx, user)
+	if err != nil {
+		return nil, s.internalError(ctx, "load created user", err)
+	}
+	return &userOutput{Body: managed}, nil
+}
+
+func (s *Service) updateUser(ctx context.Context, input *updateUserInput) (*userOutput, error) {
+	name := strings.TrimSpace(input.Body.Name)
+	if name == "" {
+		return nil, huma.Error422UnprocessableEntity("Enter a name.")
+	}
+	var passwordHash string
+	if input.Body.Password != "" {
+		var valid bool
+		passwordHash, valid = auth.NewPasswordHash(input.Body.Password)
+		if !valid {
+			return nil, huma.Error422UnprocessableEntity("Use a password with at least 15 characters and at most 1024 bytes.")
+		}
+	}
+	admin, _ := auth.UserFromContext(ctx)
+	currentSession := auth.SessionTokenHash(ctx)
+	var user db.User
+	err := db.InTx(ctx, s.pool, func(queries *db.Queries) error {
+		target, err := queries.GetUserByPublicIDForUpdate(ctx, input.ID)
+		if err != nil {
+			return err
+		}
+		if target.ID == admin.ID && target.IsAdmin != input.Body.IsAdmin {
+			return errSelfRoleChange
+		}
+		if target.IsAdmin && !input.Body.IsAdmin {
+			administrators, err := queries.LockAdministrators(ctx)
+			if err != nil {
+				return err
+			}
+			if len(administrators) <= 1 {
+				return errLastAdmin
+			}
+		}
+		user, err = queries.UpdateAdminUser(ctx, db.UpdateAdminUserParams{
+			ID: target.ID, Name: name, Email: normalizeEmail(input.Body.Email), IsAdmin: input.Body.IsAdmin,
+		})
+		if err != nil {
+			return err
+		}
+		var details audit.Details
+		if user.Name != target.Name {
+			details.Name, details.PreviousName = user.Name, target.Name
+		}
+		if user.Email != target.Email {
+			details.Email, details.PreviousEmail = user.Email, target.Email
+		}
+		if details != (audit.Details{}) {
+			if err := audit.Record(ctx, queries, audit.Event{
+				Action: audit.AccountUpdated, ActorID: admin.ID, SubjectID: user.ID, TargetID: user.PublicID,
+				Details: details,
+			}); err != nil {
+				return err
+			}
+		}
+		if user.IsAdmin != target.IsAdmin {
+			action := audit.AccountAdminRevoked
+			if user.IsAdmin {
+				action = audit.AccountAdminGranted
+			}
+			if err := audit.Record(ctx, queries, audit.Event{
+				Action: action, ActorID: admin.ID, SubjectID: user.ID, TargetID: user.PublicID,
+			}); err != nil {
+				return err
+			}
+		}
+		if passwordHash == "" {
+			return nil
+		}
+		if err := queries.UpdateUserPassword(ctx, db.UpdateUserPasswordParams{ID: user.ID, PasswordHash: passwordHash}); err != nil {
+			return err
+		}
+		if user.ID == admin.ID && len(currentSession) > 0 {
+			if err := queries.DeleteOtherUserSessions(ctx, db.DeleteOtherUserSessionsParams{
+				UserID: user.ID, CurrentTokenHash: currentSession,
+			}); err != nil {
+				return err
+			}
+		} else if err := queries.DeleteAllUserSessions(ctx, user.ID); err != nil {
+			return err
+		}
+		return audit.Record(ctx, queries, audit.Event{
+			Action: audit.AccountPasswordChanged, ActorID: admin.ID, SubjectID: user.ID, TargetID: user.PublicID,
+		})
+	})
+	if errors.Is(err, errSelfRoleChange) {
+		return nil, huma.Error409Conflict("You cannot change your own administrator role.")
+	}
+	if errors.Is(err, errLastAdmin) {
+		return nil, huma.Error409Conflict("Keep at least one administrator account.")
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, huma.Error404NotFound("The user does not exist.")
+	}
+	if auth.IsEmailConflict(err) {
+		return nil, huma.Error409Conflict("An account with this email already exists.")
+	}
+	if err != nil {
+		return nil, s.internalError(ctx, "update user", err)
+	}
+	managed, err := s.adminUser(ctx, user)
+	if err != nil {
+		return nil, s.internalError(ctx, "load updated user", err)
+	}
+	return &userOutput{Body: managed}, nil
+}
+
+func (s *Service) deleteUser(ctx context.Context, input *userPathInput) (*struct{}, error) {
+	admin, _ := auth.UserFromContext(ctx)
+	target, err := s.queries.GetUserByPublicID(ctx, input.ID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, huma.Error404NotFound("The user does not exist.")
+	}
+	if err != nil {
+		return nil, s.internalError(ctx, "load user for deletion", err)
+	}
+	err = s.deletion.DeleteUserWithCheck(ctx, target.ID, admin.ID, func(ctx context.Context, queries *db.Queries, user db.User) error {
+		if user.ID == admin.ID {
+			return errSelfDeletion
+		}
+		if !user.IsAdmin {
+			return nil
+		}
+		administrators, err := queries.LockAdministrators(ctx)
+		if err != nil {
+			return err
+		}
+		if len(administrators) <= 1 {
+			return errLastAdmin
+		}
+		return nil
+	})
+	if errors.Is(err, errSelfDeletion) {
+		return nil, huma.Error409Conflict("You cannot delete your own administrator account here.")
+	}
+	if errors.Is(err, errLastAdmin) {
+		return nil, huma.Error409Conflict("Keep at least one administrator account.")
+	}
+	if errors.Is(err, accountdeletion.ErrQueueUnavailable) {
+		return nil, huma.Error503ServiceUnavailable("Account deletion is temporarily unavailable.")
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, huma.Error404NotFound("The user does not exist.")
+	}
+	if err != nil {
+		return nil, s.internalError(ctx, "delete user", err)
+	}
+	return &struct{}{}, nil
+}
+
+func (s *Service) adminUser(ctx context.Context, user db.User) (AdminUser, error) {
+	defaults, err := s.queries.ListUserDefaultQuotas(ctx)
+	if err != nil {
+		return AdminUser{}, err
+	}
+	defaultQuota := Quota{Mode: ModeInherit}
+	for _, row := range defaults {
+		if row.UserID == user.ID {
+			defaultQuota = quotaFromLimit(true, row.LimitBytes)
+			break
+		}
+	}
+	overrides, err := s.queries.ListUserBackendQuotas(ctx)
+	if err != nil {
+		return AdminUser{}, err
+	}
+	backendQuotas := make([]BackendQuota, 0)
+	for _, row := range overrides {
+		if row.UserID != user.ID {
+			continue
+		}
+		quota := quotaFromLimit(true, row.LimitBytes)
+		backendQuotas = append(backendQuotas, BackendQuota{
+			BackendID: row.BackendPublicID, Mode: quota.Mode, LimitBytes: quota.LimitBytes,
+		})
+	}
+	return AdminUser{
+		ID: user.PublicID, Name: user.Name, Email: user.Email, IsAdmin: user.IsAdmin,
+		DefaultQuota: defaultQuota, BackendQuotas: backendQuotas,
+	}, nil
+}
+
+func normalizeEmail(email string) string { return strings.ToLower(strings.TrimSpace(email)) }
 
 func (s *Service) setUserQuota(ctx context.Context, input *updateUserQuotaInput) (*userOutput, error) {
 	defaultSet, defaultLimit, err := quotaLevel(input.Body.DefaultQuota)
