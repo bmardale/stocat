@@ -115,6 +115,7 @@ func TestAuth(t *testing.T) {
 	t.Run("expired and revoked sessions", func(t *testing.T) { testExpiredSessions(t, pool) })
 	t.Run("session management", func(t *testing.T) { testSessions(t, pool) })
 	t.Run("account management", func(t *testing.T) { testAccount(t, pool) })
+	t.Run("recent authentication", func(t *testing.T) { testRecentAuthentication(t, pool) })
 	t.Run("user agent", func(t *testing.T) { testUserAgent(t, pool) })
 	t.Run("passkeys", func(t *testing.T) { testPasskeys(t, pool) })
 	t.Run("concurrent registration", func(t *testing.T) { testConcurrentRegistration(t, pool) })
@@ -348,7 +349,8 @@ func testExpiredSessions(t *testing.T, pool *pgxpool.Pool) {
 	addr := netip.MustParseAddr("127.0.0.1")
 	if err := queries.CreateSession(t.Context(), db.CreateSessionParams{
 		TokenHash: session.TokenHash, PublicID: session.PublicID, UserID: session.UserID, UserAgent: "test", IpAddress: &addr,
-		ExpiresAt: pgtype.Timestamptz{Time: time.Now().Add(-time.Second), Valid: true},
+		ExpiresAt:       pgtype.Timestamptz{Time: time.Now().Add(-time.Second), Valid: true},
+		AuthenticatedAt: session.AuthenticatedAt,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -533,6 +535,61 @@ func testAccount(t *testing.T, pool *pgxpool.Pool) {
 		"email": "updated@example.com", "password": newPassword,
 	})
 	requireStatus(t, response, http.StatusOK)
+}
+
+func testRecentAuthentication(t *testing.T, pool *pgxpool.Pool) {
+	t.Helper()
+	_, api, service := newTestAPI(t, pool, true)
+	response := api.PostCtx(t.Context(), "/api/v1/auth/register", registration("recent@example.com"))
+	requireStatus(t, response, http.StatusCreated)
+	cookie := responseCookie(t, response)
+	hash := tokenHash(cookie.Value)
+	ctx := context.WithValue(t.Context(), sessionKey{}, hash)
+	requireErrorStatus(t, service.RequireRecentAuthentication(ctx), 0)
+
+	queries := db.New(pool)
+	session, err := queries.GetSession(t.Context(), hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := queries.DeleteSession(t.Context(), hash); err != nil {
+		t.Fatal(err)
+	}
+	if err := queries.CreateSession(t.Context(), db.CreateSessionParams{
+		TokenHash: hash, PublicID: session.PublicID, UserID: session.UserID, UserAgent: session.UserAgent,
+		ExpiresAt:       session.ExpiresAt,
+		AuthenticatedAt: pgtype.Timestamptz{Time: time.Now().Add(-RecentAuthenticationWindow - time.Minute), Valid: true},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	requireErrorStatus(t, service.RequireRecentAuthentication(ctx), http.StatusForbidden)
+
+	header := "Cookie: " + cookie.String()
+	confirm := func(password string, headers ...any) *httptest.ResponseRecorder {
+		return api.PostCtx(t.Context(), "/api/v1/auth/reauthenticate", append(headers, map[string]string{"password": password})...)
+	}
+	requireStatus(t, confirm(testPassword), http.StatusUnauthorized)
+	requireStatus(t, confirm("an incorrect password value", header), http.StatusUnprocessableEntity)
+	requireErrorStatus(t, service.RequireRecentAuthentication(ctx), http.StatusForbidden)
+	requireStatus(t, confirm(testPassword, header), http.StatusNoContent)
+	requireErrorStatus(t, service.RequireRecentAuthentication(ctx), 0)
+	events, err := queries.ListAuditEvents(t.Context(), db.ListAuditEventsParams{UserID: session.UserID, Action: "account.reauthenticated", PageLimit: 10})
+	if err != nil || len(events) != 1 {
+		t.Fatalf("reauthentication events = %d, err = %v, want 1", len(events), err)
+	}
+}
+
+func requireErrorStatus(t *testing.T, err error, want int) {
+	t.Helper()
+	status := 0
+	if statusErr, ok := errors.AsType[huma.StatusError](err); ok {
+		status = statusErr.GetStatus()
+	} else if err != nil {
+		t.Fatal(err)
+	}
+	if status != want {
+		t.Fatalf("status = %d, want %d: %v", status, want, err)
+	}
 }
 
 func testUserAgent(t *testing.T, pool *pgxpool.Pool) {

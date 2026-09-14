@@ -28,6 +28,7 @@ import type {
   PasskeyRegistrationOptionsInputBody,
   Problem,
   PublicConfig,
+  ReauthenticateInputBody,
   RegisterInputBody,
   RenamePasskeyInputBody,
   Session,
@@ -1340,6 +1341,112 @@ export const useAuthPasswordChange = <TError = ErrorType<Problem>, TContext = un
   TContext
 > => {
   return useMutation(getAuthPasswordChangeMutationOptions(options), queryClient);
+};
+export const getAuthReauthenticateUrl = () => {
+  return `/api/v1/auth/reauthenticate`;
+};
+
+/**
+ * Sensitive operations accept the session for 10 minutes after this confirmation or sign-in.
+ * @summary Confirm the password of the current session
+ */
+export const authReauthenticate = async (
+  reauthenticateInputBody: ReauthenticateInputBody,
+  options?: Parameters<typeof apiFetch>[1],
+): Promise<void> => {
+  const getHeaders = (
+    h?: NonNullable<RequestInit["headers"]>,
+  ): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(
+          h as Iterable<Iterable<string>>,
+          (entry) => Array.from(entry) as [string, string],
+        ),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+  return apiFetch<void>(getAuthReauthenticateUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...getHeaders(options?.headers) },
+    body: JSON.stringify(reauthenticateInputBody),
+  });
+};
+
+export const getAuthReauthenticateMutationKey = () => ["authReauthenticate"] as const;
+
+export const getAuthReauthenticateMutationOptions = <
+  TError = ErrorType<Problem>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof authReauthenticate>>,
+    TError,
+    AuthReauthenticateMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof apiFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof authReauthenticate>>,
+  TError,
+  AuthReauthenticateMutationVariables,
+  TContext
+> => {
+  const mutationKey = getAuthReauthenticateMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof authReauthenticate>>,
+    AuthReauthenticateMutationVariables
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return authReauthenticate(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AuthReauthenticateMutationResult = NonNullable<
+  Awaited<ReturnType<typeof authReauthenticate>>
+>;
+export type AuthReauthenticateMutationBody = BodyType<ReauthenticateInputBody>;
+export type AuthReauthenticateMutationError = ErrorType<Problem>;
+export type AuthReauthenticateMutationVariables = { data: BodyType<ReauthenticateInputBody> };
+
+/**
+ * @summary Confirm the password of the current session
+ */
+export const useAuthReauthenticate = <TError = ErrorType<Problem>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof authReauthenticate>>,
+      TError,
+      AuthReauthenticateMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof authReauthenticate>>,
+  TError,
+  AuthReauthenticateMutationVariables,
+  TContext
+> => {
+  return useMutation(getAuthReauthenticateMutationOptions(options), queryClient);
 };
 export const getAuthRegisterUrl = () => {
   return `/api/v1/auth/register`;

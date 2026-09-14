@@ -251,13 +251,14 @@ type ReplicationNode struct {
 }
 
 type Session struct {
-	TokenHash []byte
-	PublicID  string
-	UserID    int64
-	UserAgent string
-	IpAddress *netip.Addr
-	CreatedAt pgtype.Timestamptz
-	ExpiresAt pgtype.Timestamptz
+	TokenHash       []byte
+	PublicID        string
+	UserID          int64
+	UserAgent       string
+	IpAddress       *netip.Addr
+	CreatedAt       pgtype.Timestamptz
+	ExpiresAt       pgtype.Timestamptz
+	AuthenticatedAt pgtype.Timestamptz
 }
 
 type Setting struct {

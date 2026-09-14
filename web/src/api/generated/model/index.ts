@@ -60,6 +60,7 @@ export * from "./publicConfig.ts";
 export * from "./quota.ts";
 export * from "./quotaMode.ts";
 export * from "./quotaSettings.ts";
+export * from "./reauthenticateInputBody.ts";
 export * from "./registerInputBody.ts";
 export * from "./registrationSettings.ts";
 export * from "./renameInputBody.ts";

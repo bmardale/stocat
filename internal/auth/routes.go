@@ -126,6 +126,14 @@ func (s *Service) Register(api huma.API) {
 		MaxBodyBytes: 4096, Errors: []int{http.StatusUnprocessableEntity},
 	}, s.changePassword)
 	huma.Register(protected, huma.Operation{
+		OperationID: "auth-reauthenticate", Method: http.MethodPost, Path: "/reauthenticate",
+		Middlewares:   huma.Middlewares{s.limitCredentials(api, s.authIP)},
+		Summary:       "Confirm the password of the current session",
+		Description:   "Sensitive operations accept the session for 10 minutes after this confirmation or sign-in.",
+		DefaultStatus: http.StatusNoContent, MaxBodyBytes: 4096,
+		Errors: []int{http.StatusUnprocessableEntity},
+	}, s.reauthenticate)
+	huma.Register(protected, huma.Operation{
 		OperationID: "auth-sessions-list", Method: http.MethodGet, Path: "/sessions",
 		Summary: "List the active sessions of the current user",
 	}, s.listSessions)

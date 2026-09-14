@@ -49,7 +49,7 @@ func TestEncryptedSharingMigrationDownUp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = provider.Down(t.Context()); err != nil {
+	if _, err = provider.DownTo(t.Context(), 15); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = provider.Up(t.Context()); err != nil {
@@ -89,7 +89,7 @@ func TestEncryptedSharingMigrationPreservesV2Data(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = provider.Down(t.Context()); err == nil || !strings.Contains(err.Error(), "V2 data prevents rollback") {
+	if _, err = provider.DownTo(t.Context(), 15); err == nil || !strings.Contains(err.Error(), "V2 data prevents rollback") {
 		t.Fatalf("rollback error=%v", err)
 	}
 	again, err := db.New(pool).GetEncryptionDeployment(t.Context())

@@ -93,6 +93,7 @@ components:
             - account.signed_out
             - account.updated
             - account.password_changed
+            - account.reauthenticated
             - account.admin_granted
             - account.admin_revoked
             - session.revoked
@@ -761,6 +762,15 @@ components:
           description: The global default quota. The inherit mode is not allowed.
       required:
         - default_quota
+      type: object
+    ReauthenticateInputBody:
+      additionalProperties: false
+      properties:
+        password:
+          type: string
+          writeOnly: true
+      required:
+        - password
       type: object
     RegisterInputBody:
       additionalProperties: false
@@ -2946,6 +2956,54 @@ paths:
       security:
         - session: []
       summary: Change the current account password
+      tags:
+        - Auth
+  /api/v1/auth/reauthenticate:
+    post:
+      description: Sensitive operations accept the session for 10 minutes after this confirmation or sign-in.
+      operationId: auth-reauthenticate
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReauthenticateInputBody"
+        required: true
+      responses:
+        "204":
+          description: No Content
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+      security:
+        - session: []
+      summary: Confirm the password of the current session
       tags:
         - Auth
   /api/v1/auth/register:

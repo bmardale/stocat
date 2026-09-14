@@ -256,7 +256,8 @@ func (s *Service) createSession(ctx context.Context, queries *db.Queries, userID
 	err := queries.CreateSession(ctx, db.CreateSessionParams{
 		TokenHash: tokenHash(token), PublicID: id.New(id.Session), UserID: userID,
 		UserAgent: meta.userAgent, IpAddress: meta.ip,
-		ExpiresAt: pgtype.Timestamptz{Time: expires, Valid: true},
+		ExpiresAt:       pgtype.Timestamptz{Time: expires, Valid: true},
+		AuthenticatedAt: pgtype.Timestamptz{Time: time.Now(), Valid: true},
 	})
 	if err != nil {
 		return http.Cookie{}, err
