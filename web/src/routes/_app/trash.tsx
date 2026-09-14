@@ -13,7 +13,7 @@ import {
   type InfiniteData,
 } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   filesDeletePermanently,
   filesRestore,
@@ -78,7 +78,9 @@ function Trash() {
   const [names, setNames] = useState<Record<string, string>>({});
   const [unlocking, setUnlocking] = useState<Library>();
   const [deleting, setDeleting] = useState<TrashedFile>();
-  const items = trash.data?.pages.flatMap((page) => page.items) ?? emptyTrash;
+  const pages = trash.data?.pages;
+  // The name effect depends on items. A new array on each render starts an endless render loop.
+  const items = useMemo(() => pages?.flatMap((page) => page.items) ?? emptyTrash, [pages]);
 
   useEffect(() => {
     let active = true;
@@ -250,9 +252,7 @@ function Trash() {
           {trash.isFetchingNextPage ? "Loading…" : "Load more"}
         </Button>
       )}
-      {(restore.error || remove.error) && (
-        <FieldError>{(restore.error ?? remove.error)?.message}</FieldError>
-      )}
+      {restore.error && <FieldError>{restore.error.message}</FieldError>}
       <UnlockLibraryDialog
         open={Boolean(unlocking)}
         library={unlocking}
@@ -263,7 +263,9 @@ function Trash() {
       <AlertDialog
         open={Boolean(deleting)}
         onOpenChange={(open) => {
-          if (!open) setDeleting(undefined);
+          if (open) return;
+          setDeleting(undefined);
+          remove.reset();
         }}
       >
         <AlertDialogContent>
@@ -275,6 +277,7 @@ function Trash() {
               This deletes every version. You cannot undo this action.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {remove.error && <FieldError>{remove.error.message}</FieldError>}
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction

@@ -1,4 +1,4 @@
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useMemo, useState } from "react";
 import type { LibraryKeys } from "@/lib/library-crypto";
 
 type LibraryKeysState = {
@@ -13,16 +13,20 @@ const LibraryKeysContext = createContext<LibraryKeysState | undefined>(undefined
 export function LibraryKeysProvider({ children }: { children: React.ReactNode }) {
   const [unlocked, setUnlocked] = useState<Record<string, LibraryKeys>>({});
 
-  const value: LibraryKeysState = {
-    keys: (libraryId) => unlocked[libraryId],
-    unlock: (libraryId, keys) => setUnlocked((current) => ({ ...current, [libraryId]: keys })),
-    lock: (libraryId) =>
-      setUnlocked((current) => {
-        const next = { ...current };
-        delete next[libraryId];
-        return next;
-      }),
-  };
+  // Consumers use the value as an effect dependency. Keep it stable until the keys change.
+  const value = useMemo<LibraryKeysState>(
+    () => ({
+      keys: (libraryId) => unlocked[libraryId],
+      unlock: (libraryId, keys) => setUnlocked((current) => ({ ...current, [libraryId]: keys })),
+      lock: (libraryId) =>
+        setUnlocked((current) => {
+          const next = { ...current };
+          delete next[libraryId];
+          return next;
+        }),
+    }),
+    [unlocked],
+  );
 
   return <LibraryKeysContext.Provider value={value}>{children}</LibraryKeysContext.Provider>;
 }
