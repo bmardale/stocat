@@ -186,7 +186,7 @@ func createLibrary(t *testing.T, pool *pgxpool.Pool, ownerID, backendID int64, n
 		}
 		if _, err := queries.CreateLibrary(t.Context(), db.CreateLibraryParams{
 			ID: libraryID, PublicID: id.New(id.Library), OwnerID: ownerID, BackendID: backendID,
-			RootNodeID: rootID, Name: name, EncryptionMode: "none",
+			RootNodeID: rootID, Name: pgtype.Text{String: name, Valid: true}, EncryptionMode: "none",
 		}); err != nil {
 			return err
 		}

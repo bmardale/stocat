@@ -1,0 +1,226 @@
+# Encrypted sharing: phase 1–2 record contract
+
+This document defines the server-side binary records for account encryption and owned v2 content.
+The format identifier is v2. The suite identifier is 1.
+Sharing handlers, recipient envelopes, public links, browser cryptography, and rotation clients remain future work.
+
+## Encoding
+
+Use the field order in the tables below.
+Encode each byte string with a four-byte unsigned big-endian length, followed by its bytes.
+Encode each counter as an eight-byte unsigned big-endian integer.
+Counters must be between 1 and 9,223,372,036,854,775,807, inclusive.
+File sizes and frame indices follow the separate framing rules below.
+Encode the suite as one byte.
+Encode optional fields with a one-byte presence flag, then the value when present.
+The presence flag must be 0 or 1. An absent value has no length prefix.
+Reject unknown types, unknown suites, invalid lengths, noncanonical values, missing fields, and trailing bytes.
+
+Every record starts with these fields:
+
+| Field | Encoding |
+| --- | --- |
+| Domain | Byte string: UTF-8 `stocat/v2/` followed by the record type. |
+| Deployment | Byte string: 16 bytes from the installation UUID, in network byte order. |
+| Suite | One byte: `01`. |
+
+The tables use these types:
+
+| Type | Meaning |
+| --- | --- |
+| `user` | Canonical `usr_` public identifier. |
+| `library` | Canonical `lib_` public identifier. |
+| `node` | Canonical `nod_` public identifier. |
+| `version` | Canonical `ver_` public identifier. |
+| `counter` | Positive counter with the range specified above. |
+| `bytes(N)` | Byte string of exactly N bytes. |
+| `ciphertext(N)` | Byte string of 16 through N bytes, including the authentication tag. |
+| `optional(T)` | Presence flag followed by T when present. |
+
+Public identifiers contain their prefix, an underscore, and 26 uppercase Crockford base32 ULID characters.
+Encode identifiers as UTF-8 byte strings. Never use database row identifiers in records.
+
+The Go `Record` representation stores binary fields as unpadded base64url strings.
+It stores counters as canonical decimal strings. It omits absent optional fields.
+Resource identifiers and profile identifiers remain strings.
+This representation supports fixtures and internal callers. It does not define an HTTP request format.
+Future JSON handlers must reject duplicate fields before constructing a `Record`.
+
+Limit complete key records to 16 KiB.
+Limit node metadata and contact-store ciphertext to 64 KiB.
+Limit their complete records to 64 KiB plus 2,048 bytes for public fields.
+Validate limits before allocation or cryptographic processing.
+
+## Account records
+
+Each table row gives the exact field sequence after the common prefix.
+The `generation` field identifies the account identity generation in these records.
+The `bundle_revision` field identifies the envelope revision within that generation.
+
+| Record type | Ordered fields |
+| --- | --- |
+| `identity` | `account_id:user`, `generation:counter`, `signing_public_key:bytes(32)`, `recipient_public_key:bytes(32)`, `recipient_key_id:bytes(32)` |
+| `identity-continuity` | `account_id:user`, `previous_generation:counter`, `generation:counter`, `previous_identity_hash:bytes(32)`, `identity_hash:bytes(32)` |
+| `contact-store` | `account_id:user`, `generation:counter`, `revision:counter`, `previous_revision_hash:optional(bytes(32))`, `nonce:bytes(24)`, `ciphertext:ciphertext(65536)` |
+| `account-password` | `account_id:user`, `generation:counter`, `bundle_revision:counter`, `profile:string`, `salt:bytes(16)`, `nonce:bytes(24)`, `ciphertext:bytes(48)` |
+| `account-recovery` | `account_id:user`, `generation:counter`, `bundle_revision:counter`, `nonce:bytes(24)`, `ciphertext:bytes(48)` |
+| `account-private` | `account_id:user`, `generation:counter`, `bundle_revision:counter`, `nonce:bytes(24)`, `ciphertext:ciphertext(16384)` |
+
+The only password profile is `argon2id-v19-m65536-t3-p4-l32`.
+It specifies Argon2id version 19, 65,536 KiB, three passes, four lanes, and 32 output bytes.
+Reject other profile strings before running the KDF.
+Password and recovery envelopes encrypt exactly the 32-byte account master key.
+The private envelope contains the encrypted private-key bundle. Never include the recovery secret in that bundle.
+
+Hash the complete canonical identity record with SHA-256 to produce its fingerprint.
+Exclude the detached signature from this hash.
+Continuity records bind the hashes of both complete identity records.
+Verify continuity with the previous identity's signing key.
+The owner signs contact-store records and retains authenticated revision checkpoints.
+Application validation must check revision continuity and public-key validity before accepting identities.
+The binary parser checks encodings and lengths; it does not establish identity trust.
+
+## Node and version records
+
+The `account_id` field identifies the owner.
+The `generation` field identifies the visible encryption generation, except in `owner-root`.
+In `owner-root`, `generation` identifies the account identity generation that owns the wrapping key.
+Epochs identify node keys. Revisions identify signed resource changes.
+
+| Record type | Ordered fields |
+| --- | --- |
+| `owner-root` | `account_id:user`, `library_id:library`, `node_id:node`, `generation:counter`, `node_epoch:counter`, `revision:counter`, `nonce:bytes(24)`, `ciphertext:bytes(48)` |
+| `parent-envelope` | `account_id:user`, `library_id:library`, `parent_id:node`, `child_id:node`, `parent_epoch:counter`, `child_epoch:counter`, `generation:counter`, `revision:counter`, `nonce:bytes(24)`, `ciphertext:bytes(48)` |
+| `node-metadata` | `account_id:user`, `library_id:library`, `node_id:node`, `node_epoch:counter`, `revision:counter`, `nonce:bytes(24)`, `ciphertext:ciphertext(65536)` |
+| `file-key` | `account_id:user`, `library_id:library`, `node_id:node`, `version_id:version`, `content_id:bytes(16)`, `node_epoch:counter`, `generation:counter`, `nonce:bytes(24)`, `ciphertext:bytes(48)` |
+| `version-manifest` | `account_id:user`, `library_id:library`, `node_id:node`, `version_id:version`, `content_id:bytes(16)`, `node_epoch:counter`, `revision:counter`, `header:bytes(64)`, `ciphertext_hash:bytes(32)`, `key_envelope_hash:bytes(32)` |
+| `current-version` | `account_id:user`, `library_id:library`, `node_id:node`, `node_epoch:counter`, `revision:counter`, `version_id:optional(version)` |
+
+Owner-root and parent envelopes encrypt exactly one 32-byte node key.
+File-key envelopes encrypt exactly one 32-byte content key.
+Reject parent envelopes whose parent and child identifiers are equal.
+The database must also enforce that both nodes belong to the envelope's library.
+Application validation must verify the expected parent edge and resource context.
+
+The metadata record encrypts the node name and its confidential attributes.
+Use the same record type for library root metadata.
+Store no plaintext library title for v2. Duplicate encrypted titles are permitted.
+An absent current version represents an empty file node before initial publication.
+The signed revision still advances when the current version changes.
+
+The manifest header must pass framing validation.
+Its content identifier must equal the manifest's content identifier.
+The ciphertext hash covers the entire stored file, including its header.
+The key-envelope hash covers the complete canonical `file-key` record, excluding its detached signature.
+Verify the manifest and current-version record before using a version key.
+
+## Authentication and derivation context
+
+For encrypted records, use all bytes before the final ciphertext length prefix as AEAD additional data.
+This includes the domain, deployment, suite, resource identifiers, counters, password parameters, and nonce.
+`Record.AssociatedData` returns these bytes.
+Authenticate ciphertext with XChaCha20-Poly1305. Never reuse a nonce with the same key.
+
+Store signatures separately as exactly 64 bytes.
+Construct the Ed25519 signature input as:
+
+```text
+C("stocat/v2/signature", record_type, SHA256(record_bytes))
+```
+
+Here, `record_type` is the table's type string, without the domain prefix.
+Each of the three values is a length-prefixed byte string.
+`SignatureInput` constructs this input. `VerifyRecord` verifies the detached signature with the supplied signing key.
+The caller must select a trusted signing key and compare the authenticated context with the requested resource.
+An identity signs itself. The owner signs content records and account changes.
+A valid signature alone does not authorize a request or establish first-contact trust.
+
+Use SHA-256 HKDF with a 32-byte zero salt and a 32-byte output, unless password derivation supplies the key directly.
+Use these exact derivation contexts:
+
+| Key purpose | Input key | HKDF info tuple |
+| --- | --- | --- |
+| Recovery envelope | Recovery secret | `C("stocat/v2/account-wrap", deployment, account_id, generation, "recovery")` |
+| Private-key envelope | Account master key | `C("stocat/v2/account-wrap", deployment, account_id, generation, "private")` |
+| Contact store | Account master key | `C("stocat/v2/account-wrap", deployment, account_id, generation, "contacts")` |
+| Owner root | Account master key | `C("stocat/v2/account-wrap", deployment, account_id, generation, "root", library_id, node_id, node_epoch)` |
+| Node metadata | Node key | `C("stocat/v2/node-metadata", deployment, library_id, node_id, node_epoch)` |
+| Child envelope | Parent node key | `C("stocat/v2/child-wrap", deployment, library_id, parent_id, parent_epoch)` |
+| File-key envelope | File node key | `C("stocat/v2/file-wrap", deployment, library_id, node_id, node_epoch)` |
+| Name token | Parent node key | `C("stocat/v2/name-token", deployment, library_id, parent_id, parent_epoch)` |
+
+Use the Argon2id output directly as the password-envelope key.
+For name tokens, compute HMAC-SHA-256 over `C(parent_id, parent_epoch, NFC(name))`.
+The derivation tuples use the same byte-string and counter encodings as records.
+Derivation and AEAD implementations remain browser work. These tuples fix their context encoding in advance.
+
+## File framing
+
+The 64-byte header contains these fields without tuple length prefixes:
+
+```text
+magic:8 = STOCAT02
+version:u8 = 2
+suite:u8 = 1
+reserved:2 = 0
+frame_size:u32
+plaintext_size:u64
+content_id:16
+nonce_prefix:16
+reserved:8 = 0
+```
+
+Use unsigned big-endian integers.
+Registered frame sizes are powers of two from 65,536 through 8,388,608 bytes.
+Use 8,388,608 bytes for new files.
+The frame count is `max(1, ceil(plaintext_size / frame_size))`.
+The ciphertext size is `64 + plaintext_size + 16 * frame_count`.
+Both sizes must be at most 9,007,199,254,740,991.
+Reject invalid sizes before arithmetic, serialization, or parsing completes.
+
+A frame nonce is `nonce_prefix || frame_index:u64`.
+A frame index starts at zero and must be less than the frame count.
+Its additional data is `C("stocat/v2/file-frame", header, frame_index, plaintext_length)`.
+The final two values use eight-byte unsigned integers. The first two use length-prefixed byte strings.
+An empty file contains one authenticated empty frame and occupies 80 ciphertext bytes.
+
+## Persistence and rollback
+
+Migration 16 stores the random installation UUID in the singleton `encryption_deployment` table.
+Read it through `GetEncryptionDeployment`. Back up this table with all encrypted records.
+Database triggers reject identifier changes, row deletion, and truncation.
+Do not regenerate the identifier when restarting the service or restoring a backup.
+
+V2 libraries store null plaintext names and null legacy key envelopes.
+Legacy libraries retain their title uniqueness and key-envelope constraints.
+V2 child nodes store encrypted metadata and a 32-byte sibling name token.
+They do not require the legacy encrypted-name column.
+V2 blobs store null legacy fingerprints and null blob-level encrypted keys.
+Version access records store their content-key envelopes.
+
+The Down migration restores the legacy constraints when no v2 data exists.
+It rejects rollback when v2 data would become invalid or lose its deployment context.
+It never deletes or converts encrypted user data to make rollback succeed.
+Use a pre-v2 backup when returning an initialized installation to the legacy schema.
+
+## Fixtures and verification
+
+The fixtures reside in `internal/encryptionv2/testdata`.
+`records.json` contains record inputs, canonical bytes, AEAD context bytes, signature inputs, and detached Ed25519 signatures.
+`frame.json` contains a header, frame nonce, and frame additional data.
+The fixtures include both optional-field states.
+
+Regenerate the fixtures from the repository root:
+
+```sh
+python3 internal/encryptionv2/testdata/generate.py
+go run internal/encryptionv2/testdata/sign.go
+```
+
+Python's standard library independently produces the binary encodings and SHA-256 signature inputs.
+Go's standard Ed25519 implementation produces deterministic signatures from the fixture-only seed in `sign.go`.
+The ciphertext bytes are synthetic. These fixtures do not claim AEAD, Argon2id, or HPKE interoperability.
+Run browser interoperability tests before enabling v2 encryption.
+
+Go tests check every fixture, every truncation boundary, trailing bytes, invalid sizes, and signature substitution across resource contexts.
+PostgreSQL tests check v2 persistence, legacy compatibility, same-library envelopes, deployment immutability, and migration rollback.

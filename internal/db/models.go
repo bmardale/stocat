@@ -50,6 +50,35 @@ type BlobLocation struct {
 	UpdatedAt  pgtype.Timestamptz
 }
 
+type EncryptionDeployment struct {
+	Singleton bool
+	PublicID  pgtype.UUID
+}
+
+type EncryptionRotation struct {
+	ID                   int64
+	PublicID             string
+	OwnerID              int64
+	LibraryID            int64
+	RootNodeID           int64
+	BarrierGeneration    int64
+	ExpectedRevisions    []byte
+	State                string
+	EncryptedResumeState []byte
+	CommittedAt          pgtype.Timestamptz
+	CreatedAt            pgtype.Timestamptz
+	UpdatedAt            pgtype.Timestamptz
+}
+
+type EncryptionRotationBatch struct {
+	RotationID  int64
+	BatchNumber int64
+	RecordCount int32
+	Records     []byte
+	RecordsHash []byte
+	CreatedAt   pgtype.Timestamptz
+}
+
 type FileTag struct {
 	NodeID    int64
 	TagID     int64
@@ -70,6 +99,16 @@ type FileVersion struct {
 	CreatedAt             pgtype.Timestamptz
 }
 
+type FileVersionKey struct {
+	VersionID           int64
+	NodeID              int64
+	NodeEpoch           int64
+	Generation          int64
+	ContentID           []byte
+	EncryptedContentKey []byte
+	SignedManifest      []byte
+}
+
 type InviteCode struct {
 	ID        int64
 	PublicID  string
@@ -81,16 +120,20 @@ type InviteCode struct {
 }
 
 type Library struct {
-	ID             int64
-	PublicID       string
-	OwnerID        int64
-	BackendID      int64
-	RootNodeID     int64
-	Name           string
-	EncryptionMode string
-	KeyEnvelope    []byte
-	CreatedAt      pgtype.Timestamptz
-	UpdatedAt      pgtype.Timestamptz
+	ID                     int64
+	PublicID               string
+	OwnerID                int64
+	BackendID              int64
+	RootNodeID             int64
+	Name                   pgtype.Text
+	EncryptionMode         string
+	KeyEnvelope            []byte
+	CreatedAt              pgtype.Timestamptz
+	UpdatedAt              pgtype.Timestamptz
+	EncryptionFormat       string
+	EncryptedRootMetadata  []byte
+	OwnerRootEnvelope      []byte
+	AccessPolicyGeneration int64
 }
 
 type LibraryReplication struct {
@@ -107,19 +150,37 @@ type LibraryReplication struct {
 }
 
 type Node struct {
-	ID               int64
-	PublicID         string
-	LibraryID        int64
-	ParentID         pgtype.Int8
-	Kind             string
-	Name             pgtype.Text
-	EncryptedName    []byte
-	NameToken        []byte
-	CurrentVersionID pgtype.Int8
-	Revision         int64
-	TrashedAt        pgtype.Timestamptz
-	CreatedAt        pgtype.Timestamptz
-	UpdatedAt        pgtype.Timestamptz
+	ID                          int64
+	PublicID                    string
+	LibraryID                   int64
+	ParentID                    pgtype.Int8
+	Kind                        string
+	Name                        pgtype.Text
+	EncryptedName               []byte
+	NameToken                   []byte
+	CurrentVersionID            pgtype.Int8
+	Revision                    int64
+	TrashedAt                   pgtype.Timestamptz
+	CreatedAt                   pgtype.Timestamptz
+	UpdatedAt                   pgtype.Timestamptz
+	KeyEpoch                    int64
+	MetadataRevision            int64
+	EncryptedMetadata           []byte
+	MetadataSignature           []byte
+	CurrentVersionPointer       []byte
+	CurrentVersionSignature     []byte
+	VisibleEncryptionGeneration int64
+}
+
+type NodeKeyEnvelope struct {
+	ChildNodeID    int64
+	ParentNodeID   int64
+	ChildEpoch     int64
+	ParentEpoch    int64
+	Generation     int64
+	Ciphertext     []byte
+	OwnerSignature []byte
+	LibraryID      int64
 }
 
 type Passkey struct {
@@ -148,6 +209,36 @@ type PasskeyUser struct {
 	Handle []byte
 }
 
+type PublicLink struct {
+	ID              int64
+	PublicID        string
+	OwnerID         int64
+	LibraryID       int64
+	RootNodeID      int64
+	TokenHash       []byte
+	ExpiresAt       pgtype.Timestamptz
+	RevokedAt       pgtype.Timestamptz
+	PolicyRevision  int64
+	ImmutablePolicy []byte
+	CreatedAt       pgtype.Timestamptz
+}
+
+type PublicLinkCapsule struct {
+	LinkID              int64
+	TargetEpoch         int64
+	CapsuleRevision     int64
+	Ciphertext          []byte
+	Nonce               []byte
+	PasswordProfile     pgtype.Text
+	PasswordSalt        []byte
+	AuthenticatedFields []byte
+}
+
+type PublicLinkManagement struct {
+	LinkID        int64
+	OwnerEnvelope []byte
+}
+
 type QuotaSetting struct {
 	ID                bool
 	DefaultLimitBytes pgtype.Int8
@@ -172,6 +263,32 @@ type Session struct {
 type Setting struct {
 	Key   string
 	Value string
+}
+
+type Share struct {
+	ID          int64
+	PublicID    string
+	OwnerID     int64
+	RecipientID int64
+	LibraryID   int64
+	RootNodeID  int64
+	Role        string
+	State       string
+	ExpiresAt   pgtype.Timestamptz
+	Certificate []byte
+	Revision    int64
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
+}
+
+type ShareKeyEnvelope struct {
+	ShareID         int64
+	GrantRevision   int64
+	RecipientKeyID  []byte
+	TargetEpoch     int64
+	Ciphertext      []byte
+	EncapsulatedKey []byte
+	SignerRecord    []byte
 }
 
 type StorageBackend struct {
@@ -250,6 +367,26 @@ type UserDefaultQuota struct {
 	LimitBytes pgtype.Int8
 }
 
+type UserEncryptionContact struct {
+	UserID               int64
+	Revision             int64
+	EncryptedStore       []byte
+	Signature            []byte
+	PreviousRevisionHash []byte
+	UpdatedAt            pgtype.Timestamptz
+}
+
+type UserEncryptionIdentity struct {
+	UserID                int64
+	Generation            int64
+	SigningPublicKey      []byte
+	RecipientPublicKey    []byte
+	RecipientKeyID        []byte
+	Certificate           []byte
+	ContinuityCertificate []byte
+	CreatedAt             pgtype.Timestamptz
+}
+
 type UserKeyBundle struct {
 	UserID                     int64
 	FormatVersion              int32
@@ -260,6 +397,8 @@ type UserKeyBundle struct {
 	MasterEncryptedRecoveryKey []byte
 	CreatedAt                  pgtype.Timestamptz
 	UpdatedAt                  pgtype.Timestamptz
+	PrivateKeyEnvelope         []byte
+	BundleRevision             int64
 }
 
 type WebauthnCeremony struct {

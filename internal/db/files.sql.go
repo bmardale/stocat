@@ -260,7 +260,7 @@ type GetMoveDestinationParams struct {
 type GetMoveDestinationRow struct {
 	ID               int64
 	PublicID         string
-	Name             string
+	Name             pgtype.Text
 	BackendID        int64
 	EncryptionMode   string
 	RootNodeID       int64
@@ -412,7 +412,7 @@ func (q *Queries) ListExpiredTrashedFileIDs(ctx context.Context, limit int32) ([
 }
 
 const listTrashedFilesByOwner = `-- name: ListTrashedFilesByOwner :many
-SELECT n.id, n.public_id, n.library_id, n.parent_id, n.kind, n.name, n.encrypted_name, n.name_token, n.current_version_id, n.revision, n.trashed_at, n.created_at, n.updated_at, l.public_id AS library_public_id, l.name AS library_name,
+SELECT n.id, n.public_id, n.library_id, n.parent_id, n.kind, n.name, n.encrypted_name, n.name_token, n.current_version_id, n.revision, n.trashed_at, n.created_at, n.updated_at, n.key_epoch, n.metadata_revision, n.encrypted_metadata, n.metadata_signature, n.current_version_pointer, n.current_version_signature, n.visible_encryption_generation, l.public_id AS library_public_id, l.name AS library_name,
        l.encryption_mode, parent.public_id AS parent_public_id
 FROM nodes n
 JOIN libraries l ON l.id = n.library_id
@@ -430,23 +430,30 @@ type ListTrashedFilesByOwnerParams struct {
 }
 
 type ListTrashedFilesByOwnerRow struct {
-	ID               int64
-	PublicID         string
-	LibraryID        int64
-	ParentID         pgtype.Int8
-	Kind             string
-	Name             pgtype.Text
-	EncryptedName    []byte
-	NameToken        []byte
-	CurrentVersionID pgtype.Int8
-	Revision         int64
-	TrashedAt        pgtype.Timestamptz
-	CreatedAt        pgtype.Timestamptz
-	UpdatedAt        pgtype.Timestamptz
-	LibraryPublicID  string
-	LibraryName      string
-	EncryptionMode   string
-	ParentPublicID   string
+	ID                          int64
+	PublicID                    string
+	LibraryID                   int64
+	ParentID                    pgtype.Int8
+	Kind                        string
+	Name                        pgtype.Text
+	EncryptedName               []byte
+	NameToken                   []byte
+	CurrentVersionID            pgtype.Int8
+	Revision                    int64
+	TrashedAt                   pgtype.Timestamptz
+	CreatedAt                   pgtype.Timestamptz
+	UpdatedAt                   pgtype.Timestamptz
+	KeyEpoch                    int64
+	MetadataRevision            int64
+	EncryptedMetadata           []byte
+	MetadataSignature           []byte
+	CurrentVersionPointer       []byte
+	CurrentVersionSignature     []byte
+	VisibleEncryptionGeneration int64
+	LibraryPublicID             string
+	LibraryName                 pgtype.Text
+	EncryptionMode              string
+	ParentPublicID              string
 }
 
 func (q *Queries) ListTrashedFilesByOwner(ctx context.Context, arg ListTrashedFilesByOwnerParams) ([]ListTrashedFilesByOwnerRow, error) {
@@ -472,6 +479,13 @@ func (q *Queries) ListTrashedFilesByOwner(ctx context.Context, arg ListTrashedFi
 			&i.TrashedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.KeyEpoch,
+			&i.MetadataRevision,
+			&i.EncryptedMetadata,
+			&i.MetadataSignature,
+			&i.CurrentVersionPointer,
+			&i.CurrentVersionSignature,
+			&i.VisibleEncryptionGeneration,
 			&i.LibraryPublicID,
 			&i.LibraryName,
 			&i.EncryptionMode,
@@ -526,7 +540,7 @@ WITH file_blobs AS (
 UPDATE nodes
 SET library_id = $1, parent_id = $2, updated_at = now()
 WHERE nodes.id = $3 AND nodes.kind = 'file' AND nodes.trashed_at IS NULL AND (SELECT ok FROM movable)
-RETURNING nodes.id, nodes.public_id, nodes.library_id, nodes.parent_id, nodes.kind, nodes.name, nodes.encrypted_name, nodes.name_token, nodes.current_version_id, nodes.revision, nodes.trashed_at, nodes.created_at, nodes.updated_at
+RETURNING nodes.id, nodes.public_id, nodes.library_id, nodes.parent_id, nodes.kind, nodes.name, nodes.encrypted_name, nodes.name_token, nodes.current_version_id, nodes.revision, nodes.trashed_at, nodes.created_at, nodes.updated_at, nodes.key_epoch, nodes.metadata_revision, nodes.encrypted_metadata, nodes.metadata_signature, nodes.current_version_pointer, nodes.current_version_signature, nodes.visible_encryption_generation
 `
 
 type MoveFileNodeParams struct {
@@ -552,6 +566,13 @@ func (q *Queries) MoveFileNode(ctx context.Context, arg MoveFileNodeParams) (Nod
 		&i.TrashedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.KeyEpoch,
+		&i.MetadataRevision,
+		&i.EncryptedMetadata,
+		&i.MetadataSignature,
+		&i.CurrentVersionPointer,
+		&i.CurrentVersionSignature,
+		&i.VisibleEncryptionGeneration,
 	)
 	return i, err
 }
@@ -560,7 +581,7 @@ const renameFileNode = `-- name: RenameFileNode :one
 UPDATE nodes
 SET name = $2, encrypted_name = $3, name_token = $4, updated_at = now()
 WHERE id = $1 AND kind = 'file' AND trashed_at IS NULL
-RETURNING id, public_id, library_id, parent_id, kind, name, encrypted_name, name_token, current_version_id, revision, trashed_at, created_at, updated_at
+RETURNING id, public_id, library_id, parent_id, kind, name, encrypted_name, name_token, current_version_id, revision, trashed_at, created_at, updated_at, key_epoch, metadata_revision, encrypted_metadata, metadata_signature, current_version_pointer, current_version_signature, visible_encryption_generation
 `
 
 type RenameFileNodeParams struct {
@@ -592,6 +613,13 @@ func (q *Queries) RenameFileNode(ctx context.Context, arg RenameFileNodeParams) 
 		&i.TrashedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.KeyEpoch,
+		&i.MetadataRevision,
+		&i.EncryptedMetadata,
+		&i.MetadataSignature,
+		&i.CurrentVersionPointer,
+		&i.CurrentVersionSignature,
+		&i.VisibleEncryptionGeneration,
 	)
 	return i, err
 }
@@ -600,7 +628,7 @@ const restoreFileNode = `-- name: RestoreFileNode :one
 UPDATE nodes
 SET trashed_at = NULL, updated_at = now()
 WHERE id = $1 AND kind = 'file' AND trashed_at IS NOT NULL
-RETURNING id, public_id, library_id, parent_id, kind, name, encrypted_name, name_token, current_version_id, revision, trashed_at, created_at, updated_at
+RETURNING id, public_id, library_id, parent_id, kind, name, encrypted_name, name_token, current_version_id, revision, trashed_at, created_at, updated_at, key_epoch, metadata_revision, encrypted_metadata, metadata_signature, current_version_pointer, current_version_signature, visible_encryption_generation
 `
 
 func (q *Queries) RestoreFileNode(ctx context.Context, id int64) (Node, error) {
@@ -620,6 +648,13 @@ func (q *Queries) RestoreFileNode(ctx context.Context, id int64) (Node, error) {
 		&i.TrashedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.KeyEpoch,
+		&i.MetadataRevision,
+		&i.EncryptedMetadata,
+		&i.MetadataSignature,
+		&i.CurrentVersionPointer,
+		&i.CurrentVersionSignature,
+		&i.VisibleEncryptionGeneration,
 	)
 	return i, err
 }
@@ -642,7 +677,7 @@ const trashFileNode = `-- name: TrashFileNode :one
 UPDATE nodes
 SET trashed_at = now(), updated_at = now()
 WHERE id = $1 AND kind = 'file' AND trashed_at IS NULL
-RETURNING id, public_id, library_id, parent_id, kind, name, encrypted_name, name_token, current_version_id, revision, trashed_at, created_at, updated_at
+RETURNING id, public_id, library_id, parent_id, kind, name, encrypted_name, name_token, current_version_id, revision, trashed_at, created_at, updated_at, key_epoch, metadata_revision, encrypted_metadata, metadata_signature, current_version_pointer, current_version_signature, visible_encryption_generation
 `
 
 func (q *Queries) TrashFileNode(ctx context.Context, id int64) (Node, error) {
@@ -662,6 +697,13 @@ func (q *Queries) TrashFileNode(ctx context.Context, id int64) (Node, error) {
 		&i.TrashedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.KeyEpoch,
+		&i.MetadataRevision,
+		&i.EncryptedMetadata,
+		&i.MetadataSignature,
+		&i.CurrentVersionPointer,
+		&i.CurrentVersionSignature,
+		&i.VisibleEncryptionGeneration,
 	)
 	return i, err
 }

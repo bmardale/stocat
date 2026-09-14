@@ -5,9 +5,12 @@ SELECT nextval('libraries_id_seq')::bigint;
 SELECT nextval('nodes_id_seq')::bigint;
 
 -- name: CreateLibrary :one
-INSERT INTO libraries (id, public_id, owner_id, backend_id, root_node_id, name, encryption_mode, key_envelope)
+INSERT INTO libraries (
+    id, public_id, owner_id, backend_id, root_node_id, name, encryption_mode,
+    key_envelope, encryption_format
+)
 OVERRIDING SYSTEM VALUE
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CASE $7::text WHEN 'e2ee' THEN 'v1' ELSE 'plain' END)
 RETURNING *;
 
 -- name: CreateNodeWithID :one

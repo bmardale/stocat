@@ -200,16 +200,16 @@ func replicationEvent(action audit.Action, userID int64, row db.GetReplicationBy
 	return audit.Event{
 		Action: action, ActorID: userID, TargetID: row.PublicID,
 		Details: audit.Details{
-			LibraryID: row.SourcePublicID, LibraryName: row.SourceName,
-			DestinationLibraryID: row.DestinationPublicID, DestinationLibraryName: row.DestinationName,
+			LibraryID: row.SourcePublicID, LibraryName: row.SourceName.String,
+			DestinationLibraryID: row.DestinationPublicID, DestinationLibraryName: row.DestinationName.String,
 		},
 	}
 }
 
 func fromListRow(row db.ListLibraryReplicationsByOwnerRow) Replication {
 	item := Replication{
-		ID: row.PublicID, Source: LibraryRef{ID: row.SourcePublicID, Name: row.SourceName},
-		Destination: LibraryRef{ID: row.DestinationPublicID, Name: row.DestinationName},
+		ID: row.PublicID, Source: LibraryRef{ID: row.SourcePublicID, Name: row.SourceName.String},
+		Destination: LibraryRef{ID: row.DestinationPublicID, Name: row.DestinationName.String},
 		State:       row.State, CreatedAt: row.CreatedAt.Time, UpdatedAt: row.UpdatedAt.Time,
 	}
 	if row.LastError.Valid {

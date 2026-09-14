@@ -77,7 +77,7 @@ func (s *Service) listTrash(ctx context.Context, input *trashListInput) (*trashO
 	}
 	for _, row := range rows {
 		item := TrashedFile{
-			ID: row.PublicID, LibraryID: row.LibraryPublicID, LibraryName: row.LibraryName,
+			ID: row.PublicID, LibraryID: row.LibraryPublicID, LibraryName: row.LibraryName.String,
 			ParentID: row.ParentPublicID, EncryptedName: row.EncryptedName, NameToken: row.NameToken,
 			Revision: row.Revision, TrashedAt: row.TrashedAt.Time,
 			DeleteAfter: row.TrashedAt.Time.Add(trashLifetime), EncryptionMode: row.EncryptionMode,

@@ -12,10 +12,13 @@ import (
 )
 
 const createLibrary = `-- name: CreateLibrary :one
-INSERT INTO libraries (id, public_id, owner_id, backend_id, root_node_id, name, encryption_mode, key_envelope)
+INSERT INTO libraries (
+    id, public_id, owner_id, backend_id, root_node_id, name, encryption_mode,
+    key_envelope, encryption_format
+)
 OVERRIDING SYSTEM VALUE
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, public_id, owner_id, backend_id, root_node_id, name, encryption_mode, key_envelope, created_at, updated_at
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CASE $7::text WHEN 'e2ee' THEN 'v1' ELSE 'plain' END)
+RETURNING id, public_id, owner_id, backend_id, root_node_id, name, encryption_mode, key_envelope, created_at, updated_at, encryption_format, encrypted_root_metadata, owner_root_envelope, access_policy_generation
 `
 
 type CreateLibraryParams struct {
@@ -24,7 +27,7 @@ type CreateLibraryParams struct {
 	OwnerID        int64
 	BackendID      int64
 	RootNodeID     int64
-	Name           string
+	Name           pgtype.Text
 	EncryptionMode string
 	KeyEnvelope    []byte
 }
@@ -52,6 +55,10 @@ func (q *Queries) CreateLibrary(ctx context.Context, arg CreateLibraryParams) (L
 		&i.KeyEnvelope,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.EncryptionFormat,
+		&i.EncryptedRootMetadata,
+		&i.OwnerRootEnvelope,
+		&i.AccessPolicyGeneration,
 	)
 	return i, err
 }
@@ -59,7 +66,7 @@ func (q *Queries) CreateLibrary(ctx context.Context, arg CreateLibraryParams) (L
 const createNode = `-- name: CreateNode :one
 INSERT INTO nodes (public_id, library_id, parent_id, kind, name, encrypted_name, name_token)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, public_id, library_id, parent_id, kind, name, encrypted_name, name_token, current_version_id, revision, trashed_at, created_at, updated_at
+RETURNING id, public_id, library_id, parent_id, kind, name, encrypted_name, name_token, current_version_id, revision, trashed_at, created_at, updated_at, key_epoch, metadata_revision, encrypted_metadata, metadata_signature, current_version_pointer, current_version_signature, visible_encryption_generation
 `
 
 type CreateNodeParams struct {
@@ -97,6 +104,13 @@ func (q *Queries) CreateNode(ctx context.Context, arg CreateNodeParams) (Node, e
 		&i.TrashedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.KeyEpoch,
+		&i.MetadataRevision,
+		&i.EncryptedMetadata,
+		&i.MetadataSignature,
+		&i.CurrentVersionPointer,
+		&i.CurrentVersionSignature,
+		&i.VisibleEncryptionGeneration,
 	)
 	return i, err
 }
@@ -105,7 +119,7 @@ const createNodeWithID = `-- name: CreateNodeWithID :one
 INSERT INTO nodes (id, public_id, library_id, parent_id, kind, name, encrypted_name, name_token)
 OVERRIDING SYSTEM VALUE
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, public_id, library_id, parent_id, kind, name, encrypted_name, name_token, current_version_id, revision, trashed_at, created_at, updated_at
+RETURNING id, public_id, library_id, parent_id, kind, name, encrypted_name, name_token, current_version_id, revision, trashed_at, created_at, updated_at, key_epoch, metadata_revision, encrypted_metadata, metadata_signature, current_version_pointer, current_version_signature, visible_encryption_generation
 `
 
 type CreateNodeWithIDParams struct {
@@ -145,6 +159,13 @@ func (q *Queries) CreateNodeWithID(ctx context.Context, arg CreateNodeWithIDPara
 		&i.TrashedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.KeyEpoch,
+		&i.MetadataRevision,
+		&i.EncryptedMetadata,
+		&i.MetadataSignature,
+		&i.CurrentVersionPointer,
+		&i.CurrentVersionSignature,
+		&i.VisibleEncryptionGeneration,
 	)
 	return i, err
 }
@@ -196,7 +217,7 @@ func (q *Queries) GetEnabledBackendByPublicID(ctx context.Context, publicID stri
 }
 
 const getLibraryByPublicIDAndOwner = `-- name: GetLibraryByPublicIDAndOwner :one
-SELECT l.id, l.public_id, l.owner_id, l.backend_id, l.root_node_id, l.name, l.encryption_mode, l.key_envelope, l.created_at, l.updated_at, b.public_id AS backend_public_id, b.name AS backend_name, b.type AS backend_type,
+SELECT l.id, l.public_id, l.owner_id, l.backend_id, l.root_node_id, l.name, l.encryption_mode, l.key_envelope, l.created_at, l.updated_at, l.encryption_format, l.encrypted_root_metadata, l.owner_root_envelope, l.access_policy_generation, b.public_id AS backend_public_id, b.name AS backend_name, b.type AS backend_type,
        root.public_id AS root_node_public_id
 FROM libraries l
 JOIN storage_backends b ON b.id = l.backend_id
@@ -210,20 +231,24 @@ type GetLibraryByPublicIDAndOwnerParams struct {
 }
 
 type GetLibraryByPublicIDAndOwnerRow struct {
-	ID               int64
-	PublicID         string
-	OwnerID          int64
-	BackendID        int64
-	RootNodeID       int64
-	Name             string
-	EncryptionMode   string
-	KeyEnvelope      []byte
-	CreatedAt        pgtype.Timestamptz
-	UpdatedAt        pgtype.Timestamptz
-	BackendPublicID  string
-	BackendName      string
-	BackendType      string
-	RootNodePublicID string
+	ID                     int64
+	PublicID               string
+	OwnerID                int64
+	BackendID              int64
+	RootNodeID             int64
+	Name                   pgtype.Text
+	EncryptionMode         string
+	KeyEnvelope            []byte
+	CreatedAt              pgtype.Timestamptz
+	UpdatedAt              pgtype.Timestamptz
+	EncryptionFormat       string
+	EncryptedRootMetadata  []byte
+	OwnerRootEnvelope      []byte
+	AccessPolicyGeneration int64
+	BackendPublicID        string
+	BackendName            string
+	BackendType            string
+	RootNodePublicID       string
 }
 
 func (q *Queries) GetLibraryByPublicIDAndOwner(ctx context.Context, arg GetLibraryByPublicIDAndOwnerParams) (GetLibraryByPublicIDAndOwnerRow, error) {
@@ -240,6 +265,10 @@ func (q *Queries) GetLibraryByPublicIDAndOwner(ctx context.Context, arg GetLibra
 		&i.KeyEnvelope,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.EncryptionFormat,
+		&i.EncryptedRootMetadata,
+		&i.OwnerRootEnvelope,
+		&i.AccessPolicyGeneration,
 		&i.BackendPublicID,
 		&i.BackendName,
 		&i.BackendType,
@@ -249,7 +278,7 @@ func (q *Queries) GetLibraryByPublicIDAndOwner(ctx context.Context, arg GetLibra
 }
 
 const getNodeByPublicIDAndOwner = `-- name: GetNodeByPublicIDAndOwner :one
-SELECT n.id, n.public_id, n.library_id, n.parent_id, n.kind, n.name, n.encrypted_name, n.name_token, n.current_version_id, n.revision, n.trashed_at, n.created_at, n.updated_at
+SELECT n.id, n.public_id, n.library_id, n.parent_id, n.kind, n.name, n.encrypted_name, n.name_token, n.current_version_id, n.revision, n.trashed_at, n.created_at, n.updated_at, n.key_epoch, n.metadata_revision, n.encrypted_metadata, n.metadata_signature, n.current_version_pointer, n.current_version_signature, n.visible_encryption_generation
 FROM nodes n
 JOIN libraries l ON l.id = n.library_id
 WHERE n.public_id = $1 AND l.owner_id = $2
@@ -277,12 +306,19 @@ func (q *Queries) GetNodeByPublicIDAndOwner(ctx context.Context, arg GetNodeByPu
 		&i.TrashedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.KeyEpoch,
+		&i.MetadataRevision,
+		&i.EncryptedMetadata,
+		&i.MetadataSignature,
+		&i.CurrentVersionPointer,
+		&i.CurrentVersionSignature,
+		&i.VisibleEncryptionGeneration,
 	)
 	return i, err
 }
 
 const listChildNodes = `-- name: ListChildNodes :many
-SELECT n.id, n.public_id, n.library_id, n.parent_id, n.kind, n.name, n.encrypted_name, n.name_token, n.current_version_id, n.revision, n.trashed_at, n.created_at, n.updated_at FROM nodes n
+SELECT n.id, n.public_id, n.library_id, n.parent_id, n.kind, n.name, n.encrypted_name, n.name_token, n.current_version_id, n.revision, n.trashed_at, n.created_at, n.updated_at, n.key_epoch, n.metadata_revision, n.encrypted_metadata, n.metadata_signature, n.current_version_pointer, n.current_version_signature, n.visible_encryption_generation FROM nodes n
 WHERE n.library_id = $1 AND n.parent_id = $2
   AND n.trashed_at IS NULL AND n.id > $3
   AND ($4::bigint = 0 OR EXISTS (
@@ -329,6 +365,13 @@ func (q *Queries) ListChildNodes(ctx context.Context, arg ListChildNodesParams) 
 			&i.TrashedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.KeyEpoch,
+			&i.MetadataRevision,
+			&i.EncryptedMetadata,
+			&i.MetadataSignature,
+			&i.CurrentVersionPointer,
+			&i.CurrentVersionSignature,
+			&i.VisibleEncryptionGeneration,
 		); err != nil {
 			return nil, err
 		}
@@ -371,7 +414,7 @@ func (q *Queries) ListEnabledStorageBackends(ctx context.Context) ([]ListEnabled
 }
 
 const listLibrariesByOwner = `-- name: ListLibrariesByOwner :many
-SELECT l.id, l.public_id, l.owner_id, l.backend_id, l.root_node_id, l.name, l.encryption_mode, l.key_envelope, l.created_at, l.updated_at, b.public_id AS backend_public_id, b.name AS backend_name, b.type AS backend_type,
+SELECT l.id, l.public_id, l.owner_id, l.backend_id, l.root_node_id, l.name, l.encryption_mode, l.key_envelope, l.created_at, l.updated_at, l.encryption_format, l.encrypted_root_metadata, l.owner_root_envelope, l.access_policy_generation, b.public_id AS backend_public_id, b.name AS backend_name, b.type AS backend_type,
        root.public_id AS root_node_public_id
 FROM libraries l
 JOIN storage_backends b ON b.id = l.backend_id
@@ -381,20 +424,24 @@ ORDER BY l.name, l.id
 `
 
 type ListLibrariesByOwnerRow struct {
-	ID               int64
-	PublicID         string
-	OwnerID          int64
-	BackendID        int64
-	RootNodeID       int64
-	Name             string
-	EncryptionMode   string
-	KeyEnvelope      []byte
-	CreatedAt        pgtype.Timestamptz
-	UpdatedAt        pgtype.Timestamptz
-	BackendPublicID  string
-	BackendName      string
-	BackendType      string
-	RootNodePublicID string
+	ID                     int64
+	PublicID               string
+	OwnerID                int64
+	BackendID              int64
+	RootNodeID             int64
+	Name                   pgtype.Text
+	EncryptionMode         string
+	KeyEnvelope            []byte
+	CreatedAt              pgtype.Timestamptz
+	UpdatedAt              pgtype.Timestamptz
+	EncryptionFormat       string
+	EncryptedRootMetadata  []byte
+	OwnerRootEnvelope      []byte
+	AccessPolicyGeneration int64
+	BackendPublicID        string
+	BackendName            string
+	BackendType            string
+	RootNodePublicID       string
 }
 
 func (q *Queries) ListLibrariesByOwner(ctx context.Context, ownerID int64) ([]ListLibrariesByOwnerRow, error) {
@@ -417,6 +464,10 @@ func (q *Queries) ListLibrariesByOwner(ctx context.Context, ownerID int64) ([]Li
 			&i.KeyEnvelope,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.EncryptionFormat,
+			&i.EncryptedRootMetadata,
+			&i.OwnerRootEnvelope,
+			&i.AccessPolicyGeneration,
 			&i.BackendPublicID,
 			&i.BackendName,
 			&i.BackendType,
@@ -458,13 +509,13 @@ const renameLibrary = `-- name: RenameLibrary :one
 UPDATE libraries
 SET name = $3, updated_at = now()
 WHERE public_id = $1 AND owner_id = $2
-RETURNING id, public_id, owner_id, backend_id, root_node_id, name, encryption_mode, key_envelope, created_at, updated_at
+RETURNING id, public_id, owner_id, backend_id, root_node_id, name, encryption_mode, key_envelope, created_at, updated_at, encryption_format, encrypted_root_metadata, owner_root_envelope, access_policy_generation
 `
 
 type RenameLibraryParams struct {
 	PublicID string
 	OwnerID  int64
-	Name     string
+	Name     pgtype.Text
 }
 
 func (q *Queries) RenameLibrary(ctx context.Context, arg RenameLibraryParams) (Library, error) {
@@ -481,6 +532,10 @@ func (q *Queries) RenameLibrary(ctx context.Context, arg RenameLibraryParams) (L
 		&i.KeyEnvelope,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.EncryptionFormat,
+		&i.EncryptedRootMetadata,
+		&i.OwnerRootEnvelope,
+		&i.AccessPolicyGeneration,
 	)
 	return i, err
 }
