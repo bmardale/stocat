@@ -23,6 +23,7 @@ export const auditActionLabels: Record<AuditEventAction, string> = {
   "library.renamed": "Library renamed",
   "library.deleted": "Library deleted",
   "folder.created": "Folder created",
+  "folder.renamed": "Folder renamed",
   "file.uploaded": "File uploaded",
   "file.replaced": "File version uploaded",
   "file.renamed": "File renamed",

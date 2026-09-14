@@ -108,6 +108,7 @@ components:
             - library.renamed
             - library.deleted
             - folder.created
+            - folder.renamed
             - file.uploaded
             - file.replaced
             - file.renamed
@@ -359,6 +360,43 @@ components:
         - type
         - enabled
       type: object
+    CreateEncryptedFolderInputBody:
+      additionalProperties: false
+      properties:
+        metadata:
+          $ref: "#/components/schemas/SignedRecord"
+        name_token:
+          maxLength: 43
+          minLength: 43
+          pattern: ^[A-Za-z0-9_-]+$
+          type: string
+        parent_envelope:
+          $ref: "#/components/schemas/SignedRecord"
+      required:
+        - metadata
+        - parent_envelope
+        - name_token
+      type: object
+    CreateEncryptedLibraryInputBody:
+      additionalProperties: false
+      properties:
+        backend_id:
+          maxLength: 64
+          minLength: 1
+          type: string
+        owner_root_envelope:
+          maxLength: 21846
+          minLength: 1
+          pattern: ^[A-Za-z0-9_-]+$
+          type: string
+        root_metadata:
+          $ref: "#/components/schemas/SignedRecord"
+          description: A node-metadata record with epoch 1 and revision 1.
+      required:
+        - backend_id
+        - root_metadata
+        - owner_root_envelope
+      type: object
     CreateInputBody:
       additionalProperties: false
       properties:
@@ -441,6 +479,98 @@ components:
       required:
         - source_library_id
         - destination_library_id
+      type: object
+    EncryptedLibrary:
+      additionalProperties: false
+      properties:
+        backend:
+          $ref: "#/components/schemas/LibraryBackend"
+        created_at:
+          format: date-time
+          type: string
+        id:
+          type: string
+        metadata_revision:
+          type: string
+        owner_root_envelope:
+          type: string
+        root_key_epoch:
+          type: string
+        root_metadata:
+          $ref: "#/components/schemas/SignedRecord"
+        root_node_id:
+          type: string
+        updated_at:
+          format: date-time
+          type: string
+      required:
+        - id
+        - root_node_id
+        - root_key_epoch
+        - metadata_revision
+        - root_metadata
+        - owner_root_envelope
+        - backend
+        - created_at
+        - updated_at
+      type: object
+    EncryptedNode:
+      additionalProperties: false
+      properties:
+        created_at:
+          format: date-time
+          type: string
+        current_version:
+          $ref: "#/components/schemas/SignedRecord"
+        id:
+          type: string
+        key_epoch:
+          type: string
+        kind:
+          enum:
+            - file
+            - folder
+          type: string
+        metadata:
+          $ref: "#/components/schemas/SignedRecord"
+        metadata_revision:
+          type: string
+        name_token:
+          type: string
+        parent_envelope:
+          $ref: "#/components/schemas/SignedRecord"
+        parent_id:
+          type: string
+        revision:
+          description: Content revision of the node.
+          type: string
+        updated_at:
+          format: date-time
+          type: string
+      required:
+        - id
+        - parent_id
+        - kind
+        - key_epoch
+        - metadata_revision
+        - revision
+        - name_token
+        - metadata
+        - parent_envelope
+        - created_at
+        - updated_at
+      type: object
+    EncryptedNodesPage:
+      additionalProperties: false
+      properties:
+        items:
+          items:
+            $ref: "#/components/schemas/EncryptedNode"
+          type: array
+        next_cursor:
+          type: string
+      required:
+        - items
       type: object
     ErrorDetail:
       additionalProperties: false
@@ -877,6 +1007,28 @@ components:
       required:
         - invite_only
       type: object
+    RenameEncryptedLibraryInputBody:
+      additionalProperties: false
+      properties:
+        root_metadata:
+          $ref: "#/components/schemas/SignedRecord"
+      required:
+        - root_metadata
+      type: object
+    RenameEncryptedNodeInputBody:
+      additionalProperties: false
+      properties:
+        metadata:
+          $ref: "#/components/schemas/SignedRecord"
+        name_token:
+          maxLength: 43
+          minLength: 43
+          pattern: ^[A-Za-z0-9_-]+$
+          type: string
+      required:
+        - metadata
+        - name_token
+      type: object
     RenameInputBody:
       additionalProperties: false
       properties:
@@ -1079,7 +1231,7 @@ components:
       properties:
         record:
           description: Canonical binary record in unpadded base64url.
-          maxLength: 21846
+          maxLength: 88780
           minLength: 1
           pattern: ^[A-Za-z0-9_-]+$
           type: string
@@ -5549,6 +5701,536 @@ paths:
       summary: Publish the next account encryption identity
       tags:
         - Encryption
+  /api/v2/libraries:
+    get:
+      operationId: encrypted-libraries-list
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/EncryptedLibrary"
+                type: array
+          description: OK
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Error
+      security:
+        - session: []
+      summary: List encrypted libraries
+      tags:
+        - Encrypted libraries
+    post:
+      description: The client generates the library and root node identifiers inside the records.
+      operationId: encrypted-libraries-create
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEncryptedLibraryInputBody"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EncryptedLibrary"
+          description: Created
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Conflict
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+      security:
+        - session: []
+      summary: Create an encrypted library
+      tags:
+        - Encrypted libraries
+  /api/v2/libraries/{id}:
+    delete:
+      operationId: encrypted-libraries-delete
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      responses:
+        "204":
+          description: No Content
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Conflict
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+      security:
+        - session: []
+      summary: Delete an empty encrypted library
+      tags:
+        - Encrypted libraries
+    get:
+      operationId: encrypted-libraries-get
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EncryptedLibrary"
+          description: OK
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+      security:
+        - session: []
+      summary: Get an encrypted library
+      tags:
+        - Encrypted libraries
+    patch:
+      operationId: encrypted-libraries-rename
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+        - description: Send the current metadata revision in quotes.
+          in: header
+          name: If-Match
+          required: true
+          schema:
+            description: Send the current metadata revision in quotes.
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RenameEncryptedLibraryInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EncryptedLibrary"
+          description: OK
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Conflict
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+      security:
+        - session: []
+      summary: Replace the metadata of an encrypted library
+      tags:
+        - Encrypted libraries
+  /api/v2/libraries/{id}/folders:
+    post:
+      description: The client generates the folder identifier inside the records.
+      operationId: encrypted-folders-create
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEncryptedFolderInputBody"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EncryptedNode"
+          description: Created
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Conflict
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+      security:
+        - session: []
+      summary: Create an encrypted folder
+      tags:
+        - Encrypted libraries
+  /api/v2/libraries/{id}/nodes:
+    get:
+      operationId: encrypted-nodes-list
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+        - explode: false
+          in: query
+          name: parent_id
+          schema:
+            maxLength: 64
+            type: string
+        - explode: false
+          in: query
+          name: cursor
+          schema:
+            maxLength: 64
+            type: string
+        - explode: false
+          in: query
+          name: limit
+          schema:
+            default: 200
+            format: int32
+            maximum: 200
+            minimum: 1
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EncryptedNodesPage"
+          description: OK
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+      security:
+        - session: []
+      summary: List an encrypted folder
+      tags:
+        - Encrypted libraries
+  /api/v2/nodes/{id}:
+    patch:
+      operationId: encrypted-nodes-rename
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+        - description: Send the current metadata revision in quotes.
+          in: header
+          name: If-Match
+          required: true
+          schema:
+            description: Send the current metadata revision in quotes.
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RenameEncryptedNodeInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EncryptedNode"
+          description: OK
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Conflict
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+      security:
+        - session: []
+      summary: Replace the metadata of an encrypted file or folder
+      tags:
+        - Encrypted libraries
   /healthz:
     get:
       operationId: health

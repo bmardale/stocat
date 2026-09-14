@@ -63,6 +63,7 @@ var (
 	LibraryRenamed              = newAction("library.renamed")
 	LibraryDeleted              = newAction("library.deleted")
 	FolderCreated               = newAction("folder.created")
+	FolderRenamed               = newAction("folder.renamed")
 	FileUploaded                = newAction("file.uploaded")
 	FileReplaced                = newAction("file.replaced")
 	FileRenamed                 = newAction("file.renamed")

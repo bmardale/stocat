@@ -10,7 +10,7 @@ RETURNING *;
 SELECT t.*
 FROM tags t
 JOIN libraries l ON l.id = t.library_id
-WHERE t.public_id = $1 AND l.owner_id = $2;
+WHERE t.public_id = $1 AND l.owner_id = $2 AND l.encryption_format <> 'v2';
 
 -- name: UpdateTag :one
 UPDATE tags

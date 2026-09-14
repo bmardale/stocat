@@ -21,7 +21,7 @@ JOIN blobs b ON b.id = v.blob_id
 JOIN blob_locations bl ON bl.blob_id = b.id AND bl.backend_id = l.backend_id AND bl.state = 'available'
 JOIN storage_backends sb ON sb.id = bl.backend_id
 WHERE n.public_id = sqlc.arg(node_public_id) AND n.kind = 'file' AND n.trashed_at IS NULL
-  AND l.owner_id = sqlc.arg(owner_id);
+  AND l.owner_id = sqlc.arg(owner_id) AND l.encryption_format <> 'v2';
 
 -- name: GetFileNodeByPublicIDAndOwner :one
 SELECT n.id, n.library_id, l.public_id AS library_public_id, l.encryption_mode,
@@ -30,7 +30,7 @@ FROM nodes n
 JOIN libraries l ON l.id = n.library_id
 JOIN nodes parent ON parent.id = n.parent_id
 WHERE n.public_id = sqlc.arg(node_public_id) AND n.kind = 'file' AND n.trashed_at IS NULL
-  AND l.owner_id = sqlc.arg(owner_id);
+  AND l.owner_id = sqlc.arg(owner_id) AND l.encryption_format <> 'v2';
 
 -- name: GetTrashedFileNodeByPublicIDAndOwner :one
 SELECT n.id, n.library_id, n.trashed_at, l.public_id AS library_public_id,
@@ -39,7 +39,7 @@ FROM nodes n
 JOIN libraries l ON l.id = n.library_id
 JOIN nodes parent ON parent.id = n.parent_id
 WHERE n.public_id = sqlc.arg(node_public_id) AND n.kind = 'file' AND n.trashed_at IS NOT NULL
-  AND l.owner_id = sqlc.arg(owner_id);
+  AND l.owner_id = sqlc.arg(owner_id) AND l.encryption_format <> 'v2';
 
 -- name: TrashFileNode :one
 UPDATE nodes
@@ -62,7 +62,7 @@ SELECT n.*, l.public_id AS library_public_id, l.name AS library_name,
 FROM nodes n
 JOIN libraries l ON l.id = n.library_id
 JOIN nodes parent ON parent.id = n.parent_id
-WHERE l.owner_id = sqlc.arg(owner_id) AND n.kind = 'file' AND n.trashed_at IS NOT NULL
+WHERE l.owner_id = sqlc.arg(owner_id) AND l.encryption_format <> 'v2' AND n.kind = 'file' AND n.trashed_at IS NOT NULL
   AND n.id > sqlc.arg(after_id)
 ORDER BY n.id
 LIMIT sqlc.arg(page_limit);
@@ -72,7 +72,7 @@ SELECT n.id
 FROM nodes n
 JOIN libraries l ON l.id = n.library_id
 WHERE n.public_id = sqlc.arg(node_public_id) AND n.kind = 'file' AND n.trashed_at IS NOT NULL
-  AND l.owner_id = sqlc.arg(owner_id);
+  AND l.owner_id = sqlc.arg(owner_id) AND l.encryption_format <> 'v2';
 
 -- name: ListExpiredTrashedFileIDs :many
 SELECT id
@@ -104,13 +104,13 @@ SELECT l.id, l.public_id, l.name, l.backend_id, l.encryption_mode,
        root.id AS root_node_id, root.public_id AS root_node_public_id
 FROM libraries l
 JOIN nodes root ON root.id = l.root_node_id
-WHERE l.public_id = sqlc.arg(library_public_id) AND l.owner_id = sqlc.arg(owner_id);
+WHERE l.public_id = sqlc.arg(library_public_id) AND l.owner_id = sqlc.arg(owner_id) AND l.encryption_format <> 'v2';
 
 -- name: GetMoveFolder :one
 SELECT n.id, n.public_id
 FROM nodes n
 JOIN libraries l ON l.id = n.library_id
-WHERE n.public_id = sqlc.arg(node_public_id) AND l.owner_id = sqlc.arg(owner_id)
+WHERE n.public_id = sqlc.arg(node_public_id) AND l.owner_id = sqlc.arg(owner_id) AND l.encryption_format <> 'v2'
   AND n.library_id = sqlc.arg(library_id) AND n.kind = 'folder' AND n.trashed_at IS NULL;
 
 -- name: MoveFileNode :one

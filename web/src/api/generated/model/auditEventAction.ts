@@ -28,6 +28,7 @@ export const AuditEventAction = {
   libraryrenamed: "library.renamed",
   librarydeleted: "library.deleted",
   foldercreated: "folder.created",
+  folderrenamed: "folder.renamed",
   fileuploaded: "file.uploaded",
   filereplaced: "file.replaced",
   filerenamed: "file.renamed",

@@ -32,11 +32,6 @@ const (
 	maxBodyBytes    = 128 << 10
 )
 
-type SignedRecord struct {
-	Record    string `json:"record" minLength:"1" maxLength:"21846" pattern:"^[A-Za-z0-9_-]+$" doc:"Canonical binary record in unpadded base64url."`
-	Signature string `json:"signature" minLength:"86" maxLength:"86" pattern:"^[A-Za-z0-9_-]+$" doc:"Detached Ed25519 signature in unpadded base64url."`
-}
-
 type Identity struct {
 	Generation          string `json:"generation"`
 	Record              string `json:"record"`
@@ -135,22 +130,17 @@ func (s *Service) Register(api huma.API) {
 }
 
 type account struct {
-	id           int64
-	publicID     string
-	deployment   []byte
-	deploymentID string
+	id int64
+	Binding
 }
 
 func (s *Service) account(ctx context.Context) (account, error) {
 	user, _ := auth.UserFromContext(ctx)
-	deployment, err := s.queries.GetEncryptionDeployment(ctx)
+	binding, err := LoadBinding(ctx, s.queries, user.PublicID)
 	if err != nil {
-		return account{}, s.internalError(ctx, "load encryption deployment", err)
+		return account{}, s.internalError(ctx, "load encryption binding", err)
 	}
-	return account{
-		id: user.ID, publicID: user.PublicID, deployment: deployment.Bytes[:],
-		deploymentID: base64.RawURLEncoding.EncodeToString(deployment.Bytes[:]),
-	}, nil
+	return account{id: user.ID, Binding: binding}, nil
 }
 
 func (s *Service) get(ctx context.Context, _ *struct{}) (*bundleOutput, error) {
@@ -159,7 +149,7 @@ func (s *Service) get(ctx context.Context, _ *struct{}) (*bundleOutput, error) {
 		return nil, err
 	}
 	output := &bundleOutput{Body: Bundle{
-		State: stateAbsent, DeploymentID: acct.deploymentID, AccountID: acct.publicID, Identities: []Identity{},
+		State: stateAbsent, DeploymentID: acct.DeploymentID, AccountID: acct.AccountID, Identities: []Identity{},
 	}}
 	bundle, err := s.queries.GetUserKeyBundle(ctx, acct.id)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -371,48 +361,48 @@ func (v verifiedIdentity) params(userID int64, continuity, continuitySignature [
 
 func (a account) identity(value SignedRecord, generation uint64) (verifiedIdentity, error) {
 	const field = "identity"
-	record, data, signature, err := a.parse(field, "identity", value)
+	record, data, signature, err := a.Parse(field, "identity", value)
 	if err != nil {
 		return verifiedIdentity{}, err
 	}
 	result := verifiedIdentity{record: data, signature: signature, generation: generation}
-	if counterField(record, "generation") != generation {
-		return result, invalid(field, fmt.Errorf("generation must be %d", generation))
+	if Counter(record, "generation") != generation {
+		return result, Invalid(field, fmt.Errorf("generation must be %d", generation))
 	}
 	result.signingKey, _ = encryptionv2.DecodeBase64URL(record.Fields["signing_public_key"], ed25519.PublicKeySize)
 	result.recipientKey, _ = encryptionv2.DecodeBase64URL(record.Fields["recipient_public_key"], 32)
 	result.recipientKeyID, _ = encryptionv2.DecodeBase64URL(record.Fields["recipient_key_id"], 32)
 	if err = encryptionv2.ValidateSigningPublicKey(result.signingKey); err != nil {
-		return result, invalid(field, err)
+		return result, Invalid(field, err)
 	}
 	if err = encryptionv2.ValidateRecipientPublicKey(result.recipientKey); err != nil {
-		return result, invalid(field, err)
+		return result, Invalid(field, err)
 	}
-	keyID, err := encryptionv2.RecipientKeyID(a.deployment, a.publicID, generation, result.recipientKey)
+	keyID, err := encryptionv2.RecipientKeyID(a.Deployment, a.AccountID, generation, result.recipientKey)
 	if err != nil {
-		return result, invalid(field, err)
+		return result, Invalid(field, err)
 	}
 	if !bytes.Equal(keyID, result.recipientKeyID) {
-		return result, invalid(field, errors.New("recipient key identifier does not match the recipient public key"))
+		return result, Invalid(field, errors.New("recipient key identifier does not match the recipient public key"))
 	}
-	return result, verify(field, data, result.signingKey, signature)
+	return result, Verify(field, data, result.signingKey, signature)
 }
 
 func (a account) continuity(value SignedRecord, current db.UserEncryptionIdentity, next verifiedIdentity) ([]byte, []byte, error) {
 	const field = "continuity"
-	record, data, signature, err := a.parse(field, "identity-continuity", value)
+	record, data, signature, err := a.Parse(field, "identity-continuity", value)
 	if err != nil {
 		return nil, nil, err
 	}
-	if counterField(record, "previous_generation") != uint64(current.Generation) || counterField(record, "generation") != next.generation {
-		return nil, nil, invalid(field, fmt.Errorf("generations must be %d and %d", current.Generation, next.generation))
+	if Counter(record, "previous_generation") != uint64(current.Generation) || Counter(record, "generation") != next.generation {
+		return nil, nil, Invalid(field, fmt.Errorf("generations must be %d and %d", current.Generation, next.generation))
 	}
 	previousHash, nextHash := sha256.Sum256(current.Certificate), sha256.Sum256(next.record)
 	if record.Fields["previous_identity_hash"] != base64.RawURLEncoding.EncodeToString(previousHash[:]) ||
 		record.Fields["identity_hash"] != base64.RawURLEncoding.EncodeToString(nextHash[:]) {
-		return nil, nil, invalid(field, errors.New("identity hashes do not match the current and new identities"))
+		return nil, nil, Invalid(field, errors.New("identity hashes do not match the current and new identities"))
 	}
-	return data, signature, verify(field, data, current.SigningPublicKey, signature)
+	return data, signature, Verify(field, data, current.SigningPublicKey, signature)
 }
 
 func (a account) envelopes(password, recovery, private SignedRecord, generation, revision uint64, signingKey []byte) (envelopeSet, error) {
@@ -435,63 +425,21 @@ func (a account) passwordEnvelope(value SignedRecord, generation, revision uint6
 	}
 	record, err := encryptionv2.ParseRecord(data)
 	if err != nil {
-		return nil, nil, invalid("password_envelope", err)
+		return nil, nil, Invalid("password_envelope", err)
 	}
 	salt, err := encryptionv2.DecodeBase64URL(record.Fields["salt"], 16)
 	return data, salt, err
 }
 
 func (a account) envelope(field, kind string, value SignedRecord, generation, revision uint64, signingKey []byte) ([]byte, error) {
-	record, data, signature, err := a.parse(field, kind, value)
+	record, data, signature, err := a.Parse(field, kind, value)
 	if err != nil {
 		return nil, err
 	}
-	if counterField(record, "generation") != generation || counterField(record, "bundle_revision") != revision {
-		return nil, invalid(field, fmt.Errorf("record must use generation %d and bundle revision %d", generation, revision))
+	if Counter(record, "generation") != generation || Counter(record, "bundle_revision") != revision {
+		return nil, Invalid(field, fmt.Errorf("record must use generation %d and bundle revision %d", generation, revision))
 	}
-	return data, verify(field, data, signingKey, signature)
-}
-
-func (a account) parse(field, kind string, value SignedRecord) (encryptionv2.Record, []byte, []byte, error) {
-	data, err := base64.RawURLEncoding.Strict().DecodeString(value.Record)
-	if err != nil || base64.RawURLEncoding.EncodeToString(data) != value.Record {
-		return encryptionv2.Record{}, nil, nil, invalid(field, errors.New("record is not canonical base64url"))
-	}
-	signature, err := encryptionv2.DecodeBase64URL(value.Signature, ed25519.SignatureSize)
-	if err != nil {
-		return encryptionv2.Record{}, nil, nil, invalid(field, err)
-	}
-	record, err := encryptionv2.ParseRecord(data)
-	switch {
-	case err != nil:
-	case record.Type != kind:
-		err = fmt.Errorf("record type must be %s", kind)
-	case record.DeploymentID != a.deploymentID:
-		err = errors.New("record belongs to another deployment")
-	case record.Fields["account_id"] != a.publicID:
-		err = errors.New("record belongs to another account")
-	}
-	if err != nil {
-		return record, nil, nil, invalid(field, err)
-	}
-	return record, data, signature, nil
-}
-
-func verify(field string, data, signingKey, signature []byte) error {
-	if _, err := encryptionv2.VerifyRecord(data, signingKey, signature); err != nil {
-		return invalid(field, err)
-	}
-	return nil
-}
-
-// counterField reads a counter that ParseRecord has already validated.
-func counterField(record encryptionv2.Record, name string) uint64 {
-	value, _ := strconv.ParseUint(record.Fields[name], 10, 64)
-	return value
-}
-
-func invalid(field string, err error) error {
-	return huma.Error422UnprocessableEntity("The "+field+" record is not valid.", err)
+	return data, Verify(field, data, signingKey, signature)
 }
 
 func etag(bundle db.UserKeyBundle) string {

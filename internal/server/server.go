@@ -26,6 +26,7 @@ import (
 	"github.com/bmardale/stocat/internal/replication"
 	"github.com/bmardale/stocat/internal/storage"
 	"github.com/bmardale/stocat/internal/uploads"
+	"github.com/bmardale/stocat/internal/vault"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
 	"github.com/go-chi/chi/v5"
@@ -136,7 +137,9 @@ func New(cfg Config, pool *pgxpool.Pool) (*Server, error) {
 		replicationService.UseQueue(queue)
 	}
 	uploadService.Register(protected)
-	encryption.New(pool, authService, log).Register(authService.Protected(api, "/api/v2"))
+	v2 := authService.Protected(api, "/api/v2")
+	encryption.New(pool, authService, log).Register(v2)
+	vault.New(pool, log).Register(v2)
 
 	s := &Server{api: api, log: log, queue: queue, uploads: uploadService, httpServer: &http.Server{
 		Addr: cfg.Addr, Handler: router,

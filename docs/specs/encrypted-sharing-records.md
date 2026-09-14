@@ -257,6 +257,38 @@ Migration 18 stores v2 bundles with `format_version` 2 and the identity generati
 V2 bundles store no legacy KDF parameters and no master-key-encrypted recovery key.
 Identity rows store the certificate signature and the optional continuity signature.
 
+## Owner library API
+
+The `/api/v2` routes below store v2 library and folder records for their owner.
+The v1 library, file, upload, tag, and replication routes return status 404 for v2 libraries.
+
+| Method | Path | Behavior |
+| --- | --- | --- |
+| GET, POST | `/libraries` | List v2 libraries or create one with its root metadata and owner-root envelope. |
+| GET, PATCH, DELETE | `/libraries/{id}` | Read the library, replace its root metadata, or delete it when it contains no files. |
+| POST | `/libraries/{id}/folders` | Create a folder with its metadata, parent envelope, and name token. |
+| GET | `/libraries/{id}/nodes` | List active children with their metadata, parent envelopes, and current-version records. |
+| PATCH | `/nodes/{id}` | Replace the metadata and name token of a child file or folder. |
+
+The client generates the library, root node, and folder identifiers inside the signed records.
+The server stores the records only when the identifiers are unused.
+
+The server applies these checks:
+
+- The current account identity signs every node-metadata and parent-envelope record.
+- A new root or folder uses node epoch 1 and metadata revision 1.
+- The owner-root envelope names the same library and root node, and the current identity generation.
+- A parent envelope names the metadata node as its child, an active parent folder in the same library, and the parent epoch.
+- New parent envelopes use generation 1 and revision 1.
+- A metadata replacement uses the node epoch and the next metadata revision.
+- `If-Match` contains the current metadata revision in quotes. A different value returns status 409.
+- A complete metadata record must not exceed 64 KiB, because the database limits the stored record to that size.
+
+The server stores root metadata in `libraries.encrypted_root_metadata`.
+The root node row stores the signature, key epoch, and metadata revision.
+Child node rows store the metadata record, its signature, and the name token.
+`node_key_envelopes` stores each parent envelope and its signature.
+
 ## Client account formats
 
 The server stores these formats only as ciphertext. Browser clients must use them exactly.

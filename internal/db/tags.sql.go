@@ -89,7 +89,7 @@ const getTagByPublicIDAndOwner = `-- name: GetTagByPublicIDAndOwner :one
 SELECT t.id, t.public_id, t.library_id, t.name, t.encrypted_name, t.name_token, t.color, t.encrypted_color, t.created_at, t.updated_at
 FROM tags t
 JOIN libraries l ON l.id = t.library_id
-WHERE t.public_id = $1 AND l.owner_id = $2
+WHERE t.public_id = $1 AND l.owner_id = $2 AND l.encryption_format <> 'v2'
 `
 
 type GetTagByPublicIDAndOwnerParams struct {

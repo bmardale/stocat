@@ -40,6 +40,7 @@ WITH selected AS (
       AND source.owner_id = sqlc.arg(owner_id)
       AND destination.owner_id = sqlc.arg(owner_id)
       AND source.encryption_mode = destination.encryption_mode
+      AND source.encryption_format <> 'v2' AND destination.encryption_format <> 'v2'
       AND NOT EXISTS (SELECT 1 FROM nodes n WHERE n.library_id = destination.id AND n.parent_id IS NOT NULL)
       AND NOT EXISTS (
           SELECT 1 FROM upload_sessions upload

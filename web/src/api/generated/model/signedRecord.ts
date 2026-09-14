@@ -9,7 +9,7 @@ export interface SignedRecord {
   /**
    * Canonical binary record in unpadded base64url.
    * @minLength 1
-   * @maxLength 21846
+   * @maxLength 88780
    * @pattern ^[A-Za-z0-9_-]+$
    */
   record: string;

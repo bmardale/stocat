@@ -30,7 +30,7 @@ SELECT l.*, b.public_id AS backend_public_id, b.name AS backend_name, b.type AS 
 FROM libraries l
 JOIN storage_backends b ON b.id = l.backend_id
 JOIN nodes root ON root.id = l.root_node_id
-WHERE l.owner_id = $1
+WHERE l.owner_id = $1 AND l.encryption_format <> 'v2'
 ORDER BY l.name, l.id;
 
 -- name: GetLibraryByPublicIDAndOwner :one
@@ -39,7 +39,7 @@ SELECT l.*, b.public_id AS backend_public_id, b.name AS backend_name, b.type AS 
 FROM libraries l
 JOIN storage_backends b ON b.id = l.backend_id
 JOIN nodes root ON root.id = l.root_node_id
-WHERE l.public_id = $1 AND l.owner_id = $2;
+WHERE l.public_id = $1 AND l.owner_id = $2 AND l.encryption_format <> 'v2';
 
 -- name: GetEnabledBackendByPublicID :one
 SELECT * FROM storage_backends WHERE public_id = $1 AND enabled = true;
@@ -65,7 +65,7 @@ DELETE FROM libraries WHERE id IN (SELECT id FROM candidate);
 SELECT n.*
 FROM nodes n
 JOIN libraries l ON l.id = n.library_id
-WHERE n.public_id = $1 AND l.owner_id = $2;
+WHERE n.public_id = $1 AND l.owner_id = $2 AND l.encryption_format <> 'v2';
 
 -- name: ListChildNodes :many
 SELECT n.* FROM nodes n

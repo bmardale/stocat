@@ -222,7 +222,7 @@ SELECT l.id, l.public_id, l.owner_id, l.backend_id, l.root_node_id, l.name, l.en
 FROM libraries l
 JOIN storage_backends b ON b.id = l.backend_id
 JOIN nodes root ON root.id = l.root_node_id
-WHERE l.public_id = $1 AND l.owner_id = $2
+WHERE l.public_id = $1 AND l.owner_id = $2 AND l.encryption_format <> 'v2'
 `
 
 type GetLibraryByPublicIDAndOwnerParams struct {
@@ -281,7 +281,7 @@ const getNodeByPublicIDAndOwner = `-- name: GetNodeByPublicIDAndOwner :one
 SELECT n.id, n.public_id, n.library_id, n.parent_id, n.kind, n.name, n.encrypted_name, n.name_token, n.current_version_id, n.revision, n.trashed_at, n.created_at, n.updated_at, n.key_epoch, n.metadata_revision, n.encrypted_metadata, n.metadata_signature, n.current_version_pointer, n.current_version_signature, n.visible_encryption_generation
 FROM nodes n
 JOIN libraries l ON l.id = n.library_id
-WHERE n.public_id = $1 AND l.owner_id = $2
+WHERE n.public_id = $1 AND l.owner_id = $2 AND l.encryption_format <> 'v2'
 `
 
 type GetNodeByPublicIDAndOwnerParams struct {
@@ -419,7 +419,7 @@ SELECT l.id, l.public_id, l.owner_id, l.backend_id, l.root_node_id, l.name, l.en
 FROM libraries l
 JOIN storage_backends b ON b.id = l.backend_id
 JOIN nodes root ON root.id = l.root_node_id
-WHERE l.owner_id = $1
+WHERE l.owner_id = $1 AND l.encryption_format <> 'v2'
 ORDER BY l.name, l.id
 `
 

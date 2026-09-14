@@ -32,7 +32,7 @@ SELECT * FROM upload_sessions WHERE id = $1 FOR UPDATE;
 SELECT l.*, b.public_id AS backend_public_id, b.name AS backend_name
 FROM libraries l
 JOIN storage_backends b ON b.id = l.backend_id
-WHERE l.public_id = $1 AND l.owner_id = $2 AND b.enabled = true
+WHERE l.public_id = $1 AND l.owner_id = $2 AND l.encryption_format <> 'v2' AND b.enabled = true
 FOR UPDATE OF l;
 
 -- name: LockUploadAdmission :exec

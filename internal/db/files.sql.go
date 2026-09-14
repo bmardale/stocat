@@ -142,7 +142,7 @@ JOIN blobs b ON b.id = v.blob_id
 JOIN blob_locations bl ON bl.blob_id = b.id AND bl.backend_id = l.backend_id AND bl.state = 'available'
 JOIN storage_backends sb ON sb.id = bl.backend_id
 WHERE n.public_id = $1 AND n.kind = 'file' AND n.trashed_at IS NULL
-  AND l.owner_id = $2
+  AND l.owner_id = $2 AND l.encryption_format <> 'v2'
 `
 
 type GetCurrentFileByPublicIDAndOwnerParams struct {
@@ -215,7 +215,7 @@ FROM nodes n
 JOIN libraries l ON l.id = n.library_id
 JOIN nodes parent ON parent.id = n.parent_id
 WHERE n.public_id = $1 AND n.kind = 'file' AND n.trashed_at IS NULL
-  AND l.owner_id = $2
+  AND l.owner_id = $2 AND l.encryption_format <> 'v2'
 `
 
 type GetFileNodeByPublicIDAndOwnerParams struct {
@@ -249,7 +249,7 @@ SELECT l.id, l.public_id, l.name, l.backend_id, l.encryption_mode,
        root.id AS root_node_id, root.public_id AS root_node_public_id
 FROM libraries l
 JOIN nodes root ON root.id = l.root_node_id
-WHERE l.public_id = $1 AND l.owner_id = $2
+WHERE l.public_id = $1 AND l.owner_id = $2 AND l.encryption_format <> 'v2'
 `
 
 type GetMoveDestinationParams struct {
@@ -286,7 +286,7 @@ const getMoveFolder = `-- name: GetMoveFolder :one
 SELECT n.id, n.public_id
 FROM nodes n
 JOIN libraries l ON l.id = n.library_id
-WHERE n.public_id = $1 AND l.owner_id = $2
+WHERE n.public_id = $1 AND l.owner_id = $2 AND l.encryption_format <> 'v2'
   AND n.library_id = $3 AND n.kind = 'folder' AND n.trashed_at IS NULL
 `
 
@@ -313,7 +313,7 @@ SELECT n.id
 FROM nodes n
 JOIN libraries l ON l.id = n.library_id
 WHERE n.public_id = $1 AND n.kind = 'file' AND n.trashed_at IS NOT NULL
-  AND l.owner_id = $2
+  AND l.owner_id = $2 AND l.encryption_format <> 'v2'
 `
 
 type GetTrashedFileCursorByPublicIDAndOwnerParams struct {
@@ -354,7 +354,7 @@ FROM nodes n
 JOIN libraries l ON l.id = n.library_id
 JOIN nodes parent ON parent.id = n.parent_id
 WHERE n.public_id = $1 AND n.kind = 'file' AND n.trashed_at IS NOT NULL
-  AND l.owner_id = $2
+  AND l.owner_id = $2 AND l.encryption_format <> 'v2'
 `
 
 type GetTrashedFileNodeByPublicIDAndOwnerParams struct {
@@ -417,7 +417,7 @@ SELECT n.id, n.public_id, n.library_id, n.parent_id, n.kind, n.name, n.encrypted
 FROM nodes n
 JOIN libraries l ON l.id = n.library_id
 JOIN nodes parent ON parent.id = n.parent_id
-WHERE l.owner_id = $1 AND n.kind = 'file' AND n.trashed_at IS NOT NULL
+WHERE l.owner_id = $1 AND l.encryption_format <> 'v2' AND n.kind = 'file' AND n.trashed_at IS NOT NULL
   AND n.id > $2
 ORDER BY n.id
 LIMIT $3
