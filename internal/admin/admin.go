@@ -429,7 +429,7 @@ func (s *Service) deleteUser(ctx context.Context, input *userPathInput) (*struct
 		if user.ID == admin.ID {
 			return errSelfDeletion
 		}
-		if !user.IsAdmin {
+		if !user.IsAdmin || user.DisabledAt.Valid {
 			return nil
 		}
 		administrators, err := queries.LockActiveAdministrators(ctx)

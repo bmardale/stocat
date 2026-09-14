@@ -5,7 +5,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { z } from "zod";
 import { adminUsersList, getAdminUsersListQueryKey } from "@/api/generated/admin/admin";
 import { auditEventsList, getAuditEventsListQueryKey } from "@/api/generated/audit/audit";
-import { AuditEventAction, type AuditEvent } from "@/api/generated/model";
+import { AuditEventAction, type AdminUser, type AuditEvent } from "@/api/generated/model";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -30,9 +30,20 @@ import { auditActionLabels, auditActorName, auditEventSummary } from "@/lib/audi
 import { parseUserAgent } from "@/lib/user-agent";
 
 const usersQueryOptions = queryOptions({
-  queryKey: getAdminUsersListQueryKey({ limit: 200 }),
-  queryFn: ({ signal }) => adminUsersList({ limit: 200 }, { signal }),
+  queryKey: [...getAdminUsersListQueryKey(), "audit-filter"],
+  queryFn: ({ signal }) => listAuditUsers(signal),
 });
+
+async function listAuditUsers(signal: AbortSignal) {
+  const users: AdminUser[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await adminUsersList({ limit: 100, ...(cursor ? { cursor } : {}) }, { signal });
+    users.push(...page.items);
+    cursor = page.next_cursor;
+  } while (cursor);
+  return users;
+}
 
 export const Route = createFileRoute("/_app/admin/audit")({
   validateSearch: z.object({
@@ -55,8 +66,7 @@ type Filters = { action?: AuditEventAction; user?: string; from?: string; to?: s
 function AuditLog() {
   const search = Route.useSearch();
   const navigate = useNavigate();
-  const { data: usersPage } = useSuspenseQuery(usersQueryOptions);
-  const users = usersPage.items;
+  const { data: users } = useSuspenseQuery(usersQueryOptions);
   const filters: Filters = {
     action: search.action,
     user: search.user,

@@ -212,6 +212,23 @@ func TestAdminUserManagement(t *testing.T) {
 	requireStatus(t, env.api.DeleteCtx(ctx, "/api/v1/admin/users/"+admin.PublicID, adminCookie), http.StatusConflict)
 }
 
+func TestDeleteDisabledAdministrator(t *testing.T) {
+	pool := testutil.NewPostgres(t)
+	env := newAdminTestEnv(t, pool)
+	adminCookie, _ := env.register(t, true)
+	_, target := env.register(t, true)
+	ctx := t.Context()
+
+	response := env.api.PatchCtx(ctx, "/api/v1/admin/users/"+target.PublicID, adminCookie, map[string]any{
+		"name": target.Name, "email": target.Email, "is_admin": true, "is_disabled": true,
+	})
+	requireStatus(t, response, http.StatusOK)
+	requireStatus(t, env.api.DeleteCtx(ctx, "/api/v1/admin/users/"+target.PublicID, adminCookie), http.StatusNoContent)
+	if _, err := env.queries.GetUserByPublicID(ctx, target.PublicID); err == nil {
+		t.Fatal("deleted administrator still exists")
+	}
+}
+
 func TestAdminCredentialRevocation(t *testing.T) {
 	pool := testutil.NewPostgres(t)
 	env := newAdminTestEnv(t, pool)
