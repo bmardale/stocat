@@ -14,7 +14,7 @@ INSERT INTO user_key_bundles (
     user_id, format_version, kdf_salt, kdf_parameters, encrypted_master_key,
     recovery_encrypted_master_key, master_encrypted_recovery_key
 ) VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING user_id, format_version, kdf_salt, kdf_parameters, encrypted_master_key, recovery_encrypted_master_key, master_encrypted_recovery_key, created_at, updated_at, private_key_envelope, bundle_revision
+RETURNING user_id, format_version, kdf_salt, kdf_parameters, encrypted_master_key, recovery_encrypted_master_key, master_encrypted_recovery_key, created_at, updated_at, private_key_envelope, bundle_revision, identity_generation
 `
 
 type CreateUserKeyBundleParams struct {
@@ -50,12 +50,13 @@ func (q *Queries) CreateUserKeyBundle(ctx context.Context, arg CreateUserKeyBund
 		&i.UpdatedAt,
 		&i.PrivateKeyEnvelope,
 		&i.BundleRevision,
+		&i.IdentityGeneration,
 	)
 	return i, err
 }
 
 const getUserKeyBundle = `-- name: GetUserKeyBundle :one
-SELECT user_id, format_version, kdf_salt, kdf_parameters, encrypted_master_key, recovery_encrypted_master_key, master_encrypted_recovery_key, created_at, updated_at, private_key_envelope, bundle_revision FROM user_key_bundles WHERE user_id = $1
+SELECT user_id, format_version, kdf_salt, kdf_parameters, encrypted_master_key, recovery_encrypted_master_key, master_encrypted_recovery_key, created_at, updated_at, private_key_envelope, bundle_revision, identity_generation FROM user_key_bundles WHERE user_id = $1
 `
 
 func (q *Queries) GetUserKeyBundle(ctx context.Context, userID int64) (UserKeyBundle, error) {
@@ -73,6 +74,7 @@ func (q *Queries) GetUserKeyBundle(ctx context.Context, userID int64) (UserKeyBu
 		&i.UpdatedAt,
 		&i.PrivateKeyEnvelope,
 		&i.BundleRevision,
+		&i.IdentityGeneration,
 	)
 	return i, err
 }
@@ -82,7 +84,7 @@ UPDATE user_key_bundles
 SET format_version = $2, kdf_salt = $3, kdf_parameters = $4,
     encrypted_master_key = $5, updated_at = now()
 WHERE user_id = $1
-RETURNING user_id, format_version, kdf_salt, kdf_parameters, encrypted_master_key, recovery_encrypted_master_key, master_encrypted_recovery_key, created_at, updated_at, private_key_envelope, bundle_revision
+RETURNING user_id, format_version, kdf_salt, kdf_parameters, encrypted_master_key, recovery_encrypted_master_key, master_encrypted_recovery_key, created_at, updated_at, private_key_envelope, bundle_revision, identity_generation
 `
 
 type UpdateUserKeyBundlePasswordParams struct {
@@ -114,6 +116,7 @@ func (q *Queries) UpdateUserKeyBundlePassword(ctx context.Context, arg UpdateUse
 		&i.UpdatedAt,
 		&i.PrivateKeyEnvelope,
 		&i.BundleRevision,
+		&i.IdentityGeneration,
 	)
 	return i, err
 }

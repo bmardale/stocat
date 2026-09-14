@@ -80,6 +80,23 @@ The owner signs contact-store records and retains authenticated revision checkpo
 Application validation must check revision continuity and public-key validity before accepting identities.
 The binary parser checks encodings and lengths; it does not establish identity trust.
 
+## Identity keys
+
+Derive `recipient_key_id` as follows:
+
+```text
+SHA256(C("stocat/v2/recipient-key-id", deployment, account_id, generation, recipient_public_key))
+```
+
+The generation is a counter. The other values are length-prefixed byte strings.
+An identity record must use this value.
+
+Accept a signing public key only when it is a canonical Ed25519 point.
+Reject the key if the cofactor multiple of the point is the identity point.
+Accept a recipient public key only when its little-endian value is less than 2^255 - 19.
+Reject the key if an X25519 exchange with it gives an all-zero shared secret.
+`ValidateSigningPublicKey` and `ValidateRecipientPublicKey` apply these rules.
+
 ## Node and version records
 
 The `account_id` field identifies the owner.
@@ -202,6 +219,43 @@ The Down migration restores the legacy constraints when no v2 data exists.
 It rejects rollback when v2 data would become invalid or lose its deployment context.
 It never deletes or converts encrypted user data to make rollback succeed.
 Use a pre-v2 backup when returning an initialized installation to the legacy schema.
+
+## Account bundle API
+
+The `/api/v2/encryption` routes store the account records above.
+JSON fields contain canonical records and detached signatures in unpadded base64url.
+Counters in JSON are decimal strings.
+
+| Method | Path | Behavior |
+| --- | --- | --- |
+| GET | `/bundle` | Return the deployment identifier, the bundle state, the current envelopes, and all identities. |
+| POST | `/bundle` | Store generation 1 of the identity and bundle revision 1 of the envelopes. |
+| PUT | `/bundle` | Replace one or more envelopes with the next bundle revision. |
+| POST | `/identities/rotate` | Store the next identity, its continuity record, and new envelopes with bundle revision 1. |
+
+The bundle ETag is `"<generation>.<bundle_revision>"`.
+PUT and rotation require it in `If-Match`. A different value returns status 409.
+All three changes require a sign-in or password confirmation within the last 10 minutes.
+Otherwise they return status 403. `POST /api/v1/auth/reauthenticate` confirms the password.
+
+The server applies these checks before it stores a record:
+
+- The record parses, and its type matches the request field.
+- The deployment and account identifiers match the installation and the signed-in account.
+- The identity uses the expected generation, valid public keys, and the derived key identifier.
+- The identity signature verifies with its own signing key.
+- Each envelope uses the identity generation and the expected bundle revision.
+- Each envelope signature verifies with the signing key of that identity generation.
+- A continuity record binds the SHA-256 hashes of the current and new identity records.
+- The signing key of the current identity signs the continuity record.
+
+The envelope signatures prove that the client holds the private signing key.
+The server does not store them. AEAD authenticates the stored envelopes.
+The server cannot decrypt an envelope and cannot confirm that it contains the account master key.
+
+Migration 18 stores v2 bundles with `format_version` 2 and the identity generation.
+V2 bundles store no legacy KDF parameters and no master-key-encrypted recovery key.
+Identity rows store the certificate signature and the optional continuity signature.
 
 ## Fixtures and verification
 

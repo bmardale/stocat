@@ -27,6 +27,11 @@ header = (
     b"STOCAT02" + bytes([2, 1, 0, 0]) + struct.pack(">IQ", 8388608, 1)
     + content + bytes(range(16, 32)) + bytes(8)
 )
+recipient_public_key = bytes.fromhex("8520f0098930a754748b7ddcb43ef75a0dbf3a0d26381af4eba4a98eaa9b4e6a")
+recipient_key_id = hashlib.sha256(
+    field(b"stocat/v2/recipient-key-id") + field(deployment) + field(account.encode())
+    + struct.pack(">Q", 1) + field(recipient_public_key)
+).digest()
 common = [("account_id", account), ("library_id", library), ("node_id", node)]
 account_context = [("account_id", account), ("generation", 1), ("bundle_revision", 2)]
 sealed = [("nonce", nonce), ("ciphertext", bytes(range(48)))]
@@ -34,8 +39,8 @@ records = {
     "identity": [
         ("account_id", account), ("generation", 1),
         ("signing_public_key", bytes.fromhex("d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a")),
-        ("recipient_public_key", bytes.fromhex("8520f0098930a754748b7ddcb43ef75a0dbf3a0d26381af4eba4a98eaa9b4e6a")),
-        ("recipient_key_id", bytes(range(32))),
+        ("recipient_public_key", recipient_public_key),
+        ("recipient_key_id", recipient_key_id),
     ],
     "identity-continuity": [("account_id", account), ("previous_generation", 1), ("generation", 2),
                             ("previous_identity_hash", bytes(32)), ("identity_hash", bytes(range(32)))],

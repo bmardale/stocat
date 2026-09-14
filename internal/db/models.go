@@ -386,6 +386,8 @@ type UserEncryptionIdentity struct {
 	Certificate           []byte
 	ContinuityCertificate []byte
 	CreatedAt             pgtype.Timestamptz
+	CertificateSignature  []byte
+	ContinuitySignature   []byte
 }
 
 type UserKeyBundle struct {
@@ -400,6 +402,7 @@ type UserKeyBundle struct {
 	UpdatedAt                  pgtype.Timestamptz
 	PrivateKeyEnvelope         []byte
 	BundleRevision             int64
+	IdentityGeneration         pgtype.Int8
 }
 
 type WebauthnCeremony struct {
