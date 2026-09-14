@@ -40,7 +40,7 @@ describe("account settings", () => {
     fill("Confirm new password", "another different password");
     fireEvent.click(screen.getByRole("button", { name: "Change password" }));
     expect(await screen.findByText("The passwords do not match.")).toBeDefined();
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it("changes the password without sending its confirmation", async () => {
@@ -68,7 +68,7 @@ describe("account settings", () => {
     await waitFor(() =>
       expect((screen.getByLabelText("Current password") as HTMLInputElement).value).toBe(""),
     );
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
   it("shows the server error when the current password is wrong", async () => {

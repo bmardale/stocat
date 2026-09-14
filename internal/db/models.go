@@ -59,7 +59,6 @@ type Library struct {
 	KeyEnvelope    []byte
 	CreatedAt      pgtype.Timestamptz
 	UpdatedAt      pgtype.Timestamptz
-	QuotaMb        pgtype.Int8
 }
 
 type Node struct {
@@ -102,6 +101,11 @@ type Passkey struct {
 type PasskeyUser struct {
 	UserID int64
 	Handle []byte
+}
+
+type QuotaSetting struct {
+	ID                bool
+	DefaultLimitBytes pgtype.Int8
 }
 
 type Session struct {
@@ -156,15 +160,25 @@ type UploadSession struct {
 }
 
 type User struct {
-	ID             int64
-	PublicID       string
-	Name           string
-	Email          string
-	PasswordHash   string
-	CreatedAt      pgtype.Timestamptz
-	UpdatedAt      pgtype.Timestamptz
-	IsAdmin        bool
-	DefaultQuotaMb pgtype.Int8
+	ID           int64
+	PublicID     string
+	Name         string
+	Email        string
+	PasswordHash string
+	CreatedAt    pgtype.Timestamptz
+	UpdatedAt    pgtype.Timestamptz
+	IsAdmin      bool
+}
+
+type UserBackendQuota struct {
+	UserID     int64
+	BackendID  int64
+	LimitBytes pgtype.Int8
+}
+
+type UserDefaultQuota struct {
+	UserID     int64
+	LimitBytes pgtype.Int8
 }
 
 type UserKeyBundle struct {

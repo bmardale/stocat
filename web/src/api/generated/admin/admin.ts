@@ -20,13 +20,7 @@ import type {
   UseQueryResult,
 } from "@tanstack/react-query";
 
-import type {
-  AdminUser,
-  LibraryQuota,
-  Problem,
-  UpdateLibraryQuotaInputBody,
-  UpdateUserQuotaInputBody,
-} from "../model";
+import type { AdminUser, Problem, QuotaSettings, UpdateUserQuotaInputBody } from "../model";
 
 import { apiFetch } from "../../fetcher.ts";
 import type { ErrorType, BodyType } from "../../fetcher.ts";
@@ -48,18 +42,130 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
   return result;
 };
 
-export const getAdminLibrariesQuotaSetUrl = (id: string) => {
-  return `/api/v1/admin/libraries/${id}/quota`;
+export const getAdminQuotaGetUrl = () => {
+  return `/api/v1/admin/quota`;
 };
 
 /**
- * @summary Set the quota override of a library
+ * @summary Get the global quota settings
  */
-export const adminLibrariesQuotaSet = async (
-  id: string,
-  updateLibraryQuotaInputBody: UpdateLibraryQuotaInputBody,
+export const adminQuotaGet = async (
   options?: Parameters<typeof apiFetch>[1],
-): Promise<LibraryQuota> => {
+): Promise<QuotaSettings> => {
+  return apiFetch<QuotaSettings>(getAdminQuotaGetUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getAdminQuotaGetQueryKey = () => {
+  return [`/api/v1/admin/quota`] as const;
+};
+
+export const getAdminQuotaGetQueryOptions = <
+  TData = Awaited<ReturnType<typeof adminQuotaGet>>,
+  TError = ErrorType<Problem>,
+>(options?: {
+  query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof adminQuotaGet>>, TError, TData>>;
+  request?: SecondParameter<typeof apiFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getAdminQuotaGetQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof adminQuotaGet>>> = ({ signal }) =>
+    adminQuotaGet({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof adminQuotaGet>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type AdminQuotaGetQueryResult = NonNullable<Awaited<ReturnType<typeof adminQuotaGet>>>;
+export type AdminQuotaGetQueryError = ErrorType<Problem>;
+
+export function useAdminQuotaGet<
+  TData = Awaited<ReturnType<typeof adminQuotaGet>>,
+  TError = ErrorType<Problem>,
+>(
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof adminQuotaGet>>, TError, TData>> &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof adminQuotaGet>>,
+          TError,
+          Awaited<ReturnType<typeof adminQuotaGet>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useAdminQuotaGet<
+  TData = Awaited<ReturnType<typeof adminQuotaGet>>,
+  TError = ErrorType<Problem>,
+>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof adminQuotaGet>>, TError, TData>> &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof adminQuotaGet>>,
+          TError,
+          Awaited<ReturnType<typeof adminQuotaGet>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useAdminQuotaGet<
+  TData = Awaited<ReturnType<typeof adminQuotaGet>>,
+  TError = ErrorType<Problem>,
+>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof adminQuotaGet>>, TError, TData>>;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary Get the global quota settings
+ */
+
+export function useAdminQuotaGet<
+  TData = Awaited<ReturnType<typeof adminQuotaGet>>,
+  TError = ErrorType<Problem>,
+>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof adminQuotaGet>>, TError, TData>>;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getAdminQuotaGetQueryOptions(options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getAdminQuotaSetUrl = () => {
+  return `/api/v1/admin/quota`;
+};
+
+/**
+ * @summary Set the global quota settings
+ */
+export const adminQuotaSet = async (
+  quotaSettings: QuotaSettings,
+  options?: Parameters<typeof apiFetch>[1],
+): Promise<QuotaSettings> => {
   const getHeaders = (
     h?: NonNullable<RequestInit["headers"]>,
   ): Record<string, string | readonly string[]> => {
@@ -79,34 +185,34 @@ export const adminLibrariesQuotaSet = async (
     }
     return headers;
   };
-  return apiFetch<LibraryQuota>(getAdminLibrariesQuotaSetUrl(id), {
+  return apiFetch<QuotaSettings>(getAdminQuotaSetUrl(), {
     ...options,
     method: "PUT",
     headers: { "Content-Type": "application/json", ...getHeaders(options?.headers) },
-    body: JSON.stringify(updateLibraryQuotaInputBody),
+    body: JSON.stringify(quotaSettings),
   });
 };
 
-export const getAdminLibrariesQuotaSetMutationKey = () => ["adminLibrariesQuotaSet"] as const;
+export const getAdminQuotaSetMutationKey = () => ["adminQuotaSet"] as const;
 
-export const getAdminLibrariesQuotaSetMutationOptions = <
+export const getAdminQuotaSetMutationOptions = <
   TError = ErrorType<Problem>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof adminLibrariesQuotaSet>>,
+    Awaited<ReturnType<typeof adminQuotaSet>>,
     TError,
-    AdminLibrariesQuotaSetMutationVariables,
+    AdminQuotaSetMutationVariables,
     TContext
   >;
   request?: SecondParameter<typeof apiFetch>;
 }): UseMutationOptions<
-  Awaited<ReturnType<typeof adminLibrariesQuotaSet>>,
+  Awaited<ReturnType<typeof adminQuotaSet>>,
   TError,
-  AdminLibrariesQuotaSetMutationVariables,
+  AdminQuotaSetMutationVariables,
   TContext
 > => {
-  const mutationKey = getAdminLibrariesQuotaSetMutationKey();
+  const mutationKey = getAdminQuotaSetMutationKey();
   const { mutation: mutationOptions, request: requestOptions } = options
     ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
       ? options
@@ -114,48 +220,43 @@ export const getAdminLibrariesQuotaSetMutationOptions = <
     : { mutation: { mutationKey }, request: undefined };
 
   const mutationFn: MutationFunction<
-    Awaited<ReturnType<typeof adminLibrariesQuotaSet>>,
-    AdminLibrariesQuotaSetMutationVariables
+    Awaited<ReturnType<typeof adminQuotaSet>>,
+    AdminQuotaSetMutationVariables
   > = (props) => {
-    const { id, data } = props ?? {};
+    const { data } = props ?? {};
 
-    return adminLibrariesQuotaSet(id, data, requestOptions);
+    return adminQuotaSet(data, requestOptions);
   };
 
   return { mutationFn, ...mutationOptions };
 };
 
-export type AdminLibrariesQuotaSetMutationResult = NonNullable<
-  Awaited<ReturnType<typeof adminLibrariesQuotaSet>>
->;
-export type AdminLibrariesQuotaSetMutationBody = BodyType<UpdateLibraryQuotaInputBody>;
-export type AdminLibrariesQuotaSetMutationError = ErrorType<Problem>;
-export type AdminLibrariesQuotaSetMutationVariables = {
-  id: string;
-  data: BodyType<UpdateLibraryQuotaInputBody>;
-};
+export type AdminQuotaSetMutationResult = NonNullable<Awaited<ReturnType<typeof adminQuotaSet>>>;
+export type AdminQuotaSetMutationBody = BodyType<QuotaSettings>;
+export type AdminQuotaSetMutationError = ErrorType<Problem>;
+export type AdminQuotaSetMutationVariables = { data: BodyType<QuotaSettings> };
 
 /**
- * @summary Set the quota override of a library
+ * @summary Set the global quota settings
  */
-export const useAdminLibrariesQuotaSet = <TError = ErrorType<Problem>, TContext = unknown>(
+export const useAdminQuotaSet = <TError = ErrorType<Problem>, TContext = unknown>(
   options?: {
     mutation?: UseMutationOptions<
-      Awaited<ReturnType<typeof adminLibrariesQuotaSet>>,
+      Awaited<ReturnType<typeof adminQuotaSet>>,
       TError,
-      AdminLibrariesQuotaSetMutationVariables,
+      AdminQuotaSetMutationVariables,
       TContext
     >;
     request?: SecondParameter<typeof apiFetch>;
   },
   queryClient?: QueryClient,
 ): UseMutationResult<
-  Awaited<ReturnType<typeof adminLibrariesQuotaSet>>,
+  Awaited<ReturnType<typeof adminQuotaSet>>,
   TError,
-  AdminLibrariesQuotaSetMutationVariables,
+  AdminQuotaSetMutationVariables,
   TContext
 > => {
-  return useMutation(getAdminLibrariesQuotaSetMutationOptions(options), queryClient);
+  return useMutation(getAdminQuotaSetMutationOptions(options), queryClient);
 };
 export const getAdminUsersListUrl = () => {
   return `/api/v1/admin/users`;
@@ -275,7 +376,7 @@ export const getAdminUsersQuotaSetUrl = (id: string) => {
 };
 
 /**
- * @summary Set user and library quotas
+ * @summary Set the quotas of a user
  */
 export const adminUsersQuotaSet = async (
   id: string,
@@ -358,7 +459,7 @@ export type AdminUsersQuotaSetMutationVariables = {
 };
 
 /**
- * @summary Set user and library quotas
+ * @summary Set the quotas of a user
  */
 export const useAdminUsersQuotaSet = <TError = ErrorType<Problem>, TContext = unknown>(
   options?: {

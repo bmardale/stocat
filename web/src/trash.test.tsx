@@ -12,7 +12,6 @@ const library: Library = {
   encryption_mode: "none",
   root_node_id: "nod_root",
   backend: { id: "stb_local", name: "Local disk", type: "local" },
-  quota_mb: null,
   created_at: "2026-09-10T10:00:00Z",
   updated_at: "2026-09-10T10:00:00Z",
 };

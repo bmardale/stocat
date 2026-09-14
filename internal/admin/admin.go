@@ -14,47 +14,54 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+const (
+	ModeInherit   = "inherit"
+	ModeUnlimited = "unlimited"
+	ModeLimited   = "limited"
+)
+
 type Service struct {
 	pool    *pgxpool.Pool
 	queries *db.Queries
 	log     *slog.Logger
 }
 
-var errLibraryQuotaNotFound = errors.New("library quota target not found")
+var errBackendNotFound = errors.New("quota backend not found")
 
-type LibraryQuota struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	QuotaMB *int64 `json:"quota_mb" doc:"Quota in megabytes. A null value uses the user default quota."`
+type Quota struct {
+	Mode       string `json:"mode" enum:"inherit,unlimited,limited"`
+	LimitBytes *int64 `json:"limit_bytes,omitempty" minimum:"0" doc:"Send the limit only with the limited mode."`
 }
 
-type LibraryQuotaInput struct {
-	ID      string `json:"id" maxLength:"64"`
-	QuotaMB *int64 `json:"quota_mb" minimum:"0" doc:"Quota in megabytes. A null value uses the user default quota."`
+type BackendQuota struct {
+	BackendID  string `json:"backend_id" maxLength:"64"`
+	Mode       string `json:"mode" enum:"inherit,unlimited,limited"`
+	LimitBytes *int64 `json:"limit_bytes,omitempty" minimum:"0" doc:"Send the limit only with the limited mode."`
 }
 
 type AdminUser struct {
-	ID             string         `json:"id"`
-	Name           string         `json:"name"`
-	Email          string         `json:"email"`
-	IsAdmin        bool           `json:"is_admin"`
-	DefaultQuotaMB *int64         `json:"default_quota_mb" doc:"Default quota in megabytes. A null value means no limit."`
-	Libraries      []LibraryQuota `json:"libraries" nullable:"false"`
+	ID            string         `json:"id"`
+	Name          string         `json:"name"`
+	Email         string         `json:"email"`
+	IsAdmin       bool           `json:"is_admin"`
+	DefaultQuota  Quota          `json:"default_quota" doc:"The inherit mode uses the global default quota."`
+	BackendQuotas []BackendQuota `json:"backend_quotas" nullable:"false" doc:"A backend without an override uses the default quota of the user."`
+}
+
+type QuotaSettings struct {
+	DefaultQuota Quota `json:"default_quota" doc:"The global default quota. The inherit mode is not allowed."`
 }
 
 type updateUserQuotaInput struct {
 	ID   string `path:"id" maxLength:"64"`
 	Body struct {
-		DefaultQuotaMB *int64              `json:"default_quota_mb" minimum:"0" doc:"Default quota in megabytes. Send null for no limit."`
-		Libraries      []LibraryQuotaInput `json:"libraries,omitempty" nullable:"false" doc:"Library quota overrides to update atomically with the user quota."`
+		DefaultQuota  Quota          `json:"default_quota" doc:"The inherit mode uses the global default quota."`
+		BackendQuotas []BackendQuota `json:"backend_quotas" maxItems:"1000" nullable:"false" doc:"The list replaces all backend overrides. The inherit mode removes an override."`
 	}
 }
 
-type updateLibraryQuotaInput struct {
-	ID   string `path:"id" maxLength:"64"`
-	Body struct {
-		QuotaMB *int64 `json:"quota_mb" minimum:"0" doc:"Quota in megabytes. Send null to use the user default quota."`
-	}
+type updateQuotaSettingsInput struct {
+	Body QuotaSettings
 }
 
 type userOutput struct{ Body AdminUser }
@@ -63,7 +70,7 @@ type usersOutput struct {
 	Body []AdminUser `nullable:"false"`
 }
 
-type libraryQuotaOutput struct{ Body LibraryQuota }
+type quotaSettingsOutput struct{ Body QuotaSettings }
 
 func New(pool *pgxpool.Pool, logger *slog.Logger) *Service {
 	if logger == nil {
@@ -84,19 +91,23 @@ func (s *Service) Register(api huma.API) {
 	}, s.list)
 	huma.Register(group, huma.Operation{
 		OperationID: "admin-users-quota-set", Method: http.MethodPut, Path: "/{id}/quota",
-		Summary: "Set user and library quotas", MaxBodyBytes: 65536,
+		Summary: "Set the quotas of a user", MaxBodyBytes: 131072,
 		Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity},
 	}, s.setUserQuota)
 
-	libraries := huma.NewGroup(api, "/libraries")
-	libraries.UseSimpleModifier(func(op *huma.Operation) {
+	settings := huma.NewGroup(api, "/quota")
+	settings.UseSimpleModifier(func(op *huma.Operation) {
 		op.Tags = []string{"Admin"}
 	})
-	huma.Register(libraries, huma.Operation{
-		OperationID: "admin-libraries-quota-set", Method: http.MethodPut, Path: "/{id}/quota",
-		Summary: "Set the quota override of a library", MaxBodyBytes: 4096,
-		Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity},
-	}, s.setLibraryQuota)
+	huma.Register(settings, huma.Operation{
+		OperationID: "admin-quota-get", Method: http.MethodGet, Path: "",
+		Summary: "Get the global quota settings",
+	}, s.getQuotaSettings)
+	huma.Register(settings, huma.Operation{
+		OperationID: "admin-quota-set", Method: http.MethodPut, Path: "",
+		Summary: "Set the global quota settings", MaxBodyBytes: 4096,
+		Errors: []int{http.StatusUnprocessableEntity},
+	}, s.setQuotaSettings)
 }
 
 func (s *Service) list(ctx context.Context, _ *struct{}) (*usersOutput, error) {
@@ -104,52 +115,98 @@ func (s *Service) list(ctx context.Context, _ *struct{}) (*usersOutput, error) {
 	if err != nil {
 		return nil, s.internalError(ctx, "list users", err)
 	}
-	libraries, err := s.queries.ListLibrariesForAdmin(ctx)
+	defaults, err := s.queries.ListUserDefaultQuotas(ctx)
 	if err != nil {
-		return nil, s.internalError(ctx, "list libraries", err)
+		return nil, s.internalError(ctx, "list user default quotas", err)
 	}
-	byOwner := make(map[int64][]LibraryQuota, len(users))
-	for _, library := range libraries {
-		byOwner[library.OwnerID] = append(byOwner[library.OwnerID], LibraryQuota{
-			ID: library.PublicID, Name: library.Name, QuotaMB: quotaPtr(library.QuotaMb),
+	overrides, err := s.queries.ListUserBackendQuotas(ctx)
+	if err != nil {
+		return nil, s.internalError(ctx, "list user backend quotas", err)
+	}
+	defaultByUser := make(map[int64]Quota, len(defaults))
+	for _, row := range defaults {
+		defaultByUser[row.UserID] = quotaFromLimit(true, row.LimitBytes)
+	}
+	overridesByUser := make(map[int64][]BackendQuota, len(users))
+	for _, row := range overrides {
+		quota := quotaFromLimit(true, row.LimitBytes)
+		overridesByUser[row.UserID] = append(overridesByUser[row.UserID], BackendQuota{
+			BackendID: row.BackendPublicID, Mode: quota.Mode, LimitBytes: quota.LimitBytes,
 		})
 	}
 	output := &usersOutput{Body: make([]AdminUser, 0, len(users))}
 	for _, user := range users {
-		owned := byOwner[user.ID]
-		if owned == nil {
-			owned = []LibraryQuota{}
+		defaultQuota, ok := defaultByUser[user.ID]
+		if !ok {
+			defaultQuota = Quota{Mode: ModeInherit}
+		}
+		backendQuotas := overridesByUser[user.ID]
+		if backendQuotas == nil {
+			backendQuotas = []BackendQuota{}
 		}
 		output.Body = append(output.Body, AdminUser{
 			ID: user.PublicID, Name: user.Name, Email: user.Email, IsAdmin: user.IsAdmin,
-			DefaultQuotaMB: quotaPtr(user.DefaultQuotaMb), Libraries: owned,
+			DefaultQuota: defaultQuota, BackendQuotas: backendQuotas,
 		})
 	}
 	return output, nil
 }
 
 func (s *Service) setUserQuota(ctx context.Context, input *updateUserQuotaInput) (*userOutput, error) {
-	err := db.InTx(ctx, s.pool, func(queries *db.Queries) error {
-		user, err := queries.UpdateUserDefaultQuota(ctx, db.UpdateUserDefaultQuotaParams{
-			PublicID: input.ID, DefaultQuotaMb: quotaValue(input.Body.DefaultQuotaMB),
-		})
+	defaultSet, defaultLimit, err := quotaLevel(input.Body.DefaultQuota)
+	if err != nil {
+		return nil, err
+	}
+	overrides := make([]BackendQuota, 0, len(input.Body.BackendQuotas))
+	seen := make(map[string]bool, len(input.Body.BackendQuotas))
+	for _, override := range input.Body.BackendQuotas {
+		if seen[override.BackendID] {
+			return nil, huma.Error422UnprocessableEntity("Send each storage backend only once.")
+		}
+		seen[override.BackendID] = true
+		if _, _, err := quotaLevel(Quota{Mode: override.Mode, LimitBytes: override.LimitBytes}); err != nil {
+			return nil, err
+		}
+		if override.Mode != ModeInherit {
+			overrides = append(overrides, override)
+		}
+	}
+	var user db.User
+	err = db.InTx(ctx, s.pool, func(queries *db.Queries) error {
+		var err error
+		user, err = queries.GetUserByPublicIDForUpdate(ctx, input.ID)
 		if err != nil {
 			return err
 		}
-		for _, library := range input.Body.Libraries {
-			if _, err := queries.UpdateLibraryQuotaForOwner(ctx, db.UpdateLibraryQuotaForOwnerParams{
-				PublicID: library.ID, OwnerID: user.ID, QuotaMb: quotaValue(library.QuotaMB),
+		if err := queries.DeleteUserDefaultQuota(ctx, user.ID); err != nil {
+			return err
+		}
+		if defaultSet {
+			if err := queries.CreateUserDefaultQuota(ctx, db.CreateUserDefaultQuotaParams{
+				UserID: user.ID, LimitBytes: defaultLimit,
 			}); err != nil {
-				if errors.Is(err, pgx.ErrNoRows) {
-					return errLibraryQuotaNotFound
-				}
 				return err
+			}
+		}
+		if err := queries.DeleteUserBackendQuotas(ctx, user.ID); err != nil {
+			return err
+		}
+		for _, override := range overrides {
+			_, limit, _ := quotaLevel(Quota{Mode: override.Mode, LimitBytes: override.LimitBytes})
+			created, err := queries.CreateUserBackendQuota(ctx, db.CreateUserBackendQuotaParams{
+				UserID: user.ID, BackendPublicID: override.BackendID, LimitBytes: limit,
+			})
+			if err != nil {
+				return err
+			}
+			if created == 0 {
+				return errBackendNotFound
 			}
 		}
 		return nil
 	})
-	if errors.Is(err, errLibraryQuotaNotFound) {
-		return nil, huma.Error404NotFound("The library does not belong to the user.")
+	if errors.Is(err, errBackendNotFound) {
+		return nil, huma.Error404NotFound("The storage backend does not exist.")
 	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, huma.Error404NotFound("The user does not exist.")
@@ -157,61 +214,63 @@ func (s *Service) setUserQuota(ctx context.Context, input *updateUserQuotaInput)
 	if err != nil {
 		return nil, s.internalError(ctx, "set user quota", err)
 	}
-	return s.user(ctx, input.ID)
-}
-
-func (s *Service) setLibraryQuota(ctx context.Context, input *updateLibraryQuotaInput) (*libraryQuotaOutput, error) {
-	row, err := s.queries.UpdateLibraryQuota(ctx, db.UpdateLibraryQuotaParams{
-		PublicID: input.ID, QuotaMb: quotaValue(input.Body.QuotaMB),
-	})
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, huma.Error404NotFound("The library does not exist.")
-	}
-	if err != nil {
-		return nil, s.internalError(ctx, "set library quota", err)
-	}
-	return &libraryQuotaOutput{Body: LibraryQuota{
-		ID: row.PublicID, Name: row.Name, QuotaMB: quotaPtr(row.QuotaMb),
-	}}, nil
-}
-
-func (s *Service) user(ctx context.Context, publicID string) (*userOutput, error) {
-	user, err := s.queries.GetUserByPublicID(ctx, publicID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, huma.Error404NotFound("The user does not exist.")
-	}
-	if err != nil {
-		return nil, s.internalError(ctx, "get user", err)
-	}
-	libraries, err := s.queries.ListLibrariesByOwnerID(ctx, user.ID)
-	if err != nil {
-		return nil, s.internalError(ctx, "list user libraries", err)
-	}
-	owned := make([]LibraryQuota, 0, len(libraries))
-	for _, library := range libraries {
-		owned = append(owned, LibraryQuota{
-			ID: library.PublicID, Name: library.Name, QuotaMB: quotaPtr(library.QuotaMb),
-		})
-	}
 	return &userOutput{Body: AdminUser{
 		ID: user.PublicID, Name: user.Name, Email: user.Email, IsAdmin: user.IsAdmin,
-		DefaultQuotaMB: quotaPtr(user.DefaultQuotaMb), Libraries: owned,
+		DefaultQuota: input.Body.DefaultQuota, BackendQuotas: overrides,
 	}}, nil
 }
 
-func quotaPtr(value pgtype.Int8) *int64 {
-	if !value.Valid {
-		return nil
+func (s *Service) getQuotaSettings(ctx context.Context, _ *struct{}) (*quotaSettingsOutput, error) {
+	limit, err := s.queries.GetQuotaSettings(ctx)
+	if err != nil {
+		return nil, s.internalError(ctx, "get quota settings", err)
 	}
-	quota := value.Int64
-	return &quota
+	return &quotaSettingsOutput{Body: QuotaSettings{DefaultQuota: quotaFromLimit(true, limit)}}, nil
 }
 
-func quotaValue(value *int64) pgtype.Int8 {
-	if value == nil {
-		return pgtype.Int8{}
+func (s *Service) setQuotaSettings(ctx context.Context, input *updateQuotaSettingsInput) (*quotaSettingsOutput, error) {
+	if input.Body.DefaultQuota.Mode == ModeInherit {
+		return nil, huma.Error422UnprocessableEntity("Select a limit or no limit for the global default quota.")
 	}
-	return pgtype.Int8{Int64: *value, Valid: true}
+	_, limit, err := quotaLevel(input.Body.DefaultQuota)
+	if err != nil {
+		return nil, err
+	}
+	stored, err := s.queries.UpdateQuotaSettings(ctx, limit)
+	if err != nil {
+		return nil, s.internalError(ctx, "set quota settings", err)
+	}
+	return &quotaSettingsOutput{Body: QuotaSettings{DefaultQuota: quotaFromLimit(true, stored)}}, nil
+}
+
+func quotaFromLimit(set bool, limit pgtype.Int8) Quota {
+	switch {
+	case !set:
+		return Quota{Mode: ModeInherit}
+	case !limit.Valid:
+		return Quota{Mode: ModeUnlimited}
+	default:
+		value := limit.Int64
+		return Quota{Mode: ModeLimited, LimitBytes: &value}
+	}
+}
+
+// quotaLevel reports whether quota sets a level and returns its limit. An invalid limit means no limit.
+func quotaLevel(quota Quota) (bool, pgtype.Int8, error) {
+	switch quota.Mode {
+	case ModeLimited:
+		if quota.LimitBytes == nil {
+			return false, pgtype.Int8{}, huma.Error422UnprocessableEntity("Send limit_bytes with the limited mode.")
+		}
+		return true, pgtype.Int8{Int64: *quota.LimitBytes, Valid: true}, nil
+	case ModeUnlimited, ModeInherit:
+		if quota.LimitBytes != nil {
+			return false, pgtype.Int8{}, huma.Error422UnprocessableEntity("Send limit_bytes only with the limited mode.")
+		}
+		return quota.Mode == ModeUnlimited, pgtype.Int8{}, nil
+	default:
+		return false, pgtype.Int8{}, huma.Error422UnprocessableEntity("Use a supported quota mode.")
+	}
 }
 
 func (s *Service) internalError(ctx context.Context, operation string, err error) error {

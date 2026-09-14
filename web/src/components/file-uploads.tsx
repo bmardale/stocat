@@ -11,6 +11,7 @@ import type { DragEvent, RefObject } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Library } from "@/api/generated/model";
 import { getNodesListQueryKey } from "@/api/generated/libraries/libraries";
+import { getStorageUsageListQueryKey } from "@/api/generated/quota/quota";
 import {
   cancelUpload,
   uploadEncryptedFile,
@@ -98,6 +99,7 @@ export function useFileUploads({
         }
       } finally {
         controllers.current.delete(item.id);
+        void queryClient.invalidateQueries({ queryKey: getStorageUsageListQueryKey() });
       }
     },
     [keys, library.encryption_mode, library.id, queryClient, update],
@@ -140,10 +142,14 @@ export function useFileUploads({
     (id: number) => {
       controllers.current.get(id)?.abort();
       const session = sessions.current.get(id);
-      if (session) void cancelUpload(session).catch(() => undefined);
+      if (session) {
+        void cancelUpload(session)
+          .catch(() => undefined)
+          .then(() => queryClient.invalidateQueries({ queryKey: getStorageUsageListQueryKey() }));
+      }
       update(id, { state: "cancelled" });
     },
-    [update],
+    [queryClient, update],
   );
 
   const removeFinished = useCallback(() => {

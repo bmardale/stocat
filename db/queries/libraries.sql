@@ -47,29 +47,6 @@ FROM nodes n
 JOIN libraries l ON l.id = n.library_id
 WHERE n.public_id = $1 AND l.owner_id = $2;
 
--- name: ListLibrariesForAdmin :many
-SELECT id, public_id, owner_id, name, quota_mb
-FROM libraries
-ORDER BY owner_id, name, id;
-
--- name: ListLibrariesByOwnerID :many
-SELECT id, public_id, owner_id, name, quota_mb
-FROM libraries
-WHERE owner_id = $1
-ORDER BY name, id;
-
--- name: UpdateLibraryQuota :one
-UPDATE libraries
-SET quota_mb = sqlc.arg(quota_mb)
-WHERE public_id = sqlc.arg(public_id)
-RETURNING id, public_id, owner_id, name, quota_mb;
-
--- name: UpdateLibraryQuotaForOwner :one
-UPDATE libraries
-SET quota_mb = sqlc.arg(quota_mb)
-WHERE public_id = sqlc.arg(public_id) AND owner_id = sqlc.arg(owner_id)
-RETURNING id, public_id, owner_id, name, quota_mb;
-
 -- name: ListChildNodes :many
 SELECT * FROM nodes
 WHERE library_id = sqlc.arg(library_id) AND parent_id = sqlc.arg(parent_id)

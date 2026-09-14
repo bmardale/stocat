@@ -1,9 +1,10 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
 import { z } from "zod";
-import type { AdminUser } from "@/api/generated/model";
+import type { AdminUser, Backend, BackendQuota, Quota } from "@/api/generated/model";
 import { getAdminUsersListQueryKey, useAdminUsersQuotaSet } from "@/api/generated/admin/admin";
+import { getStorageUsageListQueryKey } from "@/api/generated/quota/quota";
 import { useAppForm } from "@/components/form";
+import { QuotaPicker } from "@/components/quota-picker";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -14,76 +15,97 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { FieldDescription, FieldGroup, FieldLegend, FieldSet } from "@/components/ui/field";
+import { FieldGroup, FieldSeparator } from "@/components/ui/field";
 import { toast } from "@/components/ui/toast";
+import {
+  quotaFromValue,
+  quotaLabel,
+  quotaValue,
+  quotaValueSchema,
+  type QuotaValue,
+} from "@/lib/quota";
 
-const quota = z
-  .string()
-  .trim()
-  .refine((value) => value === "" || /^\d+$/.test(value), "Enter a whole number of megabytes.");
-
-const quotaSchema = z.object({
-  defaultQuota: quota,
-  libraries: z.record(z.string(), quota),
+const userQuotaSchema = z.object({
+  defaultQuota: quotaValueSchema,
+  backends: z.record(z.string(), quotaValueSchema),
 });
 
-type QuotaValues = z.infer<typeof quotaSchema>;
+type UserQuotaValues = { defaultQuota: QuotaValue; backends: Record<string, QuotaValue> };
 
-function formValues(user: AdminUser): QuotaValues {
-  const libraries: Record<string, string> = {};
-  for (const library of user.libraries) {
-    libraries[library.id] = library.quota_mb === null ? "" : String(library.quota_mb);
+function formValues(user: AdminUser, backends: Backend[]): UserQuotaValues {
+  const values: UserQuotaValues = { defaultQuota: quotaValue(user.default_quota), backends: {} };
+  for (const backend of backends) {
+    const override = user.backend_quotas.find((quota) => quota.backend_id === backend.id);
+    values.backends[backend.id] = override ? quotaValue(override) : { mode: "inherit", gib: "" };
   }
-  return {
-    defaultQuota: user.default_quota_mb === null ? "" : String(user.default_quota_mb),
-    libraries,
-  };
-}
-
-function parseQuota(value: string): number | null {
-  const trimmed = value.trim();
-  return trimmed === "" ? null : Number(trimmed);
+  return values;
 }
 
 export function UserQuotaDialog({
   open,
   user,
+  backends,
+  globalQuota,
   onOpenChange,
 }: {
   open: boolean;
   user?: AdminUser;
+  backends: Backend[];
+  globalQuota: Quota;
   onOpenChange: (open: boolean) => void;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[calc(100svh-2rem)] overflow-y-auto sm:max-w-lg">
-        {user && <UserQuotaForm key={user.id} user={user} onSaved={() => onOpenChange(false)} />}
+        {user && (
+          <UserQuotaForm
+            key={user.id}
+            user={user}
+            backends={backends}
+            globalQuota={globalQuota}
+            onSaved={() => onOpenChange(false)}
+          />
+        )}
       </DialogContent>
     </Dialog>
   );
 }
 
-function UserQuotaForm({ user, onSaved }: { user: AdminUser; onSaved: () => void }) {
+function UserQuotaForm({
+  user,
+  backends,
+  globalQuota,
+  onSaved,
+}: {
+  user: AdminUser;
+  backends: Backend[];
+  globalQuota: Quota;
+  onSaved: () => void;
+}) {
   const queryClient = useQueryClient();
-  const [saving, setSaving] = useState(false);
   const setUserQuota = useAdminUsersQuotaSet();
   const form = useAppForm({
-    defaultValues: formValues(user),
-    validators: { onSubmit: quotaSchema },
+    defaultValues: formValues(user, backends),
+    validators: { onSubmit: userQuotaSchema },
     onSubmit: async ({ value }) => {
-      setSaving(true);
+      const backendQuotas: BackendQuota[] = backends
+        .map((backend) => ({
+          backend_id: backend.id,
+          ...quotaFromValue(value.backends[backend.id] ?? { mode: "inherit", gib: "" }),
+        }))
+        .filter((quota) => quota.mode !== "inherit");
       try {
         await setUserQuota.mutateAsync({
           id: user.id,
           data: {
-            default_quota_mb: parseQuota(value.defaultQuota),
-            libraries: user.libraries.map((library) => ({
-              id: library.id,
-              quota_mb: parseQuota(value.libraries[library.id] ?? ""),
-            })),
+            default_quota: quotaFromValue(value.defaultQuota),
+            backend_quotas: backendQuotas,
           },
         });
-        await queryClient.invalidateQueries({ queryKey: getAdminUsersListQueryKey() });
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: getAdminUsersListQueryKey() }),
+          queryClient.invalidateQueries({ queryKey: getStorageUsageListQueryKey() }),
+        ]);
         toast.add({ type: "success", description: "Quotas saved." });
         onSaved();
       } catch (cause) {
@@ -91,8 +113,6 @@ function UserQuotaForm({ user, onSaved }: { user: AdminUser; onSaved: () => void
           type: "error",
           description: cause instanceof Error ? cause.message : "The quotas were not saved.",
         });
-      } finally {
-        setSaving(false);
       }
     },
   });
@@ -102,8 +122,8 @@ function UserQuotaForm({ user, onSaved }: { user: AdminUser; onSaved: () => void
       <DialogHeader>
         <DialogTitle>Quotas for {user.name}</DialogTitle>
         <DialogDescription>
-          Set a default quota for this user. A library override replaces the default for that
-          library. An empty value means no limit.
+          The default quota applies to each storage backend separately. An override replaces the
+          default quota on one backend.
         </DialogDescription>
       </DialogHeader>
       <form
@@ -114,48 +134,43 @@ function UserQuotaForm({ user, onSaved }: { user: AdminUser; onSaved: () => void
         }}
       >
         <FieldGroup>
-          <form.AppField name="defaultQuota">
+          <form.Field name="defaultQuota">
             {(field) => (
-              <field.TextField
-                label="Default quota (MB)"
-                type="number"
-                min="0"
-                step="1"
-                inputMode="numeric"
-                placeholder="No limit"
-                autoComplete="off"
+              <QuotaPicker
+                id={`${user.id}-default`}
+                label="Default quota"
+                inheritLabel={`Global default (${quotaLabel(globalQuota, "")})`}
+                value={field.state.value}
+                onChange={field.handleChange}
+                errors={field.state.meta.errors}
               />
             )}
-          </form.AppField>
-          {user.libraries.length > 0 && (
-            <FieldSet>
-              <FieldLegend variant="label">Library overrides</FieldLegend>
-              <FieldDescription>
-                Leave a library empty to use the default quota of the user.
-              </FieldDescription>
-              {user.libraries.map((library) => (
-                <form.AppField key={library.id} name={`libraries.${library.id}`}>
-                  {(field) => (
-                    <field.TextField
-                      label={library.name}
-                      type="number"
-                      min="0"
-                      step="1"
-                      inputMode="numeric"
-                      placeholder="Use default"
-                      autoComplete="off"
-                    />
-                  )}
-                </form.AppField>
-              ))}
-            </FieldSet>
-          )}
+          </form.Field>
+          {backends.length > 0 && <FieldSeparator />}
+          {backends.map((backend) => (
+            <form.Field key={backend.id} name={`backends.${backend.id}`}>
+              {(field) => (
+                <QuotaPicker
+                  id={`${user.id}-${backend.id}`}
+                  label={backend.name}
+                  inheritLabel="Use default"
+                  value={field.state.value}
+                  onChange={field.handleChange}
+                  errors={field.state.meta.errors}
+                />
+              )}
+            </form.Field>
+          ))}
         </FieldGroup>
       </form>
       <DialogFooter>
         <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
-        <Button type="button" disabled={saving} onClick={() => void form.handleSubmit()}>
-          {saving ? "Saving…" : "Save quotas"}
+        <Button
+          type="button"
+          disabled={setUserQuota.isPending}
+          onClick={() => void form.handleSubmit()}
+        >
+          {setUserQuota.isPending ? "Saving…" : "Save quotas"}
         </Button>
       </DialogFooter>
     </>

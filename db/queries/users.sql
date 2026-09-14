@@ -37,8 +37,5 @@ WHERE id = $1;
 -- name: ListUsers :many
 SELECT * FROM users ORDER BY name, id;
 
--- name: UpdateUserDefaultQuota :one
-UPDATE users
-SET default_quota_mb = sqlc.arg(default_quota_mb)
-WHERE public_id = sqlc.arg(public_id)
-RETURNING *;
+-- name: GetUserByPublicIDForUpdate :one
+SELECT * FROM users WHERE public_id = $1 FOR UPDATE;

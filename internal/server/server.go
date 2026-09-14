@@ -19,6 +19,7 @@ import (
 	"github.com/bmardale/stocat/internal/platform/o11y"
 	"github.com/bmardale/stocat/internal/platform/ratelimit"
 	"github.com/bmardale/stocat/internal/platform/version"
+	"github.com/bmardale/stocat/internal/quota"
 	"github.com/bmardale/stocat/internal/storage"
 	"github.com/bmardale/stocat/internal/uploads"
 	"github.com/danielgtaylor/huma/v2"
@@ -104,6 +105,7 @@ func New(cfg Config, pool *pgxpool.Pool) (*Server, error) {
 	admin.New(pool, log).Register(adminGroup)
 	protected := authService.Protected(api, "/api/v1")
 	libraries.New(pool, log).Register(protected)
+	quota.New(pool, log).Register(protected)
 	fileService := files.New(pool, storageService, log)
 	fileService.Register(protected)
 	uploadService, err := uploads.New(pool, nil, uploads.Config{
