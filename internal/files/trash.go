@@ -8,6 +8,7 @@ import (
 	"github.com/bmardale/stocat/internal/auth"
 	"github.com/bmardale/stocat/internal/db"
 	"github.com/bmardale/stocat/internal/libraries"
+	"github.com/bmardale/stocat/internal/replication"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/jackc/pgx/v5"
 )
@@ -98,6 +99,9 @@ func (s *Service) restore(ctx context.Context, input *fileInput) (*nodeOutput, e
 	}
 	if err != nil {
 		return nil, s.internalError(ctx, "load trashed file", err)
+	}
+	if err := replication.EnsureLibraryWritable(ctx, s.queries, file.LibraryPublicID, user.ID); err != nil {
+		return nil, err
 	}
 	row, err := s.queries.RestoreFileNode(ctx, file.ID)
 	if isPgError(err, uniqueViolation) {

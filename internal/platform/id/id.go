@@ -39,6 +39,8 @@ const (
 	Request = "req"
 	// Passkey is the prefix of passkey identifiers.
 	Passkey = "pky"
+	// Replication is the prefix of replication identifiers.
+	Replication = "rep"
 )
 
 const separator = "_"

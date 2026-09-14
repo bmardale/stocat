@@ -9,6 +9,7 @@ import (
 
 	"github.com/bmardale/stocat/internal/auth"
 	"github.com/bmardale/stocat/internal/db"
+	"github.com/bmardale/stocat/internal/replication"
 	"github.com/bmardale/stocat/internal/storage"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/jackc/pgx/v5"
@@ -91,6 +92,10 @@ func (s *Service) remove(ctx context.Context, input *fileInput) (*struct{}, erro
 	if err != nil {
 		return nil, err
 	}
+	user, _ := auth.UserFromContext(ctx)
+	if err := replication.EnsureLibraryWritable(ctx, s.queries, file.LibraryPublicID, user.ID); err != nil {
+		return nil, err
+	}
 	if _, err := s.queries.TrashFileNode(ctx, file.ID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, fileNotFound()
@@ -170,6 +175,9 @@ func (s *Service) deletePermanently(ctx context.Context, input *fileInput) (*str
 	}
 	if err != nil {
 		return nil, s.internalError(ctx, "load trashed file", err)
+	}
+	if err := replication.EnsureLibraryWritable(ctx, s.queries, file.LibraryPublicID, user.ID); err != nil {
+		return nil, err
 	}
 	err = s.permanentlyDelete(ctx, file.ID, false)
 	if errors.Is(err, pgx.ErrNoRows) {

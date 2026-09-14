@@ -20,6 +20,7 @@ import (
 	"github.com/bmardale/stocat/internal/platform/ratelimit"
 	"github.com/bmardale/stocat/internal/platform/version"
 	"github.com/bmardale/stocat/internal/quota"
+	"github.com/bmardale/stocat/internal/replication"
 	"github.com/bmardale/stocat/internal/storage"
 	"github.com/bmardale/stocat/internal/uploads"
 	"github.com/danielgtaylor/huma/v2"
@@ -106,6 +107,8 @@ func New(cfg Config, pool *pgxpool.Pool) (*Server, error) {
 	protected := authService.Protected(api, "/api/v1")
 	libraries.New(pool, log).Register(protected)
 	quota.New(pool, log).Register(protected)
+	replicationService := replication.New(pool, storageService, log)
+	replicationService.Register(protected)
 	fileService := files.New(pool, storageService, log)
 	fileService.Register(protected)
 	uploadService, err := uploads.New(pool, nil, uploads.Config{
@@ -117,12 +120,13 @@ func New(cfg Config, pool *pgxpool.Pool) (*Server, error) {
 	}
 	var queue *river.Client[pgx.Tx]
 	if pool != nil {
-		queue, err = uploadService.ConfigureQueue(storageService, fileService.AddWorkers)
+		queue, err = uploadService.ConfigureQueue(storageService, fileService.AddWorkers, replicationService.AddWorkers)
 		if err != nil {
 			_ = uploadService.Close()
 			return nil, err
 		}
 		fileService.UseQueue(queue)
+		replicationService.UseQueue(queue)
 	}
 	uploadService.Register(protected)
 

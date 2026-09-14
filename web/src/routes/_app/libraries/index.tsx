@@ -1,10 +1,17 @@
-import { Add01Icon, LibraryIcon, SquareLock02Icon } from "@hugeicons/core-free-icons";
+import {
+  Add01Icon,
+  ArrowRight01Icon,
+  LibraryIcon,
+  SquareLock02Icon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { librariesQueryOptions, libraryBackendsQueryOptions } from "@/api/libraries";
+import { replicationsQueryOptions } from "@/api/replications";
 import { BackendIcon, CreateLibraryDialog } from "@/components/library-dialogs";
+import { CreateReplicationDialog, ReplicationActions } from "@/components/replication-dialogs";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -30,6 +37,7 @@ export const Route = createFileRoute("/_app/libraries/")({
     Promise.all([
       context.queryClient.ensureQueryData(librariesQueryOptions),
       context.queryClient.ensureQueryData(libraryBackendsQueryOptions),
+      context.queryClient.ensureQueryData(replicationsQueryOptions),
     ]),
   component: Libraries,
 });
@@ -39,7 +47,9 @@ const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
 function Libraries() {
   const { data: libraries } = useSuspenseQuery(librariesQueryOptions);
   const { data: backends } = useSuspenseQuery(libraryBackendsQueryOptions);
+  const { data: replications } = useSuspenseQuery(replicationsQueryOptions);
   const [creating, setCreating] = useState(false);
+  const [creatingReplication, setCreatingReplication] = useState(false);
   const newLibraryButton = (
     <Button onClick={() => setCreating(true)}>
       <HugeiconsIcon icon={Add01Icon} strokeWidth={2} data-icon="inline-start" />
@@ -131,6 +141,93 @@ function Libraries() {
         </Card>
       )}
       <CreateLibraryDialog open={creating} backends={backends} onOpenChange={setCreating} />
+      {libraries.length > 1 && (
+        <section className="flex flex-col gap-4 pt-2">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div className="space-y-1">
+              <h2 className="font-heading text-2xl font-semibold tracking-tight">Replication</h2>
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                Keep a read-only copy of one library in another storage backend.
+              </p>
+            </div>
+            <Button variant="outline" onClick={() => setCreatingReplication(true)}>
+              <HugeiconsIcon icon={Add01Icon} strokeWidth={2} data-icon="inline-start" />
+              Set up replication
+            </Button>
+          </div>
+          {replications.length === 0 ? (
+            <Card className="flex-row items-center gap-3 px-4 py-4 text-sm text-muted-foreground">
+              <HugeiconsIcon icon={ArrowRight01Icon} strokeWidth={2} className="size-4 shrink-0" />
+              No library replication is active.
+            </Card>
+          ) : (
+            <Card className="py-0">
+              <Table aria-label="Library replications">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="pl-4">Source</TableHead>
+                    <TableHead>Destination</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Last sync</TableHead>
+                    <TableHead className="w-48 pr-4">
+                      <span className="sr-only">Actions</span>
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {replications.map((replication) => (
+                    <TableRow key={replication.id}>
+                      <TableCell className="pl-4 font-medium">{replication.source.name}</TableCell>
+                      <TableCell>
+                        <span className="flex items-center gap-2">
+                          <HugeiconsIcon
+                            icon={ArrowRight01Icon}
+                            strokeWidth={2}
+                            className="size-3.5 text-muted-foreground"
+                          />
+                          {replication.destination.name}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={replication.state === "failed" ? "destructive" : "secondary"}
+                        >
+                          {replication.state === "ready"
+                            ? "Up to date"
+                            : replication.state === "syncing"
+                              ? "Syncing"
+                              : replication.state === "failed"
+                                ? "Needs attention"
+                                : "Queued"}
+                        </Badge>
+                        {replication.last_error && (
+                          <p className="mt-1 max-w-64 text-xs text-destructive">
+                            {replication.last_error}
+                          </p>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {replication.last_synced_at
+                          ? dateFormat.format(new Date(replication.last_synced_at))
+                          : "Not yet"}
+                      </TableCell>
+                      <TableCell className="pr-4">
+                        <ReplicationActions replication={replication} />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </Card>
+          )}
+        </section>
+      )}
+      <CreateReplicationDialog
+        open={creatingReplication}
+        libraries={libraries}
+        replications={replications}
+        onOpenChange={setCreatingReplication}
+      />
     </section>
   );
 }

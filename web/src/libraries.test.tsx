@@ -1,6 +1,13 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vite-plus/test";
-import type { FileDetails, Library, LibraryBackend, Node, User } from "@/api/generated/model";
+import type {
+  FileDetails,
+  Library,
+  LibraryBackend,
+  Node,
+  Replication,
+  User,
+} from "@/api/generated/model";
 import { encryptFile } from "@/lib/file-crypto";
 import {
   createKeyEnvelope,
@@ -678,6 +685,54 @@ describe("library setup", () => {
     expect(await screen.findByText("This folder is empty")).toBeDefined();
   });
 
+  it("sets up and syncs library replication", async () => {
+    const replica = {
+      ...documents,
+      id: "lib_backup",
+      name: "Backup",
+      backend: { id: "stb_s3", name: "Archive bucket", type: "s3" as const },
+    };
+    let body: unknown;
+    let replications: Replication[] = [];
+    stubApi({
+      "GET /api/v1/auth/me": () => jsonResponse(200, testUser),
+      "GET /api/v1/libraries": () => jsonResponse(200, [documents, replica]),
+      "GET /api/v1/storage-backends": () => jsonResponse(200, [backend, replica.backend]),
+      "GET /api/v1/replications": () => jsonResponse(200, replications),
+      "POST /api/v1/replications": (init) => {
+        body = JSON.parse(init?.body as string);
+        const created: Replication = {
+          id: "rep_docs",
+          source: { id: documents.id, name: documents.name },
+          destination: { id: replica.id, name: replica.name },
+          state: "pending",
+          created_at: "2026-09-14T10:00:00Z",
+          updated_at: "2026-09-14T10:00:00Z",
+        };
+        replications = [created];
+        return jsonResponse(201, created);
+      },
+      "POST /api/v1/replications/rep_docs/sync": () => new Response(null, { status: 204 }),
+    });
+    await renderApp("/libraries");
+    fireEvent.click(await screen.findByRole("button", { name: "Set up replication" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("radio", { name: /Documents/ }));
+    fireEvent.click(
+      within(within(dialog).getAllByRole("radiogroup")[1]).getByRole("radio", { name: /Backup/ }),
+    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "Start replication" }));
+
+    const table = await screen.findByRole("table", { name: "Library replications" });
+    expect(within(table).getByText("Queued")).toBeDefined();
+    expect(body).toEqual({
+      source_library_id: "lib_docs",
+      destination_library_id: "lib_backup",
+    });
+    fireEvent.click(within(table).getByRole("button", { name: "Sync now" }));
+    expect(await screen.findByText("Sync queued.")).toBeDefined();
+  });
+
   it("tells a user without backends to ask an administrator", async () => {
     stubApi({
       "GET /api/v1/auth/me": () => jsonResponse(200, testUser),
@@ -737,7 +792,7 @@ describe("library setup", () => {
       await within(dialog).findByText("Use a passphrase with 12 or more characters."),
     ).toBeDefined();
     expect(within(dialog).getByText("The passphrases do not match.")).toBeDefined();
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock).toHaveBeenCalledTimes(5);
   });
 
   it("creates an encrypted library that stays unlocked in Files", async () => {
