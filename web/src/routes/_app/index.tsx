@@ -3,6 +3,7 @@ import {
   Delete02Icon,
   Download04Icon,
   File01Icon,
+  FilterIcon,
   Folder01Icon,
   FolderAddIcon,
   LibraryIcon,
@@ -10,6 +11,7 @@ import {
   PencilEdit02Icon,
   Settings01Icon,
   SquareLock02Icon,
+  TagsIcon,
   Upload01Icon,
   ViewIcon,
 } from "@hugeicons/core-free-icons";
@@ -17,6 +19,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import {
   infiniteQueryOptions,
   useInfiniteQuery,
+  useQuery,
   useQueryClient,
   useSuspenseQuery,
 } from "@tanstack/react-query";
@@ -25,7 +28,12 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Fragment, useEffect, useState } from "react";
 import { z } from "zod";
 import { librariesQueryOptions } from "@/api/libraries";
-import { getNodesListQueryKey, nodesList } from "@/api/generated/libraries/libraries";
+import { type DisplayTag, tagsQueryOptions, withDisplayTag } from "@/api/tags";
+import {
+  getNodesListQueryKey,
+  getTagsListQueryKey,
+  nodesList,
+} from "@/api/generated/libraries/libraries";
 import type { Library, Node, NodesPage } from "@/api/generated/model";
 import { CreateFolderDialog, UnlockLibraryDialog } from "@/components/library-dialogs";
 import {
@@ -45,6 +53,14 @@ import {
   RenameFileDialog,
   type FileDialogState,
 } from "@/components/file-dialogs";
+import {
+  FileTagsDialog,
+  ManageTagsDialog,
+  TagBadge,
+  TagsButton,
+  type TaggedFileTarget,
+  type TagFileDialogState,
+} from "@/components/file-tags";
 import { useLibraryKeys } from "@/components/library-keys";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -80,7 +96,11 @@ import {
 import { decryptName, type LibraryKeys } from "@/lib/library-crypto";
 
 export const Route = createFileRoute("/_app/")({
-  validateSearch: z.object({ library: z.string().optional(), folder: z.string().optional() }),
+  validateSearch: z.object({
+    library: z.string().optional(),
+    folder: z.string().optional(),
+    tag: z.string().optional(),
+  }),
   loader: ({ context }) => context.queryClient.ensureQueryData(librariesQueryOptions),
   component: Files,
 });
@@ -134,6 +154,7 @@ function Files() {
           library={library}
           // A folder belongs to the library in the URL. Ignore it for a fallback library.
           folder={search.library === library.id ? search.folder : undefined}
+          tag={search.library === library.id ? search.tag : undefined}
           onUnlock={() => setUnlocking({ open: true, library })}
         />
       ) : (
@@ -225,31 +246,76 @@ function LibrarySwitcher({
   );
 }
 
+function TagFilter({
+  library,
+  folder,
+  tags,
+  selected,
+  onOpen,
+}: {
+  library: Library;
+  folder?: string;
+  tags: DisplayTag[];
+  selected?: string;
+  onOpen: () => void;
+}) {
+  const navigate = useNavigate();
+  const selectedTag = tags.find((tag) => tag.id === selected);
+  return (
+    <DropdownMenu onOpenChange={(open) => open && onOpen()}>
+      <DropdownMenuTrigger render={<Button variant="outline" aria-label="Filter files by tag" />}>
+        <HugeiconsIcon icon={FilterIcon} strokeWidth={2} data-icon="inline-start" />
+        {selectedTag ? (selectedTag.displayName ?? "Encrypted tag") : "All tags"}
+        <HugeiconsIcon icon={ArrowDown01Icon} strokeWidth={2} data-icon="inline-end" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-auto min-w-44">
+        <DropdownMenuRadioGroup
+          value={selected ?? "all"}
+          onValueChange={(value) =>
+            void navigate({
+              to: "/",
+              search: { library: library.id, folder, tag: value === "all" ? undefined : value },
+            })
+          }
+        >
+          <DropdownMenuRadioItem value="all">All tags</DropdownMenuRadioItem>
+          {tags.map((tag) => (
+            <DropdownMenuRadioItem key={tag.id} value={tag.id}>
+              <TagBadge tag={tag} />
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 // A missing name means that the name cannot be decrypted.
 type LibraryNode = Node & { displayName?: string };
 type LibraryNodesPage = Omit<NodesPage, "items"> & { items: LibraryNode[] };
 
 async function withDisplayName(node: Node, keys?: LibraryKeys): Promise<LibraryNode> {
+  const tags = await Promise.all(node.tags.map((tag) => withDisplayTag(tag, keys)));
   if (!node.encrypted_name) {
-    return { ...node, displayName: node.name };
+    return { ...node, tags, displayName: node.name };
   }
   if (!keys) {
-    return node;
+    return { ...node, tags };
   }
   try {
-    return { ...node, displayName: await decryptName(keys, node.encrypted_name) };
+    return { ...node, tags, displayName: await decryptName(keys, node.encrypted_name) };
   } catch {
-    return node;
+    return { ...node, tags };
   }
 }
 
-function nodesQueryOptions(library: Library, folder?: string, keys?: LibraryKeys) {
+function nodesQueryOptions(library: Library, folder?: string, tag?: string, keys?: LibraryKeys) {
   return infiniteQueryOptions({
-    queryKey: getNodesListQueryKey(library.id, { parent_id: folder }),
+    queryKey: getNodesListQueryKey(library.id, { parent_id: folder, tag }),
     queryFn: async ({ pageParam, signal }): Promise<LibraryNodesPage> => {
       const page = await nodesList(
         library.id,
-        { parent_id: folder, cursor: pageParam },
+        { parent_id: folder, cursor: pageParam, tag },
         { signal },
       );
       const items = await Promise.all(page.items.map((node) => withDisplayName(node, keys)));
@@ -290,12 +356,15 @@ const crumbLinkClass = "text-muted-foreground hover:text-foreground";
 function FileBrowser({
   library,
   folder,
+  tag,
   onUnlock,
 }: {
   library: Library;
   folder?: string;
+  tag?: string;
   onUnlock: () => void;
 }) {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const libraryKeys = useLibraryKeys();
   const keys = libraryKeys.keys(library.id);
@@ -305,6 +374,11 @@ function FileBrowser({
   const [previewing, setPreviewing] = useState<PreviewState>({ open: false });
   const [renaming, setRenaming] = useState<FileDialogState>({ open: false });
   const [deleting, setDeleting] = useState<FileDialogState>({ open: false });
+  const [tagging, setTagging] = useState<TagFileDialogState>({ open: false });
+  const [managingTags, setManagingTags] = useState(false);
+  const [tagFilterOpened, setTagFilterOpened] = useState(false);
+  const tagQuery = useQuery(tagsQueryOptions(library, keys, tagFilterOpened || tag !== undefined));
+  const tags = tagQuery.data ?? [];
   const downloads = useFileDownload(keys);
   const uploads = useFileUploads({
     library,
@@ -312,10 +386,17 @@ function FileBrowser({
     keys,
   });
 
+  useEffect(() => {
+    if (tag && tagQuery.isSuccess && !tags.some((item) => item.id === tag)) {
+      void navigate({ to: "/", search: { library: library.id, folder } });
+    }
+  }, [folder, library.id, navigate, tag, tagQuery.isSuccess, tags]);
+
   const lock = () => {
     setPreviewing((state) => ({ ...state, open: false }));
     libraryKeys.lock(library.id);
     queryClient.removeQueries({ queryKey: getNodesListQueryKey(library.id) });
+    queryClient.removeQueries({ queryKey: getTagsListQueryKey(library.id) });
   };
 
   return (
@@ -325,7 +406,7 @@ function FileBrowser({
           <ol className="flex flex-wrap items-center gap-1.5 text-sm">
             <li>
               {path.length > 0 ? (
-                <Link to="/" search={{ library: library.id }} className={crumbLinkClass}>
+                <Link to="/" search={{ library: library.id, tag }} className={crumbLinkClass}>
                   {library.name}
                 </Link>
               ) : (
@@ -347,7 +428,7 @@ function FileBrowser({
                   ) : (
                     <Link
                       to="/"
-                      search={{ library: library.id, folder: crumb.id }}
+                      search={{ library: library.id, folder: crumb.id, tag }}
                       className={crumbLinkClass}
                     >
                       {crumb.name ?? "…"}
@@ -366,6 +447,14 @@ function FileBrowser({
                 Lock
               </Button>
             )}
+            <TagFilter
+              library={library}
+              folder={folder}
+              tags={tags}
+              selected={tag}
+              onOpen={() => setTagFilterOpened(true)}
+            />
+            <TagsButton onClick={() => setManagingTags(true)} />
             <Button variant="outline" onClick={uploads.choose}>
               <HugeiconsIcon icon={Upload01Icon} strokeWidth={2} data-icon="inline-start" />
               Upload files
@@ -399,10 +488,12 @@ function FileBrowser({
           <FolderContents
             library={library}
             folder={folder}
+            tag={tag}
             keys={keys}
             onPreview={(file) => setPreviewing({ open: true, file })}
             onDownload={(file) => void downloads.download(file)}
             onRename={(file) => setRenaming({ open: true, file })}
+            onTags={(file) => setTagging({ open: true, file })}
             onDelete={(file) => setDeleting({ open: true, file })}
           />
         </div>
@@ -439,6 +530,18 @@ function FileBrowser({
         onOpenChange={(open) => setDeleting((state) => ({ ...state, open }))}
         library={library}
       />
+      <FileTagsDialog
+        state={tagging}
+        onOpenChange={(open) => setTagging((state) => ({ ...state, open }))}
+        library={library}
+        keys={keys}
+      />
+      <ManageTagsDialog
+        open={managingTags}
+        onOpenChange={setManagingTags}
+        library={library}
+        keys={keys}
+      />
     </>
   );
 }
@@ -448,21 +551,25 @@ const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", tim
 function FolderContents({
   library,
   folder,
+  tag,
   keys,
   onPreview,
   onDownload,
   onRename,
+  onTags,
   onDelete,
 }: {
   library: Library;
   folder?: string;
+  tag?: string;
   keys?: LibraryKeys;
   onPreview: (file: FileTarget) => void;
   onDownload: (file: FileTarget) => void;
   onRename: (file: FileTarget) => void;
+  onTags: (file: TaggedFileTarget) => void;
   onDelete: (file: FileTarget) => void;
 }) {
-  const nodes = useInfiniteQuery(nodesQueryOptions(library, folder, keys));
+  const nodes = useInfiniteQuery(nodesQueryOptions(library, folder, tag, keys));
 
   if (nodes.isPending) {
     return (
@@ -484,8 +591,12 @@ function FolderContents({
           <EmptyMedia variant="icon">
             <HugeiconsIcon icon={Folder01Icon} strokeWidth={2} />
           </EmptyMedia>
-          <EmptyTitle>This folder is empty</EmptyTitle>
-          <EmptyDescription>Upload files or create a folder to get started.</EmptyDescription>
+          <EmptyTitle>{tag ? "No files have this tag" : "This folder is empty"}</EmptyTitle>
+          <EmptyDescription>
+            {tag
+              ? "Clear the filter or add this tag to a file."
+              : "Upload files or create a folder to get started."}
+          </EmptyDescription>
         </EmptyHeader>
       </Empty>
     );
@@ -498,6 +609,7 @@ function FolderContents({
           <TableHeader>
             <TableRow>
               <TableHead className="pl-4">Name</TableHead>
+              <TableHead className="w-52">Tags</TableHead>
               <TableHead className="w-48">Modified</TableHead>
               <TableHead className="w-12 pr-2">
                 <span className="sr-only">Actions</span>
@@ -508,7 +620,14 @@ function FolderContents({
             {items.map((node) => (
               <TableRow key={node.id}>
                 <TableCell className="max-w-0 pl-4">
-                  <NodeName library={library} node={node} onPreview={onPreview} />
+                  <NodeName library={library} node={node} tag={tag} onPreview={onPreview} />
+                </TableCell>
+                <TableCell>
+                  <div className="flex max-w-52 flex-wrap gap-1">
+                    {node.tags.map((tag) => (
+                      <TagBadge key={tag.id} tag={tag} />
+                    ))}
+                  </div>
                 </TableCell>
                 <TableCell className="text-muted-foreground">
                   <time dateTime={node.updated_at}>
@@ -518,10 +637,16 @@ function FolderContents({
                 <TableCell className="pr-2 text-right">
                   {node.kind === "file" && node.displayName !== undefined && (
                     <FileActions
-                      file={{ id: node.id, name: node.displayName, parentId: node.parent_id }}
+                      file={{
+                        id: node.id,
+                        name: node.displayName,
+                        parentId: node.parent_id,
+                        tags: node.tags,
+                      }}
                       onPreview={onPreview}
                       onDownload={onDownload}
                       onRename={onRename}
+                      onTags={onTags}
                       onDelete={onDelete}
                     />
                   )}
@@ -547,10 +672,12 @@ function FolderContents({
 function NodeName({
   library,
   node,
+  tag,
   onPreview,
 }: {
   library: Library;
   node: LibraryNode;
+  tag?: string;
   onPreview: (file: FileTarget) => void;
 }) {
   const label = node.displayName ?? (
@@ -585,7 +712,7 @@ function NodeName({
   return (
     <Link
       to="/"
-      search={{ library: library.id, folder: node.id }}
+      search={{ library: library.id, folder: node.id, tag }}
       className="flex items-center gap-2 font-medium hover:underline"
     >
       {content}
@@ -598,12 +725,14 @@ function FileActions({
   onPreview,
   onDownload,
   onRename,
+  onTags,
   onDelete,
 }: {
-  file: FileTarget;
+  file: TaggedFileTarget;
   onPreview: (file: FileTarget) => void;
   onDownload: (file: FileTarget) => void;
   onRename: (file: FileTarget) => void;
+  onTags: (file: TaggedFileTarget) => void;
   onDelete: (file: FileTarget) => void;
 }) {
   return (
@@ -625,6 +754,10 @@ function FileActions({
         <DropdownMenuItem onClick={() => onRename(file)}>
           <HugeiconsIcon icon={PencilEdit02Icon} strokeWidth={2} />
           Rename
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => onTags(file)}>
+          <HugeiconsIcon icon={TagsIcon} strokeWidth={2} />
+          Change tags
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem variant="destructive" onClick={() => onDelete(file)}>

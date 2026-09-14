@@ -48,10 +48,13 @@ JOIN libraries l ON l.id = n.library_id
 WHERE n.public_id = $1 AND l.owner_id = $2;
 
 -- name: ListChildNodes :many
-SELECT * FROM nodes
-WHERE library_id = sqlc.arg(library_id) AND parent_id = sqlc.arg(parent_id)
-  AND trashed_at IS NULL AND id > sqlc.arg(after_id)
-ORDER BY id
+SELECT n.* FROM nodes n
+WHERE n.library_id = sqlc.arg(library_id) AND n.parent_id = sqlc.arg(parent_id)
+  AND n.trashed_at IS NULL AND n.id > sqlc.arg(after_id)
+  AND (sqlc.arg(tag_id)::bigint = 0 OR EXISTS (
+      SELECT 1 FROM file_tags ft WHERE ft.node_id = n.id AND ft.tag_id = sqlc.arg(tag_id)
+  ))
+ORDER BY n.id
 LIMIT sqlc.arg(page_limit);
 
 -- name: ListEnabledStorageBackends :many

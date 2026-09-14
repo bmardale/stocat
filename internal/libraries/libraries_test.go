@@ -112,6 +112,18 @@ func TestPrivateLibraries(t *testing.T) {
 	if encrypted.EncryptionMode != EncryptionE2EE || string(encrypted.KeyEnvelope) != "wrapped-key" {
 		t.Fatalf("encrypted library = %+v", encrypted)
 	}
+	requireLibraryStatus(t, env.api.PostCtx(ctx, "/api/v1/libraries/"+encrypted.ID+"/tags", owner,
+		map[string]any{"name": "Private", "color": "#123456"}), http.StatusUnprocessableEntity)
+	response = env.api.PostCtx(ctx, "/api/v1/libraries/"+encrypted.ID+"/tags", owner, map[string]any{
+		"encrypted_name": []byte("encrypted tag"), "name_token": make([]byte, 32),
+		"encrypted_color": []byte("encrypted color"),
+	})
+	requireLibraryStatus(t, response, http.StatusCreated)
+	encryptedTag := decodeLibrary[Tag](t, response)
+	if encryptedTag.Name != "" || encryptedTag.Color != "" || string(encryptedTag.EncryptedName) != "encrypted tag" ||
+		string(encryptedTag.EncryptedColor) != "encrypted color" || encryptedTag.LibraryID != encrypted.ID {
+		t.Fatalf("encrypted tag = %+v", encryptedTag)
+	}
 
 	requireLibraryStatus(t, env.api.GetCtx(ctx, "/api/v1/libraries/"+plain.ID, other), http.StatusNotFound)
 	response = env.api.GetCtx(ctx, "/api/v1/libraries", other)

@@ -41,6 +41,8 @@ const (
 	Passkey = "pky"
 	// Replication is the prefix of replication identifiers.
 	Replication = "rep"
+	// Tag is the prefix of tag identifiers.
+	Tag = "tag"
 )
 
 const separator = "_"

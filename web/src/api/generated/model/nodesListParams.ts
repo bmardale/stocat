@@ -19,4 +19,8 @@ export type NodesListParams = {
    * @maximum 200
    */
   limit?: number;
+  /**
+   * @maxLength 64
+   */
+  tag?: string;
 };

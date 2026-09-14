@@ -801,3 +801,171 @@ export const useFilesRestore = <TError = ErrorType<Problem>, TContext = unknown>
 > => {
   return useMutation(getFilesRestoreMutationOptions(options), queryClient);
 };
+export const getFilesTagsRemoveUrl = (id: string, tagId: string) => {
+  return `/api/v1/files/${id}/tags/${tagId}`;
+};
+
+/**
+ * @summary Remove a tag from a file
+ */
+export const filesTagsRemove = async (
+  id: string,
+  tagId: string,
+  options?: Parameters<typeof apiFetch>[1],
+): Promise<void> => {
+  return apiFetch<void>(getFilesTagsRemoveUrl(id, tagId), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getFilesTagsRemoveMutationKey = () => ["filesTagsRemove"] as const;
+
+export const getFilesTagsRemoveMutationOptions = <
+  TError = ErrorType<Problem>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof filesTagsRemove>>,
+    TError,
+    FilesTagsRemoveMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof apiFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof filesTagsRemove>>,
+  TError,
+  FilesTagsRemoveMutationVariables,
+  TContext
+> => {
+  const mutationKey = getFilesTagsRemoveMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof filesTagsRemove>>,
+    FilesTagsRemoveMutationVariables
+  > = (props) => {
+    const { id, tagId } = props ?? {};
+
+    return filesTagsRemove(id, tagId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type FilesTagsRemoveMutationResult = NonNullable<
+  Awaited<ReturnType<typeof filesTagsRemove>>
+>;
+
+export type FilesTagsRemoveMutationError = ErrorType<Problem>;
+export type FilesTagsRemoveMutationVariables = { id: string; tagId: string };
+
+/**
+ * @summary Remove a tag from a file
+ */
+export const useFilesTagsRemove = <TError = ErrorType<Problem>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof filesTagsRemove>>,
+      TError,
+      FilesTagsRemoveMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof filesTagsRemove>>,
+  TError,
+  FilesTagsRemoveMutationVariables,
+  TContext
+> => {
+  return useMutation(getFilesTagsRemoveMutationOptions(options), queryClient);
+};
+export const getFilesTagsAddUrl = (id: string, tagId: string) => {
+  return `/api/v1/files/${id}/tags/${tagId}`;
+};
+
+/**
+ * @summary Add a tag to a file
+ */
+export const filesTagsAdd = async (
+  id: string,
+  tagId: string,
+  options?: Parameters<typeof apiFetch>[1],
+): Promise<void> => {
+  return apiFetch<void>(getFilesTagsAddUrl(id, tagId), {
+    ...options,
+    method: "PUT",
+  });
+};
+
+export const getFilesTagsAddMutationKey = () => ["filesTagsAdd"] as const;
+
+export const getFilesTagsAddMutationOptions = <
+  TError = ErrorType<Problem>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof filesTagsAdd>>,
+    TError,
+    FilesTagsAddMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof apiFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof filesTagsAdd>>,
+  TError,
+  FilesTagsAddMutationVariables,
+  TContext
+> => {
+  const mutationKey = getFilesTagsAddMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof filesTagsAdd>>,
+    FilesTagsAddMutationVariables
+  > = (props) => {
+    const { id, tagId } = props ?? {};
+
+    return filesTagsAdd(id, tagId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type FilesTagsAddMutationResult = NonNullable<Awaited<ReturnType<typeof filesTagsAdd>>>;
+
+export type FilesTagsAddMutationError = ErrorType<Problem>;
+export type FilesTagsAddMutationVariables = { id: string; tagId: string };
+
+/**
+ * @summary Add a tag to a file
+ */
+export const useFilesTagsAdd = <TError = ErrorType<Problem>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof filesTagsAdd>>,
+      TError,
+      FilesTagsAddMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof filesTagsAdd>>,
+  TError,
+  FilesTagsAddMutationVariables,
+  TContext
+> => {
+  return useMutation(getFilesTagsAddMutationOptions(options), queryClient);
+};

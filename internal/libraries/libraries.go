@@ -55,6 +55,7 @@ type Node struct {
 	Revision      int64     `json:"revision"`
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
+	Tags          []Tag     `json:"tags" nullable:"false"`
 }
 
 type Service struct {
@@ -91,6 +92,7 @@ type listNodesInput struct {
 	ParentID  string `query:"parent_id" maxLength:"64"`
 	Cursor    string `query:"cursor" maxLength:"64"`
 	Limit     int32  `query:"limit" minimum:"1" maximum:"200" default:"100"`
+	Tag       string `query:"tag" maxLength:"64"`
 }
 
 type backendsOutput struct {
@@ -142,6 +144,7 @@ func (s *Service) Register(api huma.API) {
 		OperationID: "nodes-list", Method: http.MethodGet, Path: "/{id}/nodes", Summary: "List a folder",
 		Errors: []int{http.StatusNotFound, http.StatusUnprocessableEntity},
 	}, s.listNodes)
+	s.registerTags(group)
 }
 
 func (s *Service) listBackends(ctx context.Context, _ *struct{}) (*backendsOutput, error) {
@@ -316,8 +319,22 @@ func (s *Service) listNodes(ctx context.Context, input *listNodesInput) (*nodesO
 	if limit == 0 {
 		limit = pageSize
 	}
+	tagID := int64(0)
+	if input.Tag != "" {
+		tag, loadErr := s.queries.GetTagByPublicIDAndOwner(ctx, db.GetTagByPublicIDAndOwnerParams{
+			PublicID: input.Tag, OwnerID: user.ID,
+		})
+		if errors.Is(loadErr, pgx.ErrNoRows) || loadErr == nil && tag.LibraryID != library.ID {
+			return nil, huma.Error404NotFound("The tag does not exist.")
+		}
+		if loadErr != nil {
+			return nil, s.internalError(ctx, "get tag for listing", loadErr)
+		}
+		tagID = tag.ID
+	}
 	rows, err := s.queries.ListChildNodes(ctx, db.ListChildNodesParams{
-		LibraryID: library.ID, ParentID: pgtype.Int8{Int64: parentID, Valid: true}, AfterID: afterID, PageLimit: limit + 1,
+		LibraryID: library.ID, ParentID: pgtype.Int8{Int64: parentID, Valid: true}, AfterID: afterID,
+		TagID: tagID, PageLimit: limit + 1,
 	})
 	if err != nil {
 		return nil, s.internalError(ctx, "list folder", err)
@@ -327,8 +344,14 @@ func (s *Service) listNodes(ctx context.Context, input *listNodesInput) (*nodesO
 		output.Body.NextCursor = rows[limit-1].PublicID
 		rows = rows[:limit]
 	}
+	tagsByNode, err := s.tagsForNodes(ctx, rows, library.PublicID)
+	if err != nil {
+		return nil, s.internalError(ctx, "list tags for nodes", err)
+	}
 	for _, row := range rows {
-		output.Body.Items = append(output.Body.Items, NodeFromRow(row, library.PublicID, parentPublicID))
+		node := NodeFromRow(row, library.PublicID, parentPublicID)
+		node.Tags = tagsByNode[row.ID]
+		output.Body.Items = append(output.Body.Items, node)
 	}
 	return output, nil
 }
@@ -388,7 +411,7 @@ func NodeFromRow(row db.Node, libraryID, parentID string) Node {
 	node := Node{
 		ID: row.PublicID, LibraryID: libraryID, ParentID: parentID, Kind: row.Kind,
 		EncryptedName: row.EncryptedName, NameToken: row.NameToken, Revision: row.Revision,
-		CreatedAt: row.CreatedAt.Time, UpdatedAt: row.UpdatedAt.Time,
+		CreatedAt: row.CreatedAt.Time, UpdatedAt: row.UpdatedAt.Time, Tags: []Tag{},
 	}
 	if row.Name.Valid {
 		node.Name = row.Name.String

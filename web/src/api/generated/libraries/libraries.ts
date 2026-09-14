@@ -29,6 +29,8 @@ import type {
   NodesListParams,
   NodesPage,
   Problem,
+  Tag,
+  TagBody,
 } from "../model";
 
 import { apiFetch } from "../../fetcher.ts";
@@ -639,6 +641,422 @@ export function useNodesList<
   return withQueryKey(query, queryOptions.queryKey);
 }
 
+export const getTagsListUrl = (id: string) => {
+  return `/api/v1/libraries/${id}/tags`;
+};
+
+/**
+ * @summary List library tags
+ */
+export const tagsList = async (
+  id: string,
+  options?: Parameters<typeof apiFetch>[1],
+): Promise<Tag[]> => {
+  return apiFetch<Tag[]>(getTagsListUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getTagsListQueryKey = (id: string) => {
+  return [`/api/v1/libraries/${id}/tags`] as const;
+};
+
+export const getTagsListQueryOptions = <
+  TData = Awaited<ReturnType<typeof tagsList>>,
+  TError = ErrorType<Problem>,
+>(
+  id: string,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof tagsList>>, TError, TData>>;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getTagsListQueryKey(id);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof tagsList>>> = ({ signal }) =>
+    tagsList(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: id !== null && id !== undefined,
+    ...queryOptions,
+  } as UseQueryOptions<Awaited<ReturnType<typeof tagsList>>, TError, TData> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+};
+
+export type TagsListQueryResult = NonNullable<Awaited<ReturnType<typeof tagsList>>>;
+export type TagsListQueryError = ErrorType<Problem>;
+
+export function useTagsList<
+  TData = Awaited<ReturnType<typeof tagsList>>,
+  TError = ErrorType<Problem>,
+>(
+  id: string,
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof tagsList>>, TError, TData>> &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof tagsList>>,
+          TError,
+          Awaited<ReturnType<typeof tagsList>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useTagsList<
+  TData = Awaited<ReturnType<typeof tagsList>>,
+  TError = ErrorType<Problem>,
+>(
+  id: string,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof tagsList>>, TError, TData>> &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof tagsList>>,
+          TError,
+          Awaited<ReturnType<typeof tagsList>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useTagsList<
+  TData = Awaited<ReturnType<typeof tagsList>>,
+  TError = ErrorType<Problem>,
+>(
+  id: string,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof tagsList>>, TError, TData>>;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary List library tags
+ */
+
+export function useTagsList<
+  TData = Awaited<ReturnType<typeof tagsList>>,
+  TError = ErrorType<Problem>,
+>(
+  id: string,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof tagsList>>, TError, TData>>;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getTagsListQueryOptions(id, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getTagsCreateUrl = (id: string) => {
+  return `/api/v1/libraries/${id}/tags`;
+};
+
+/**
+ * @summary Create a library tag
+ */
+export const tagsCreate = async (
+  id: string,
+  tagBody: TagBody,
+  options?: Parameters<typeof apiFetch>[1],
+): Promise<Tag> => {
+  const getHeaders = (
+    h?: NonNullable<RequestInit["headers"]>,
+  ): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(
+          h as Iterable<Iterable<string>>,
+          (entry) => Array.from(entry) as [string, string],
+        ),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+  return apiFetch<Tag>(getTagsCreateUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...getHeaders(options?.headers) },
+    body: JSON.stringify(tagBody),
+  });
+};
+
+export const getTagsCreateMutationKey = () => ["tagsCreate"] as const;
+
+export const getTagsCreateMutationOptions = <
+  TError = ErrorType<Problem>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof tagsCreate>>,
+    TError,
+    TagsCreateMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof apiFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof tagsCreate>>,
+  TError,
+  TagsCreateMutationVariables,
+  TContext
+> => {
+  const mutationKey = getTagsCreateMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof tagsCreate>>,
+    TagsCreateMutationVariables
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return tagsCreate(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type TagsCreateMutationResult = NonNullable<Awaited<ReturnType<typeof tagsCreate>>>;
+export type TagsCreateMutationBody = BodyType<TagBody>;
+export type TagsCreateMutationError = ErrorType<Problem>;
+export type TagsCreateMutationVariables = { id: string; data: BodyType<TagBody> };
+
+/**
+ * @summary Create a library tag
+ */
+export const useTagsCreate = <TError = ErrorType<Problem>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof tagsCreate>>,
+      TError,
+      TagsCreateMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof tagsCreate>>,
+  TError,
+  TagsCreateMutationVariables,
+  TContext
+> => {
+  return useMutation(getTagsCreateMutationOptions(options), queryClient);
+};
+export const getTagsDeleteUrl = (id: string, tagId: string) => {
+  return `/api/v1/libraries/${id}/tags/${tagId}`;
+};
+
+/**
+ * @summary Delete a library tag
+ */
+export const tagsDelete = async (
+  id: string,
+  tagId: string,
+  options?: Parameters<typeof apiFetch>[1],
+): Promise<void> => {
+  return apiFetch<void>(getTagsDeleteUrl(id, tagId), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getTagsDeleteMutationKey = () => ["tagsDelete"] as const;
+
+export const getTagsDeleteMutationOptions = <
+  TError = ErrorType<Problem>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof tagsDelete>>,
+    TError,
+    TagsDeleteMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof apiFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof tagsDelete>>,
+  TError,
+  TagsDeleteMutationVariables,
+  TContext
+> => {
+  const mutationKey = getTagsDeleteMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof tagsDelete>>,
+    TagsDeleteMutationVariables
+  > = (props) => {
+    const { id, tagId } = props ?? {};
+
+    return tagsDelete(id, tagId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type TagsDeleteMutationResult = NonNullable<Awaited<ReturnType<typeof tagsDelete>>>;
+
+export type TagsDeleteMutationError = ErrorType<Problem>;
+export type TagsDeleteMutationVariables = { id: string; tagId: string };
+
+/**
+ * @summary Delete a library tag
+ */
+export const useTagsDelete = <TError = ErrorType<Problem>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof tagsDelete>>,
+      TError,
+      TagsDeleteMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof tagsDelete>>,
+  TError,
+  TagsDeleteMutationVariables,
+  TContext
+> => {
+  return useMutation(getTagsDeleteMutationOptions(options), queryClient);
+};
+export const getTagsUpdateUrl = (id: string, tagId: string) => {
+  return `/api/v1/libraries/${id}/tags/${tagId}`;
+};
+
+/**
+ * @summary Change a library tag
+ */
+export const tagsUpdate = async (
+  id: string,
+  tagId: string,
+  tagBody: TagBody,
+  options?: Parameters<typeof apiFetch>[1],
+): Promise<Tag> => {
+  const getHeaders = (
+    h?: NonNullable<RequestInit["headers"]>,
+  ): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(
+          h as Iterable<Iterable<string>>,
+          (entry) => Array.from(entry) as [string, string],
+        ),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+  return apiFetch<Tag>(getTagsUpdateUrl(id, tagId), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...getHeaders(options?.headers) },
+    body: JSON.stringify(tagBody),
+  });
+};
+
+export const getTagsUpdateMutationKey = () => ["tagsUpdate"] as const;
+
+export const getTagsUpdateMutationOptions = <
+  TError = ErrorType<Problem>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof tagsUpdate>>,
+    TError,
+    TagsUpdateMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof apiFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof tagsUpdate>>,
+  TError,
+  TagsUpdateMutationVariables,
+  TContext
+> => {
+  const mutationKey = getTagsUpdateMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof tagsUpdate>>,
+    TagsUpdateMutationVariables
+  > = (props) => {
+    const { id, tagId, data } = props ?? {};
+
+    return tagsUpdate(id, tagId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type TagsUpdateMutationResult = NonNullable<Awaited<ReturnType<typeof tagsUpdate>>>;
+export type TagsUpdateMutationBody = BodyType<TagBody>;
+export type TagsUpdateMutationError = ErrorType<Problem>;
+export type TagsUpdateMutationVariables = { id: string; tagId: string; data: BodyType<TagBody> };
+
+/**
+ * @summary Change a library tag
+ */
+export const useTagsUpdate = <TError = ErrorType<Problem>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof tagsUpdate>>,
+      TError,
+      TagsUpdateMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof tagsUpdate>>,
+  TError,
+  TagsUpdateMutationVariables,
+  TContext
+> => {
+  return useMutation(getTagsUpdateMutationOptions(options), queryClient);
+};
 export const getLibraryBackendsListUrl = () => {
   return `/api/v1/storage-backends`;
 };

@@ -54,6 +54,8 @@ export * from "./replicationState.ts";
 export * from "./s3Config.ts";
 export * from "./s3Input.ts";
 export * from "./session.ts";
+export * from "./tag.ts";
+export * from "./tagBody.ts";
 export * from "./trashedFile.ts";
 export * from "./trashedFileEncryptionMode.ts";
 export * from "./trashPage.ts";

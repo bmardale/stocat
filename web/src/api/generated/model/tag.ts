@@ -4,19 +4,16 @@
  * stocat
  * OpenAPI spec version: 0.0.1
  */
-import type { NodeKind } from "./nodeKind.ts";
-import type { Tag } from "./tag.ts";
 
-export interface Node {
+export interface Tag {
+  /** @pattern ^#[0-9A-F]{6}$ */
+  color?: string;
   created_at: string;
+  encrypted_color?: string;
   encrypted_name?: string;
   id: string;
-  kind: NodeKind;
   library_id: string;
   name?: string;
   name_token?: string;
-  parent_id?: string;
-  revision: number;
-  tags: Tag[];
   updated_at: string;
 }

@@ -35,6 +35,13 @@ type BlobLocation struct {
 	UpdatedAt  pgtype.Timestamptz
 }
 
+type FileTag struct {
+	NodeID    int64
+	TagID     int64
+	LibraryID int64
+	CreatedAt pgtype.Timestamptz
+}
+
 type FileVersion struct {
 	ID                    int64
 	PublicID              string
@@ -147,6 +154,19 @@ type StorageBackend struct {
 	Enabled          bool
 	CreatedAt        pgtype.Timestamptz
 	UpdatedAt        pgtype.Timestamptz
+}
+
+type Tag struct {
+	ID             int64
+	PublicID       string
+	LibraryID      int64
+	Name           pgtype.Text
+	EncryptedName  []byte
+	NameToken      []byte
+	Color          pgtype.Text
+	EncryptedColor []byte
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
 }
 
 type UploadSession struct {

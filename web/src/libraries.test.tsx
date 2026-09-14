@@ -6,6 +6,7 @@ import type {
   LibraryBackend,
   Node,
   Replication,
+  Tag,
   User,
 } from "@/api/generated/model";
 import { encryptFile } from "@/lib/file-crypto";
@@ -53,6 +54,7 @@ function folder(id: string, name: string, parent = "nod_root"): Node {
     parent_id: parent,
     kind: "folder",
     name,
+    tags: [],
     revision: 1,
     created_at: "2026-09-11T09:00:00Z",
     updated_at: "2026-09-11T09:00:00Z",
@@ -344,13 +346,32 @@ describe("files", () => {
       name_token: await nameToken(keys, library.root_node_id, "Tax returns"),
     };
     let body: Record<string, string> | undefined;
+    let createdTagBody: Record<string, string> | undefined;
+    let tags: Tag[] = [];
     const fetchMock = stubApi({
       "GET /api/v1/auth/me": () => jsonResponse(200, testUser),
       "GET /api/v1/libraries": () => jsonResponse(200, [documents, library]),
       "GET /api/v1/libraries/lib_private/nodes": () => jsonResponse(200, { items: [secret] }),
+      "GET /api/v1/libraries/lib_private/tags": () => jsonResponse(200, tags),
       "POST /api/v1/libraries/lib_private/folders": (init) => {
         body = JSON.parse(init?.body as string);
         return jsonResponse(201, { ...secret, id: "nod_new", ...body });
+      },
+      "POST /api/v1/libraries/lib_private/tags": (init) => {
+        const parsed: Record<string, string> = JSON.parse(init?.body as string);
+        createdTagBody = parsed;
+        const tag: Tag = {
+          id: "tag_secret",
+          library_id: library.id,
+          color: parsed.color,
+          encrypted_name: parsed.encrypted_name,
+          encrypted_color: parsed.encrypted_color,
+          name_token: parsed.name_token,
+          created_at: "2026-09-11T09:00:00Z",
+          updated_at: "2026-09-11T09:00:00Z",
+        };
+        tags = [tag];
+        return jsonResponse(201, tag);
       },
     });
     await renderApp("/?library=lib_private");
@@ -379,6 +400,21 @@ describe("files", () => {
     expect(fromBase64(body?.name_token ?? "")).toHaveLength(32);
     expect(body?.name_token).toBe(await nameToken(keys, library.root_node_id, "Receipts"));
     expect(body?.encrypted_name).not.toContain("Receipts");
+    await waitFor(() => expect(document.querySelector('[data-slot="dialog-content"]')).toBeNull());
+
+    fireEvent.click(screen.getByRole("button", { name: "Manage tags" }));
+    const tagDialog = await screen.findByRole("dialog", { name: "Manage tags" });
+    fill(tagDialog, "New tag", "Financial");
+    fireEvent.click(within(tagDialog).getByRole("button", { name: "Add" }));
+    await waitFor(() => expect(createdTagBody).toBeDefined());
+    expect(createdTagBody?.name).toBeUndefined();
+    expect(createdTagBody?.name_token).toBe(
+      await nameToken(keys, `tags:${library.id}`, "Financial"),
+    );
+    expect(createdTagBody?.encrypted_name).not.toContain("Financial");
+    expect(createdTagBody?.color).toBeUndefined();
+    expect(createdTagBody?.encrypted_color).not.toContain("#6366F1");
+    fireEvent.click(within(tagDialog).getByRole("button", { name: "Done" }));
     await waitFor(() => expect(document.querySelector('[data-slot="dialog-content"]')).toBeNull());
 
     fireEvent.click(screen.getByRole("button", { name: "Lock" }));

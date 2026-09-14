@@ -125,6 +125,7 @@ func (s *Service) Register(api huma.API) {
 			"206": {Description: "Partial content"},
 		},
 	}, s.content)
+	s.registerTags(group)
 }
 
 func (s *Service) get(ctx context.Context, input *fileInput) (*detailsOutput, error) {

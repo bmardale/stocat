@@ -115,6 +115,53 @@ func TestRenameFile(t *testing.T) {
 	}
 }
 
+func TestFileTags(t *testing.T) {
+	f := newFixture(t)
+	file, _ := f.createFile(t, "tagged.txt", f.storeBlob(t, "blobs/test/tagged", []byte("tagged")))
+	base := "/api/v1/libraries/" + f.library.PublicID
+
+	response := f.api.Post(base+"/tags", f.cookie, map[string]any{"name": "Important", "color": "#ef4444"})
+	requireFileStatus(t, response, http.StatusCreated)
+	var tag libraries.Tag
+	decodeFile(t, response, &tag)
+	if tag.Name != "Important" || tag.Color != "#EF4444" || !id.Valid(id.Tag, tag.ID) {
+		t.Fatalf("tag = %+v", tag)
+	}
+	requireFileStatus(t, f.api.Post(base+"/tags", f.cookie,
+		map[string]any{"name": "important", "color": "#000000"}), http.StatusConflict)
+	requireFileStatus(t, f.api.Post(base+"/tags", f.cookie,
+		map[string]any{"name": "Invalid", "color": "red"}), http.StatusUnprocessableEntity)
+
+	requireFileStatus(t, f.api.Put("/api/v1/files/"+file.PublicID+"/tags/"+tag.ID, f.cookie), http.StatusNoContent)
+	response = f.api.Get(base+"/nodes?tag="+tag.ID, f.cookie)
+	requireFileStatus(t, response, http.StatusOK)
+	var page struct {
+		Items []libraries.Node `json:"items"`
+	}
+	decodeFile(t, response, &page)
+	if len(page.Items) != 1 || page.Items[0].ID != file.PublicID || len(page.Items[0].Tags) != 1 || page.Items[0].Tags[0].ID != tag.ID {
+		t.Fatalf("tagged files = %+v", page.Items)
+	}
+
+	response = f.api.Patch(base+"/tags/"+tag.ID, f.cookie,
+		map[string]any{"name": "Reviewed", "color": "#22C55E"})
+	requireFileStatus(t, response, http.StatusOK)
+	decodeFile(t, response, &tag)
+	if tag.Name != "Reviewed" || tag.Color != "#22C55E" {
+		t.Fatalf("updated tag = %+v", tag)
+	}
+
+	requireFileStatus(t, f.api.Delete("/api/v1/files/"+file.PublicID+"/tags/"+tag.ID, f.cookie), http.StatusNoContent)
+	response = f.api.Get(base+"/nodes?tag="+tag.ID, f.cookie)
+	requireFileStatus(t, response, http.StatusOK)
+	decodeFile(t, response, &page)
+	if len(page.Items) != 0 {
+		t.Fatalf("files after tag removal = %+v", page.Items)
+	}
+	requireFileStatus(t, f.api.Delete(base+"/tags/"+tag.ID, f.cookie), http.StatusNoContent)
+	requireFileStatus(t, f.api.Get(base+"/nodes?tag="+tag.ID, f.cookie), http.StatusNotFound)
+}
+
 func TestDeleteFile(t *testing.T) {
 	f := newFixture(t)
 	const sharedKey = "blobs/test/shared"

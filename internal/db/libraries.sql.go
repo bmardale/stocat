@@ -257,17 +257,21 @@ func (q *Queries) GetNodeByPublicIDAndOwner(ctx context.Context, arg GetNodeByPu
 }
 
 const listChildNodes = `-- name: ListChildNodes :many
-SELECT id, public_id, library_id, parent_id, kind, name, encrypted_name, name_token, current_version_id, revision, trashed_at, created_at, updated_at FROM nodes
-WHERE library_id = $1 AND parent_id = $2
-  AND trashed_at IS NULL AND id > $3
-ORDER BY id
-LIMIT $4
+SELECT n.id, n.public_id, n.library_id, n.parent_id, n.kind, n.name, n.encrypted_name, n.name_token, n.current_version_id, n.revision, n.trashed_at, n.created_at, n.updated_at FROM nodes n
+WHERE n.library_id = $1 AND n.parent_id = $2
+  AND n.trashed_at IS NULL AND n.id > $3
+  AND ($4::bigint = 0 OR EXISTS (
+      SELECT 1 FROM file_tags ft WHERE ft.node_id = n.id AND ft.tag_id = $4
+  ))
+ORDER BY n.id
+LIMIT $5
 `
 
 type ListChildNodesParams struct {
 	LibraryID int64
 	ParentID  pgtype.Int8
 	AfterID   int64
+	TagID     int64
 	PageLimit int32
 }
 
@@ -276,6 +280,7 @@ func (q *Queries) ListChildNodes(ctx context.Context, arg ListChildNodesParams) 
 		arg.LibraryID,
 		arg.ParentID,
 		arg.AfterID,
+		arg.TagID,
 		arg.PageLimit,
 	)
 	if err != nil {
