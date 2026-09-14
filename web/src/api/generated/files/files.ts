@@ -24,6 +24,7 @@ import type {
   FileDetails,
   FilesContentParams,
   FilesTrashListParams,
+  MoveInputBody,
   Node,
   Problem,
   RenameInputBody,
@@ -635,6 +636,110 @@ export function useFilesContent<
   return withQueryKey(query, queryOptions.queryKey);
 }
 
+export const getFilesMoveUrl = (id: string) => {
+  return `/api/v1/files/${id}/move`;
+};
+
+/**
+ * @summary Move a file
+ */
+export const filesMove = async (
+  id: string,
+  moveInputBody: MoveInputBody,
+  options?: Parameters<typeof apiFetch>[1],
+): Promise<Node> => {
+  const getHeaders = (
+    h?: NonNullable<RequestInit["headers"]>,
+  ): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(
+          h as Iterable<Iterable<string>>,
+          (entry) => Array.from(entry) as [string, string],
+        ),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+  return apiFetch<Node>(getFilesMoveUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...getHeaders(options?.headers) },
+    body: JSON.stringify(moveInputBody),
+  });
+};
+
+export const getFilesMoveMutationKey = () => ["filesMove"] as const;
+
+export const getFilesMoveMutationOptions = <
+  TError = ErrorType<Problem>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof filesMove>>,
+    TError,
+    FilesMoveMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof apiFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof filesMove>>,
+  TError,
+  FilesMoveMutationVariables,
+  TContext
+> => {
+  const mutationKey = getFilesMoveMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof filesMove>>,
+    FilesMoveMutationVariables
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return filesMove(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type FilesMoveMutationResult = NonNullable<Awaited<ReturnType<typeof filesMove>>>;
+export type FilesMoveMutationBody = BodyType<MoveInputBody>;
+export type FilesMoveMutationError = ErrorType<Problem>;
+export type FilesMoveMutationVariables = { id: string; data: BodyType<MoveInputBody> };
+
+/**
+ * @summary Move a file
+ */
+export const useFilesMove = <TError = ErrorType<Problem>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof filesMove>>,
+      TError,
+      FilesMoveMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof filesMove>>,
+  TError,
+  FilesMoveMutationVariables,
+  TContext
+> => {
+  return useMutation(getFilesMoveMutationOptions(options), queryClient);
+};
 export const getFilesDeletePermanentlyUrl = (id: string) => {
   return `/api/v1/files/${id}/permanent`;
 };

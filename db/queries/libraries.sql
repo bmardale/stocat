@@ -41,6 +41,23 @@ WHERE l.public_id = $1 AND l.owner_id = $2;
 -- name: GetEnabledBackendByPublicID :one
 SELECT * FROM storage_backends WHERE public_id = $1 AND enabled = true;
 
+-- name: RenameLibrary :one
+UPDATE libraries
+SET name = $3, updated_at = now()
+WHERE public_id = $1 AND owner_id = $2
+RETURNING *;
+
+-- name: DeleteEmptyLibrary :execrows
+WITH candidate AS (
+    SELECT l.id
+    FROM libraries l
+    WHERE l.public_id = $1 AND l.owner_id = $2
+      AND NOT EXISTS (SELECT 1 FROM nodes n WHERE n.library_id = l.id AND n.kind = 'file')
+), removed_uploads AS (
+    DELETE FROM upload_sessions WHERE library_id IN (SELECT id FROM candidate)
+)
+DELETE FROM libraries WHERE id IN (SELECT id FROM candidate);
+
 -- name: GetNodeByPublicIDAndOwner :one
 SELECT n.*
 FROM nodes n

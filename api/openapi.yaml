@@ -99,10 +99,13 @@ components:
             - passkey.renamed
             - passkey.deleted
             - library.created
+            - library.renamed
+            - library.deleted
             - folder.created
             - file.uploaded
             - file.replaced
             - file.renamed
+            - file.moved
             - file.trashed
             - file.restored
             - file.deleted
@@ -546,6 +549,19 @@ components:
         - email
         - password
       type: object
+    MoveInputBody:
+      additionalProperties: false
+      properties:
+        library_id:
+          maxLength: 64
+          minLength: 1
+          type: string
+        parent_id:
+          maxLength: 64
+          type: string
+      required:
+        - library_id
+      type: object
     Node:
       additionalProperties: false
       properties:
@@ -747,6 +763,16 @@ components:
         name_token:
           contentEncoding: base64
           type: string
+      type: object
+    RenameLibraryInputBody:
+      additionalProperties: false
+      properties:
+        name:
+          maxLength: 100
+          minLength: 1
+          type: string
+      required:
+        - name
       type: object
     RenamePasskeyInputBody:
       additionalProperties: false
@@ -3106,6 +3132,76 @@ paths:
       summary: Stream file content
       tags:
         - Files
+  /api/v1/files/{id}/move:
+    post:
+      operationId: files-move
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MoveInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Node"
+          description: OK
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Conflict
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+      security:
+        - session: []
+      summary: Move a file
+      tags:
+        - Files
   /api/v1/files/{id}/permanent:
     delete:
       operationId: files-delete-permanently
@@ -3465,6 +3561,65 @@ paths:
       tags:
         - Libraries
   /api/v1/libraries/{id}:
+    delete:
+      operationId: libraries-delete
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      responses:
+        "204":
+          description: No Content
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Conflict
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+      security:
+        - session: []
+      summary: Delete an empty private library
+      tags:
+        - Libraries
     get:
       operationId: libraries-get
       parameters:
@@ -3520,6 +3675,75 @@ paths:
       security:
         - session: []
       summary: Get a private library
+      tags:
+        - Libraries
+    patch:
+      operationId: libraries-rename
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            maxLength: 64
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RenameLibraryInputBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Library"
+          description: OK
+        "401":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "404":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Conflict
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+          headers:
+            Retry-After:
+              description: Seconds before the next attempt.
+              schema:
+                minimum: 1
+                type: integer
+        "500":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+      security:
+        - session: []
+      summary: Rename a private library
       tags:
         - Libraries
   /api/v1/libraries/{id}/folders:

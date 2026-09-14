@@ -78,6 +78,13 @@ type libraryInput struct {
 	ID string `path:"id" maxLength:"64"`
 }
 
+type renameLibraryInput struct {
+	ID   string `path:"id" maxLength:"64"`
+	Body struct {
+		Name string `json:"name" minLength:"1" maxLength:"100"`
+	}
+}
+
 type folderInput struct {
 	LibraryID string `path:"id" maxLength:"64"`
 	Body      struct {
@@ -136,6 +143,14 @@ func (s *Service) Register(api huma.API) {
 		OperationID: "libraries-get", Method: http.MethodGet, Path: "/{id}", Summary: "Get a private library",
 		Errors: []int{http.StatusNotFound},
 	}, s.get)
+	huma.Register(group, huma.Operation{
+		OperationID: "libraries-rename", Method: http.MethodPatch, Path: "/{id}", Summary: "Rename a private library",
+		MaxBodyBytes: 65536, Errors: []int{http.StatusConflict, http.StatusNotFound, http.StatusUnprocessableEntity},
+	}, s.rename)
+	huma.Register(group, huma.Operation{
+		OperationID: "libraries-delete", Method: http.MethodDelete, Path: "/{id}", Summary: "Delete an empty private library",
+		DefaultStatus: http.StatusNoContent, Errors: []int{http.StatusConflict, http.StatusNotFound},
+	}, s.remove)
 	huma.Register(group, huma.Operation{
 		OperationID: "folders-create", Method: http.MethodPost, Path: "/{id}/folders", Summary: "Create a folder",
 		DefaultStatus: http.StatusCreated, MaxBodyBytes: 65536,
@@ -238,6 +253,80 @@ func (s *Service) create(ctx context.Context, input *createLibraryInput) (*libra
 		return nil, s.internalError(ctx, "create library", err)
 	}
 	return s.get(ctx, &libraryInput{ID: publicID})
+}
+
+func (s *Service) rename(ctx context.Context, input *renameLibraryInput) (*libraryOutput, error) {
+	user, _ := auth.UserFromContext(ctx)
+	name := strings.TrimSpace(input.Body.Name)
+	if name == "" {
+		return nil, huma.Error422UnprocessableEntity("Enter a library name.")
+	}
+	if err := replication.EnsureLibraryWritable(ctx, s.queries, input.ID, user.ID); err != nil {
+		return nil, err
+	}
+	err := db.InTx(ctx, s.pool, func(queries *db.Queries) error {
+		library, err := queries.GetLibraryByPublicIDAndOwner(ctx, db.GetLibraryByPublicIDAndOwnerParams{
+			PublicID: input.ID, OwnerID: user.ID,
+		})
+		if err != nil {
+			return err
+		}
+		if _, err = queries.RenameLibrary(ctx, db.RenameLibraryParams{
+			PublicID: input.ID, OwnerID: user.ID, Name: name,
+		}); err != nil {
+			return err
+		}
+		return audit.Record(ctx, queries, audit.Event{
+			Action: audit.LibraryRenamed, ActorID: user.ID, TargetID: input.ID,
+			Details: audit.Details{Name: name, PreviousName: library.Name},
+		})
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, libraryNotFound()
+	}
+	if isConstraint(err, "libraries_owner_id_name_key") {
+		return nil, huma.Error409Conflict("A library with this name already exists.")
+	}
+	if err != nil {
+		return nil, s.internalError(ctx, "rename library", err)
+	}
+	return s.get(ctx, &libraryInput{ID: input.ID})
+}
+
+func (s *Service) remove(ctx context.Context, input *libraryInput) (*struct{}, error) {
+	user, _ := auth.UserFromContext(ctx)
+	if err := replication.EnsureLibraryWritable(ctx, s.queries, input.ID, user.ID); err != nil {
+		return nil, err
+	}
+	err := db.InTx(ctx, s.pool, func(queries *db.Queries) error {
+		library, err := queries.GetLibraryByPublicIDAndOwner(ctx, db.GetLibraryByPublicIDAndOwnerParams{
+			PublicID: input.ID, OwnerID: user.ID,
+		})
+		if err != nil {
+			return err
+		}
+		deleted, err := queries.DeleteEmptyLibrary(ctx, db.DeleteEmptyLibraryParams{PublicID: input.ID, OwnerID: user.ID})
+		if err != nil {
+			return err
+		}
+		if deleted == 0 {
+			return errLibraryNotEmpty
+		}
+		return audit.Record(ctx, queries, audit.Event{
+			Action: audit.LibraryDeleted, ActorID: user.ID, TargetID: input.ID,
+			Details: audit.Details{Name: library.Name},
+		})
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, libraryNotFound()
+	}
+	if errors.Is(err, errLibraryNotEmpty) {
+		return nil, huma.Error409Conflict("Delete all files before you delete this library.")
+	}
+	if err != nil {
+		return nil, s.internalError(ctx, "delete library", err)
+	}
+	return nil, nil
 }
 
 func (s *Service) createFolder(ctx context.Context, input *folderInput) (*nodeOutput, error) {
@@ -441,6 +530,8 @@ func NodeFromRow(row db.Node, libraryID, parentID string) Node {
 }
 
 func libraryNotFound() error { return huma.Error404NotFound("The library does not exist.") }
+
+var errLibraryNotEmpty = errors.New("library contains files")
 
 func isConstraint(err error, name string) bool {
 	pgErr, ok := errors.AsType[*pgconn.PgError](err)
