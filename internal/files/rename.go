@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/bmardale/stocat/internal/audit"
 	"github.com/bmardale/stocat/internal/auth"
 	"github.com/bmardale/stocat/internal/db"
 	"github.com/bmardale/stocat/internal/libraries"
@@ -39,8 +40,21 @@ func (s *Service) rename(ctx context.Context, input *renameInput) (*nodeOutput, 
 	if err != nil {
 		return nil, err
 	}
-	row, err := s.queries.RenameFileNode(ctx, db.RenameFileNodeParams{
-		ID: file.ID, Name: name, EncryptedName: encryptedName, NameToken: nameToken,
+	var row db.Node
+	err = db.InTx(ctx, s.pool, func(queries *db.Queries) error {
+		event, err := audit.FileEvent(ctx, queries, audit.FileRenamed, file.ID)
+		if err != nil {
+			return err
+		}
+		row, err = queries.RenameFileNode(ctx, db.RenameFileNodeParams{
+			ID: file.ID, Name: name, EncryptedName: encryptedName, NameToken: nameToken,
+		})
+		if err != nil {
+			return err
+		}
+		event.ActorID = user.ID
+		event.Details.PreviousName, event.Details.Name = event.Details.Name, row.Name.String
+		return audit.Record(ctx, queries, event)
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, fileNotFound()

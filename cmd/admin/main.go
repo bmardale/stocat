@@ -20,6 +20,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/bmardale/stocat/internal/audit"
 	"github.com/bmardale/stocat/internal/db"
 	"github.com/jackc/pgx/v5"
 )
@@ -60,7 +61,19 @@ func run(ctx context.Context, args []string, databaseURL string, stdout io.Write
 
 	grant := args[0] == "grant"
 	email := strings.TrimSpace(args[1])
-	user, err := db.New(pool).SetUserAdminByEmail(ctx, db.SetUserAdminByEmailParams{Email: email, IsAdmin: grant})
+	action := audit.AccountAdminGranted
+	if !grant {
+		action = audit.AccountAdminRevoked
+	}
+	var user db.User
+	err = db.InTx(ctx, pool, func(queries *db.Queries) error {
+		var err error
+		user, err = queries.SetUserAdminByEmail(ctx, db.SetUserAdminByEmailParams{Email: email, IsAdmin: grant})
+		if err != nil {
+			return err
+		}
+		return audit.Record(ctx, queries, audit.Event{Action: action, SubjectID: user.ID, TargetID: user.PublicID})
+	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return fmt.Errorf("no user has the email %q", email)
 	}

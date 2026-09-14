@@ -9,6 +9,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/bmardale/stocat/internal/audit"
 	"github.com/bmardale/stocat/internal/auth"
 	"github.com/bmardale/stocat/internal/db"
 	"github.com/bmardale/stocat/internal/platform/id"
@@ -104,9 +105,17 @@ func (s *Service) createTag(ctx context.Context, input *createTagInput) (*tagOut
 	if err != nil {
 		return nil, err
 	}
-	row, err := s.queries.CreateTag(ctx, db.CreateTagParams{
-		PublicID: id.New(id.Tag), LibraryID: library.ID, Name: name,
-		EncryptedName: encryptedName, NameToken: nameToken, Color: color, EncryptedColor: encryptedColor,
+	var row db.Tag
+	err = db.InTx(ctx, s.pool, func(queries *db.Queries) error {
+		var err error
+		row, err = queries.CreateTag(ctx, db.CreateTagParams{
+			PublicID: id.New(id.Tag), LibraryID: library.ID, Name: name,
+			EncryptedName: encryptedName, NameToken: nameToken, Color: color, EncryptedColor: encryptedColor,
+		})
+		if err != nil {
+			return err
+		}
+		return audit.Record(ctx, queries, tagEvent(ctx, audit.TagCreated, library, row))
 	})
 	if isConstraint(err, "tags_plain_name_key") || isConstraint(err, "tags_encrypted_name_key") {
 		return nil, huma.Error409Conflict("A tag with this name already exists.")
@@ -130,8 +139,20 @@ func (s *Service) updateTag(ctx context.Context, input *updateTagInput) (*tagOut
 	if err != nil {
 		return nil, err
 	}
-	row, err := s.queries.UpdateTag(ctx, db.UpdateTagParams{
-		ID: tag.ID, Name: name, EncryptedName: encryptedName, NameToken: nameToken, Color: color, EncryptedColor: encryptedColor,
+	var row db.Tag
+	err = db.InTx(ctx, s.pool, func(queries *db.Queries) error {
+		var err error
+		row, err = queries.UpdateTag(ctx, db.UpdateTagParams{
+			ID: tag.ID, Name: name, EncryptedName: encryptedName, NameToken: nameToken, Color: color, EncryptedColor: encryptedColor,
+		})
+		if err != nil {
+			return err
+		}
+		event := tagEvent(ctx, audit.TagUpdated, library, row)
+		if tag.Name != row.Name {
+			event.Details.PreviousName = tag.Name.String
+		}
+		return audit.Record(ctx, queries, event)
 	})
 	if isConstraint(err, "tags_plain_name_key") || isConstraint(err, "tags_encrypted_name_key") {
 		return nil, huma.Error409Conflict("A tag with this name already exists.")
@@ -151,10 +172,27 @@ func (s *Service) deleteTag(ctx context.Context, input *tagInput) (*struct{}, er
 	if err != nil {
 		return nil, err
 	}
-	if _, err = s.queries.DeleteTag(ctx, tag.ID); err != nil {
+	err = db.InTx(ctx, s.pool, func(queries *db.Queries) error {
+		if _, err := queries.DeleteTag(ctx, tag.ID); err != nil {
+			return err
+		}
+		return audit.Record(ctx, queries, tagEvent(ctx, audit.TagDeleted, library, tag))
+	})
+	if err != nil {
 		return nil, s.internalError(ctx, "delete tag", err)
 	}
 	return nil, nil
+}
+
+func tagEvent(ctx context.Context, action audit.Action, library db.GetLibraryByPublicIDAndOwnerRow, tag db.Tag) audit.Event {
+	user, _ := auth.UserFromContext(ctx)
+	return audit.Event{
+		Action: action, ActorID: user.ID, TargetID: tag.PublicID,
+		Details: audit.Details{
+			Name: tag.Name.String, Encrypted: library.EncryptionMode == EncryptionE2EE,
+			LibraryID: library.PublicID, LibraryName: library.Name,
+		},
+	}
 }
 
 func (s *Service) ownedLibrary(ctx context.Context, publicID string) (db.GetLibraryByPublicIDAndOwnerRow, error) {

@@ -1,4 +1,5 @@
 import {
+  Audit01Icon,
   DatabaseIcon,
   Folder01Icon,
   LibraryIcon,
@@ -108,6 +109,16 @@ export function AppSidebar() {
                 >
                   <HugeiconsIcon icon={UserAccountIcon} strokeWidth={2} />
                   <span>Users</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  tooltip="Audit log"
+                  isActive={Boolean(matchRoute({ to: "/admin/audit" }))}
+                  render={<Link to="/admin/audit" onClick={() => setOpenMobile(false)} />}
+                >
+                  <HugeiconsIcon icon={Audit01Icon} strokeWidth={2} />
+                  <span>Audit log</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>

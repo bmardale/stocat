@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/bmardale/stocat/internal/audit"
+	"github.com/bmardale/stocat/internal/auth"
 	"github.com/bmardale/stocat/internal/db"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/jackc/pgx/v5"
@@ -203,7 +205,12 @@ func (s *Service) setUserQuota(ctx context.Context, input *updateUserQuotaInput)
 				return errBackendNotFound
 			}
 		}
-		return nil
+		admin, _ := auth.UserFromContext(ctx)
+		details := quotaDetails(input.Body.DefaultQuota)
+		details.BackendQuotaCount = len(overrides)
+		return audit.Record(ctx, queries, audit.Event{
+			Action: audit.UserQuotaUpdated, ActorID: admin.ID, SubjectID: user.ID, TargetID: user.PublicID, Details: details,
+		})
 	})
 	if errors.Is(err, errBackendNotFound) {
 		return nil, huma.Error404NotFound("The storage backend does not exist.")
@@ -236,11 +243,25 @@ func (s *Service) setQuotaSettings(ctx context.Context, input *updateQuotaSettin
 	if err != nil {
 		return nil, err
 	}
-	stored, err := s.queries.UpdateQuotaSettings(ctx, limit)
+	var stored pgtype.Int8
+	err = db.InTx(ctx, s.pool, func(queries *db.Queries) error {
+		var err error
+		if stored, err = queries.UpdateQuotaSettings(ctx, limit); err != nil {
+			return err
+		}
+		admin, _ := auth.UserFromContext(ctx)
+		return audit.Record(ctx, queries, audit.Event{
+			Action: audit.DefaultQuotaUpdated, ActorID: admin.ID, Details: quotaDetails(input.Body.DefaultQuota),
+		})
+	})
 	if err != nil {
 		return nil, s.internalError(ctx, "set quota settings", err)
 	}
 	return &quotaSettingsOutput{Body: QuotaSettings{DefaultQuota: quotaFromLimit(true, stored)}}, nil
+}
+
+func quotaDetails(quota Quota) audit.Details {
+	return audit.Details{QuotaMode: quota.Mode, QuotaLimitBytes: quota.LimitBytes}
 }
 
 func quotaFromLimit(set bool, limit pgtype.Int8) Quota {

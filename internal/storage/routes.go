@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	"github.com/bmardale/stocat/internal/apierr"
+	"github.com/bmardale/stocat/internal/audit"
+	"github.com/bmardale/stocat/internal/auth"
 	"github.com/bmardale/stocat/internal/db"
 	"github.com/bmardale/stocat/internal/platform/crypt"
 	"github.com/bmardale/stocat/internal/platform/id"
@@ -145,9 +147,17 @@ func (s *Service) create(ctx context.Context, input *createBackendInput) (*backe
 	if err != nil {
 		return nil, s.internalError(ctx, "create storage backend", err)
 	}
-	row, err := s.queries.CreateStorageBackend(ctx, db.CreateStorageBackendParams{
-		PublicID: id.New(id.StorageBackend), Name: name, Type: input.Body.Type,
-		Config: config, EncryptedSecrets: s.encrypter.Encrypt(secrets), Enabled: input.Body.Enabled,
+	var row db.StorageBackend
+	err = db.InTx(ctx, s.pool, func(queries *db.Queries) error {
+		var err error
+		row, err = queries.CreateStorageBackend(ctx, db.CreateStorageBackendParams{
+			PublicID: id.New(id.StorageBackend), Name: name, Type: input.Body.Type,
+			Config: config, EncryptedSecrets: s.encrypter.Encrypt(secrets), Enabled: input.Body.Enabled,
+		})
+		if err != nil {
+			return err
+		}
+		return audit.Record(ctx, queries, backendEvent(ctx, audit.StorageBackendCreated, row))
 	})
 	if isNameConflict(err) {
 		return nil, huma.Error409Conflict("A storage backend with this name already exists.")
@@ -188,7 +198,14 @@ func (s *Service) update(ctx context.Context, input *updateBackendInput) (*backe
 			PublicID: input.ID, Name: name, Config: config,
 			EncryptedSecrets: s.encrypter.Encrypt(secrets), Enabled: input.Body.Enabled,
 		})
-		return err
+		if err != nil {
+			return err
+		}
+		event := backendEvent(ctx, audit.StorageBackendUpdated, row)
+		if current.Name != row.Name {
+			event.Details.PreviousName = current.Name
+		}
+		return audit.Record(ctx, queries, event)
 	})
 	if isNameConflict(err) {
 		return nil, huma.Error409Conflict("A storage backend with this name already exists.")
@@ -242,17 +259,39 @@ func (s *Service) decryptCredentials(row db.StorageBackend) (s3Credentials, erro
 }
 
 func (s *Service) delete(ctx context.Context, input *backendInput) (*struct{}, error) {
-	deleted, err := s.queries.DeleteStorageBackend(ctx, input.ID)
+	err := db.InTx(ctx, s.pool, func(queries *db.Queries) error {
+		row, err := queries.GetStorageBackendByPublicID(ctx, input.ID)
+		if err != nil {
+			return err
+		}
+		deleted, err := queries.DeleteStorageBackend(ctx, input.ID)
+		if err != nil {
+			return err
+		}
+		if deleted == 0 {
+			return pgx.ErrNoRows
+		}
+		return audit.Record(ctx, queries, backendEvent(ctx, audit.StorageBackendDeleted, row))
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, notFound()
+	}
 	if isReferenceConflict(err) {
 		return nil, huma.Error409Conflict("The storage backend is in use.")
 	}
 	if err != nil {
 		return nil, s.internalError(ctx, "delete storage backend", err)
 	}
-	if deleted == 0 {
-		return nil, notFound()
-	}
 	return &struct{}{}, nil
+}
+
+func backendEvent(ctx context.Context, action audit.Action, row db.StorageBackend) audit.Event {
+	admin, _ := auth.UserFromContext(ctx)
+	enabled := row.Enabled
+	return audit.Event{
+		Action: action, ActorID: admin.ID, TargetID: row.PublicID,
+		Details: audit.Details{Name: row.Name, BackendType: row.Type, BackendEnabled: &enabled},
+	}
 }
 
 func (s *Service) output(ctx context.Context, row db.StorageBackend) (*backendOutput, error) {

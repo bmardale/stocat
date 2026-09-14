@@ -17,10 +17,12 @@ import { Route as AppSettingsRouteRouteImport } from './routes/_app/settings/rou
 import { Route as AppTrashRouteImport } from './routes/_app/trash'
 import { Route as AuthLoginRouteImport } from './routes/_auth/login'
 import { Route as AuthRegisterRouteImport } from './routes/_auth/register'
+import { Route as AppAdminAuditRouteImport } from './routes/_app/admin/audit'
 import { Route as AppAdminStorageRouteImport } from './routes/_app/admin/storage'
 import { Route as AppAdminUsersRouteImport } from './routes/_app/admin/users'
 import { Route as AppLibrariesIndexRouteImport } from './routes/_app/libraries/index'
 import { Route as AppSettingsIndexRouteImport } from './routes/_app/settings/index'
+import { Route as AppSettingsActivityRouteImport } from './routes/_app/settings/activity'
 import { Route as AppSettingsPasskeysRouteImport } from './routes/_app/settings/passkeys'
 import { Route as AppSettingsSessionsRouteImport } from './routes/_app/settings/sessions'
 
@@ -62,6 +64,11 @@ const AuthRegisterRoute = AuthRegisterRouteImport.update({
   path: '/register',
   getParentRoute: () => AuthRouteRoute,
 } as any)
+const AppAdminAuditRoute = AppAdminAuditRouteImport.update({
+  id: '/audit',
+  path: '/audit',
+  getParentRoute: () => AppAdminRouteRoute,
+} as any)
 const AppAdminStorageRoute = AppAdminStorageRouteImport.update({
   id: '/storage',
   path: '/storage',
@@ -82,6 +89,11 @@ const AppSettingsIndexRoute = AppSettingsIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppSettingsRouteRoute,
 } as any)
+const AppSettingsActivityRoute = AppSettingsActivityRouteImport.update({
+  id: '/activity',
+  path: '/activity',
+  getParentRoute: () => AppSettingsRouteRoute,
+} as any)
 const AppSettingsPasskeysRoute = AppSettingsPasskeysRouteImport.update({
   id: '/passkeys',
   path: '/passkeys',
@@ -100,8 +112,10 @@ export interface FileRoutesByFullPath {
   '/trash': typeof AppTrashRoute
   '/login': typeof AuthLoginRoute
   '/register': typeof AuthRegisterRoute
+  '/admin/audit': typeof AppAdminAuditRoute
   '/admin/storage': typeof AppAdminStorageRoute
   '/admin/users': typeof AppAdminUsersRoute
+  '/settings/activity': typeof AppSettingsActivityRoute
   '/settings/passkeys': typeof AppSettingsPasskeysRoute
   '/settings/sessions': typeof AppSettingsSessionsRoute
   '/libraries/': typeof AppLibrariesIndexRoute
@@ -113,8 +127,10 @@ export interface FileRoutesByTo {
   '/trash': typeof AppTrashRoute
   '/login': typeof AuthLoginRoute
   '/register': typeof AuthRegisterRoute
+  '/admin/audit': typeof AppAdminAuditRoute
   '/admin/storage': typeof AppAdminStorageRoute
   '/admin/users': typeof AppAdminUsersRoute
+  '/settings/activity': typeof AppSettingsActivityRoute
   '/settings/passkeys': typeof AppSettingsPasskeysRoute
   '/settings/sessions': typeof AppSettingsSessionsRoute
   '/libraries': typeof AppLibrariesIndexRoute
@@ -130,8 +146,10 @@ export interface FileRoutesById {
   '/_auth/login': typeof AuthLoginRoute
   '/_auth/register': typeof AuthRegisterRoute
   '/_app/': typeof AppIndexRoute
+  '/_app/admin/audit': typeof AppAdminAuditRoute
   '/_app/admin/storage': typeof AppAdminStorageRoute
   '/_app/admin/users': typeof AppAdminUsersRoute
+  '/_app/settings/activity': typeof AppSettingsActivityRoute
   '/_app/settings/passkeys': typeof AppSettingsPasskeysRoute
   '/_app/settings/sessions': typeof AppSettingsSessionsRoute
   '/_app/libraries/': typeof AppLibrariesIndexRoute
@@ -146,8 +164,10 @@ export interface FileRouteTypes {
     | '/trash'
     | '/login'
     | '/register'
+    | '/admin/audit'
     | '/admin/storage'
     | '/admin/users'
+    | '/settings/activity'
     | '/settings/passkeys'
     | '/settings/sessions'
     | '/libraries/'
@@ -159,8 +179,10 @@ export interface FileRouteTypes {
     | '/trash'
     | '/login'
     | '/register'
+    | '/admin/audit'
     | '/admin/storage'
     | '/admin/users'
+    | '/settings/activity'
     | '/settings/passkeys'
     | '/settings/sessions'
     | '/libraries'
@@ -175,8 +197,10 @@ export interface FileRouteTypes {
     | '/_auth/login'
     | '/_auth/register'
     | '/_app/'
+    | '/_app/admin/audit'
     | '/_app/admin/storage'
     | '/_app/admin/users'
+    | '/_app/settings/activity'
     | '/_app/settings/passkeys'
     | '/_app/settings/sessions'
     | '/_app/libraries/'
@@ -246,6 +270,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthRegisterRouteImport
       parentRoute: typeof AuthRouteRoute
     }
+    '/_app/admin/audit': {
+      id: '/_app/admin/audit'
+      path: '/audit'
+      fullPath: '/admin/audit'
+      preLoaderRoute: typeof AppAdminAuditRouteImport
+      parentRoute: typeof AppAdminRouteRoute
+    }
     '/_app/admin/storage': {
       id: '/_app/admin/storage'
       path: '/storage'
@@ -274,6 +305,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSettingsIndexRouteImport
       parentRoute: typeof AppSettingsRouteRoute
     }
+    '/_app/settings/activity': {
+      id: '/_app/settings/activity'
+      path: '/activity'
+      fullPath: '/settings/activity'
+      preLoaderRoute: typeof AppSettingsActivityRouteImport
+      parentRoute: typeof AppSettingsRouteRoute
+    }
     '/_app/settings/passkeys': {
       id: '/_app/settings/passkeys'
       path: '/passkeys'
@@ -292,11 +330,13 @@ declare module '@tanstack/react-router' {
 }
 
 interface AppAdminRouteRouteChildren {
+  AppAdminAuditRoute: typeof AppAdminAuditRoute
   AppAdminStorageRoute: typeof AppAdminStorageRoute
   AppAdminUsersRoute: typeof AppAdminUsersRoute
 }
 
 const AppAdminRouteRouteChildren: AppAdminRouteRouteChildren = {
+  AppAdminAuditRoute: AppAdminAuditRoute,
   AppAdminStorageRoute: AppAdminStorageRoute,
   AppAdminUsersRoute: AppAdminUsersRoute,
 }
@@ -306,12 +346,14 @@ const AppAdminRouteRouteWithChildren = AppAdminRouteRoute._addFileChildren(
 )
 
 interface AppSettingsRouteRouteChildren {
+  AppSettingsActivityRoute: typeof AppSettingsActivityRoute
   AppSettingsPasskeysRoute: typeof AppSettingsPasskeysRoute
   AppSettingsSessionsRoute: typeof AppSettingsSessionsRoute
   AppSettingsIndexRoute: typeof AppSettingsIndexRoute
 }
 
 const AppSettingsRouteRouteChildren: AppSettingsRouteRouteChildren = {
+  AppSettingsActivityRoute: AppSettingsActivityRoute,
   AppSettingsPasskeysRoute: AppSettingsPasskeysRoute,
   AppSettingsSessionsRoute: AppSettingsSessionsRoute,
   AppSettingsIndexRoute: AppSettingsIndexRoute,

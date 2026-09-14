@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bmardale/stocat/internal/audit"
 	"github.com/bmardale/stocat/internal/db"
 	"github.com/bmardale/stocat/internal/platform/id"
 	"github.com/bmardale/stocat/internal/testutil"
@@ -61,7 +62,25 @@ func TestRun(t *testing.T) {
 		}
 	}
 
-	err := run(t.Context(), []string{"grant", "missing@example.com"}, url, &bytes.Buffer{})
+	user, err := queries.GetUserByEmail(t.Context(), "ada@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, err := queries.ListAuditEvents(t.Context(), db.ListAuditEventsParams{UserID: user.ID, PageLimit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantActions := []audit.Action{audit.AccountAdminRevoked, audit.AccountAdminGranted, audit.AccountAdminGranted}
+	if len(events) != len(wantActions) {
+		t.Fatalf("audit events = %+v, want %v", events, wantActions)
+	}
+	for i, event := range events {
+		if event.Action != string(wantActions[i]) || event.ActorType != "system" || event.SubjectPublicID.String != user.PublicID {
+			t.Errorf("audit event %d = %+v, want %s by the system", i, event, wantActions[i])
+		}
+	}
+
+	err = run(t.Context(), []string{"grant", "missing@example.com"}, url, &bytes.Buffer{})
 	if err == nil || !strings.Contains(err.Error(), `no user has the email "missing@example.com"`) {
 		t.Fatalf("run() for a missing user error = %v", err)
 	}

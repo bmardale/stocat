@@ -9,11 +9,13 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/bmardale/stocat/internal/apierr"
+	"github.com/bmardale/stocat/internal/audit"
 	"github.com/bmardale/stocat/internal/auth"
 	"github.com/bmardale/stocat/internal/db"
 	"github.com/bmardale/stocat/internal/libraries"
@@ -252,6 +254,84 @@ func TestPurgeExpiredTrash(t *testing.T) {
 		t.Fatalf("stored bytes after purge = %d", stored)
 	}
 	f.waitForObjectDeletion(t, objectKey)
+}
+
+func TestFileAuditEvents(t *testing.T) {
+	f := newFixture(t)
+	blob := f.storeBlob(t, "blobs/test/audit", []byte("audit"))
+	file, _ := f.createFile(t, "draft.txt", blob)
+	expired, _ := f.createFile(t, "expired.txt", blob)
+	requireFileStatus(t, f.api.Patch("/api/v1/files/"+file.PublicID, f.cookie, map[string]any{"name": "final.txt"}), http.StatusOK)
+	requireFileStatus(t, f.api.Delete("/api/v1/files/"+file.PublicID, f.cookie), http.StatusNoContent)
+	requireFileStatus(t, f.api.Post("/api/v1/files/"+file.PublicID+"/restore", f.cookie), http.StatusOK)
+	requireFileStatus(t, f.api.Delete("/api/v1/files/"+file.PublicID, f.cookie), http.StatusNoContent)
+	requireFileStatus(t, f.api.Delete("/api/v1/files/"+file.PublicID+"/permanent", f.cookie), http.StatusNoContent)
+	if err := f.queries.SetFileTrashedAt(t.Context(), db.SetFileTrashedAtParams{
+		ID: expired.ID, TrashedAt: pgtype.Timestamptz{Time: time.Now().Add(-31 * 24 * time.Hour), Valid: true},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	worker := purgeTrashWorker{service: &Service{pool: f.pool, queries: f.queries, stores: f.stores, queue: f.queue}}
+	if err := worker.Work(t.Context(), nil); err != nil {
+		t.Fatal(err)
+	}
+
+	secretResponse := f.api.Post("/api/v1/libraries", f.cookie, map[string]any{
+		"name": "Secret", "backend_id": f.backendID, "encryption_mode": libraries.EncryptionE2EE, "key_envelope": []byte("envelope"),
+	})
+	requireFileStatus(t, secretResponse, http.StatusCreated)
+	var secret libraries.Library
+	decodeFile(t, secretResponse, &secret)
+	secretRow, err := f.queries.GetLibraryByPublicIDAndOwner(t.Context(), db.GetLibraryByPublicIDAndOwnerParams{
+		PublicID: secret.ID, OwnerID: f.ownerID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	hidden, err := f.queries.CreateUploadFileNode(t.Context(), db.CreateUploadFileNodeParams{
+		PublicID: id.New(id.Node), LibraryID: secretRow.ID, ParentID: pgtype.Int8{Int64: secretRow.RootNodeID, Valid: true},
+		EncryptedName: []byte("old"), NameToken: bytes.Repeat([]byte{1}, 32),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	requireFileStatus(t, f.api.Patch("/api/v1/files/"+hidden.PublicID, f.cookie, map[string]any{
+		"encrypted_name": []byte("new"), "name_token": bytes.Repeat([]byte{2}, 32),
+	}), http.StatusOK)
+
+	rows, err := f.queries.ListAuditEvents(t.Context(), db.ListAuditEventsParams{UserID: f.ownerID, PageLimit: 100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	type fileEvent struct {
+		action, actorType, target, name, previousName, library string
+		encrypted                                              bool
+	}
+	var got []fileEvent
+	for _, row := range rows {
+		if !strings.HasPrefix(row.Action, "file.") {
+			continue
+		}
+		var details audit.Details
+		if err := json.Unmarshal(row.Details, &details); err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, fileEvent{
+			row.Action, row.ActorType, row.TargetID, details.Name, details.PreviousName, details.LibraryName, details.Encrypted,
+		})
+	}
+	want := []fileEvent{
+		{string(audit.FileRenamed), "user", hidden.PublicID, "", "", "Secret", true},
+		{string(audit.FileDeleted), "system", expired.PublicID, "expired.txt", "", "Documents", false},
+		{string(audit.FileDeleted), "user", file.PublicID, "final.txt", "", "Documents", false},
+		{string(audit.FileTrashed), "user", file.PublicID, "final.txt", "", "Documents", false},
+		{string(audit.FileRestored), "user", file.PublicID, "final.txt", "", "Documents", false},
+		{string(audit.FileTrashed), "user", file.PublicID, "final.txt", "", "Documents", false},
+		{string(audit.FileRenamed), "user", file.PublicID, "final.txt", "draft.txt", "Documents", false},
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("file events = %+v\nwant %+v", got, want)
+	}
 }
 
 func TestPresentation(t *testing.T) {

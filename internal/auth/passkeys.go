@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bmardale/stocat/internal/audit"
 	"github.com/bmardale/stocat/internal/db"
 	"github.com/bmardale/stocat/internal/platform/id"
 	"github.com/danielgtaylor/huma/v2"
@@ -182,8 +183,12 @@ func (s *Service) passkeyLogin(ctx context.Context, input *passkeyLoginInput) (*
 		if updated == 0 {
 			return errInvalidCredentials
 		}
-		output.SetCookie, err = s.createSession(ctx, queries, owner.user.ID)
-		return err
+		if output.SetCookie, err = s.createSession(ctx, queries, owner.user.ID); err != nil {
+			return err
+		}
+		return audit.Record(ctx, queries, audit.Event{
+			Action: audit.AccountSignedIn, ActorID: owner.user.ID, Details: audit.Details{Method: audit.MethodPasskey},
+		})
 	})
 	if errors.Is(err, errInvalidCredentials) {
 		return nil, rejected
@@ -275,7 +280,16 @@ func (s *Service) createPasskey(ctx context.Context, input *createPasskeyInput) 
 	if err != nil {
 		return nil, s.internalError(ctx, "encode passkey", err)
 	}
-	row, err := s.queries.CreatePasskey(ctx, params)
+	var row db.Passkey
+	err = db.InTx(ctx, s.pool, func(queries *db.Queries) error {
+		var err error
+		if row, err = queries.CreatePasskey(ctx, params); err != nil {
+			return err
+		}
+		return audit.Record(ctx, queries, audit.Event{
+			Action: audit.PasskeyAdded, ActorID: current.ID, TargetID: row.PublicID, Details: audit.Details{Name: row.Name},
+		})
+	})
 	if isPasskeyConflict(err) {
 		return nil, huma.Error409Conflict("This passkey is already registered.")
 	}
@@ -291,7 +305,16 @@ func (s *Service) renamePasskey(ctx context.Context, input *renamePasskeyInput) 
 		return nil, huma.Error422UnprocessableEntity("Enter a passkey name.")
 	}
 	user, _ := UserFromContext(ctx)
-	row, err := s.queries.RenamePasskey(ctx, db.RenamePasskeyParams{Name: name, PublicID: input.ID, UserID: user.ID})
+	var row db.Passkey
+	err := db.InTx(ctx, s.pool, func(queries *db.Queries) error {
+		var err error
+		if row, err = queries.RenamePasskey(ctx, db.RenamePasskeyParams{Name: name, PublicID: input.ID, UserID: user.ID}); err != nil {
+			return err
+		}
+		return audit.Record(ctx, queries, audit.Event{
+			Action: audit.PasskeyRenamed, ActorID: user.ID, TargetID: row.PublicID, Details: audit.Details{Name: row.Name},
+		})
+	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, huma.Error404NotFound("The passkey does not exist.")
 	}
@@ -303,12 +326,20 @@ func (s *Service) renamePasskey(ctx context.Context, input *renamePasskeyInput) 
 
 func (s *Service) deletePasskey(ctx context.Context, input *deletePasskeyInput) (*struct{}, error) {
 	user, _ := UserFromContext(ctx)
-	deleted, err := s.queries.DeletePasskey(ctx, db.DeletePasskeyParams{PublicID: input.ID, UserID: user.ID})
+	err := db.InTx(ctx, s.pool, func(queries *db.Queries) error {
+		name, err := queries.DeletePasskey(ctx, db.DeletePasskeyParams{PublicID: input.ID, UserID: user.ID})
+		if err != nil {
+			return err
+		}
+		return audit.Record(ctx, queries, audit.Event{
+			Action: audit.PasskeyDeleted, ActorID: user.ID, TargetID: input.ID, Details: audit.Details{Name: name},
+		})
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, huma.Error404NotFound("The passkey does not exist.")
+	}
 	if err != nil {
 		return nil, s.internalError(ctx, "delete passkey", err)
-	}
-	if deleted == 0 {
-		return nil, huma.Error404NotFound("The passkey does not exist.")
 	}
 	return &struct{}{}, nil
 }
