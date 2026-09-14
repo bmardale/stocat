@@ -51,8 +51,8 @@ export const getActivityListUrl = (params?: ActivityListParams) => {
   const stringifiedParams = normalizedParams.toString();
 
   return stringifiedParams.length > 0
-    ? `/api/v1/activity?${stringifiedParams}`
-    : `/api/v1/activity`;
+    ? `/api/v1/account-events?${stringifiedParams}`
+    : `/api/v1/account-events`;
 };
 
 /**
@@ -69,7 +69,7 @@ export const activityList = async (
 };
 
 export const getActivityListQueryKey = (params?: ActivityListParams) => {
-  return [`/api/v1/activity`, ...(params ? [params] : [])] as const;
+  return [`/api/v1/account-events`, ...(params ? [params] : [])] as const;
 };
 
 export const getActivityListQueryOptions = <

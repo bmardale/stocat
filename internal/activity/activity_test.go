@@ -104,7 +104,7 @@ func TestActivity(t *testing.T) {
 		"default_quota": map[string]any{"mode": admin.ModeUnlimited}, "backend_quotas": []any{},
 	}), http.StatusOK)
 
-	own := env.page(t, "/api/v1/activity", userCookie)
+	own := env.page(t, "/api/v1/account-events", userCookie)
 	requireActions(t, own.Items, audit.UserQuotaUpdated, audit.AccountUpdated, audit.AccountRegistered)
 	quota, updated := own.Items[0], own.Items[1]
 	if quota.Actor == nil || quota.Actor.Name != "Grace" || quota.Actor.Email != "" ||
@@ -116,11 +116,11 @@ func TestActivity(t *testing.T) {
 		t.Errorf("account event = %+v", updated)
 	}
 
-	first := env.page(t, "/api/v1/activity?limit=2", userCookie)
+	first := env.page(t, "/api/v1/account-events?limit=2", userCookie)
 	if len(first.Items) != 2 || first.NextCursor != updated.ID {
 		t.Fatalf("first page = %+v", first)
 	}
-	rest := env.page(t, "/api/v1/activity?limit=2&cursor="+first.NextCursor, userCookie)
+	rest := env.page(t, "/api/v1/account-events?limit=2&cursor="+first.NextCursor, userCookie)
 	requireActions(t, rest.Items, audit.AccountRegistered)
 	if rest.NextCursor != "" {
 		t.Errorf("last page has cursor %q", rest.NextCursor)
@@ -139,8 +139,8 @@ func TestActivity(t *testing.T) {
 		path, cookie string
 		status       int
 	}{
-		{"/api/v1/activity", "", http.StatusUnauthorized},
-		{"/api/v1/activity?cursor=aud_missing", userCookie, http.StatusUnprocessableEntity},
+		{"/api/v1/account-events", "", http.StatusUnauthorized},
+		{"/api/v1/account-events?cursor=aud_missing", userCookie, http.StatusUnprocessableEntity},
 		{"/api/v1/admin/audit-events", userCookie, http.StatusForbidden},
 		{"/api/v1/admin/audit-events?action=file.stolen", adminCookie, http.StatusUnprocessableEntity},
 		{"/api/v1/admin/audit-events?user=usr_missing", adminCookie, http.StatusNotFound},

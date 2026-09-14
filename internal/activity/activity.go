@@ -88,7 +88,7 @@ func New(pool *pgxpool.Pool, logger *slog.Logger) *Service {
 
 func (s *Service) Register(api huma.API) {
 	huma.Register(api, huma.Operation{
-		OperationID: "activity-list", Method: http.MethodGet, Path: "/activity",
+		OperationID: "activity-list", Method: http.MethodGet, Path: "/account-events",
 		Summary: "List the activity of the current user", Tags: []string{"Activity"},
 		Errors: []int{http.StatusUnprocessableEntity},
 	}, s.listOwn)
