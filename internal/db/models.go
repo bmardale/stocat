@@ -10,6 +10,21 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AuditEvent struct {
+	ID        int64
+	PublicID  string
+	Action    string
+	ActorType string
+	ActorID   pgtype.Int8
+	SubjectID pgtype.Int8
+	TargetID  string
+	Details   []byte
+	IpAddress *netip.Addr
+	UserAgent string
+	RequestID string
+	CreatedAt pgtype.Timestamptz
+}
+
 type Blob struct {
 	ID               int64
 	PublicID         string

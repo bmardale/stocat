@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/bmardale/stocat/internal/audit"
 	"github.com/bmardale/stocat/internal/auth"
 	"github.com/bmardale/stocat/internal/db"
 	"github.com/bmardale/stocat/internal/libraries"
@@ -103,7 +104,14 @@ func (s *Service) restore(ctx context.Context, input *fileInput) (*nodeOutput, e
 	if err := replication.EnsureLibraryWritable(ctx, s.queries, file.LibraryPublicID, user.ID); err != nil {
 		return nil, err
 	}
-	row, err := s.queries.RestoreFileNode(ctx, file.ID)
+	var row db.Node
+	err = db.InTx(ctx, s.pool, func(queries *db.Queries) error {
+		var err error
+		if row, err = queries.RestoreFileNode(ctx, file.ID); err != nil {
+			return err
+		}
+		return recordFileEvent(ctx, queries, audit.FileRestored, file.ID, user.ID, nil)
+	})
 	if isPgError(err, uniqueViolation) {
 		return nil, huma.Error409Conflict("A file or folder with this name already exists.")
 	}

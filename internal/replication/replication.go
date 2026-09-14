@@ -4,10 +4,12 @@ package replication
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
 
+	"github.com/bmardale/stocat/internal/audit"
 	"github.com/bmardale/stocat/internal/auth"
 	"github.com/bmardale/stocat/internal/db"
 	"github.com/bmardale/stocat/internal/platform/id"
@@ -112,9 +114,21 @@ func (s *Service) create(ctx context.Context, input *createReplicationInput) (*r
 		return nil, huma.Error503ServiceUnavailable("Replication is temporarily unavailable.")
 	}
 	user, _ := auth.UserFromContext(ctx)
-	row, err := s.queries.CreateLibraryReplication(ctx, db.CreateLibraryReplicationParams{
-		PublicID: id.New(id.Replication), OwnerID: user.ID,
-		SourcePublicID: input.Body.SourceLibraryID, DestinationPublicID: input.Body.DestinationLibraryID,
+	var loaded db.GetReplicationByPublicIDAndOwnerRow
+	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		queries := db.New(tx)
+		row, err := queries.CreateLibraryReplication(ctx, db.CreateLibraryReplicationParams{
+			PublicID: id.New(id.Replication), OwnerID: user.ID,
+			SourcePublicID: input.Body.SourceLibraryID, DestinationPublicID: input.Body.DestinationLibraryID,
+		})
+		if err != nil {
+			return err
+		}
+		loaded, err = queries.GetReplicationByPublicIDAndOwner(ctx, db.GetReplicationByPublicIDAndOwnerParams{PublicID: row.PublicID, OwnerID: user.ID})
+		if err != nil {
+			return err
+		}
+		return s.enqueueAndRecord(ctx, tx, audit.ReplicationCreated, user.ID, loaded)
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, huma.Error422UnprocessableEntity("Use an empty destination with the same encryption mode.")
@@ -125,16 +139,7 @@ func (s *Service) create(ctx context.Context, input *createReplicationInput) (*r
 	if err != nil {
 		return nil, s.internalError(ctx, "create replication", err)
 	}
-	if err := s.enqueue(ctx, row.ID); err != nil {
-		_, _ = s.queries.DeleteLibraryReplication(ctx, db.DeleteLibraryReplicationParams{PublicID: row.PublicID, OwnerID: user.ID})
-		return nil, s.internalError(ctx, "start replication", err)
-	}
-	loaded, err := s.queries.GetReplicationByPublicIDAndOwner(ctx, db.GetReplicationByPublicIDAndOwnerParams{PublicID: row.PublicID, OwnerID: user.ID})
-	if err != nil {
-		return nil, s.internalError(ctx, "load replication", err)
-	}
-	result := fromGetRow(loaded)
-	return &replicationOutput{Body: result}, nil
+	return &replicationOutput{Body: fromGetRow(loaded)}, nil
 }
 
 func (s *Service) sync(ctx context.Context, input *replicationInput) (*noContentOutput, error) {
@@ -142,14 +147,17 @@ func (s *Service) sync(ctx context.Context, input *replicationInput) (*noContent
 		return nil, huma.Error503ServiceUnavailable("Replication is temporarily unavailable.")
 	}
 	user, _ := auth.UserFromContext(ctx)
-	row, err := s.queries.GetReplicationByPublicIDAndOwner(ctx, db.GetReplicationByPublicIDAndOwnerParams{PublicID: input.ID, OwnerID: user.ID})
+	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		row, err := db.New(tx).GetReplicationByPublicIDAndOwner(ctx, db.GetReplicationByPublicIDAndOwnerParams{PublicID: input.ID, OwnerID: user.ID})
+		if err != nil {
+			return err
+		}
+		return s.enqueueAndRecord(ctx, tx, audit.ReplicationSynced, user.ID, row)
+	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, huma.Error404NotFound("The replication does not exist.")
 	}
 	if err != nil {
-		return nil, s.internalError(ctx, "load replication", err)
-	}
-	if err := s.enqueue(ctx, row.ID); err != nil {
 		return nil, s.internalError(ctx, "start replication", err)
 	}
 	return &noContentOutput{}, nil
@@ -157,12 +165,21 @@ func (s *Service) sync(ctx context.Context, input *replicationInput) (*noContent
 
 func (s *Service) remove(ctx context.Context, input *replicationInput) (*noContentOutput, error) {
 	user, _ := auth.UserFromContext(ctx)
-	count, err := s.queries.DeleteLibraryReplication(ctx, db.DeleteLibraryReplicationParams{PublicID: input.ID, OwnerID: user.ID})
+	err := db.InTx(ctx, s.pool, func(queries *db.Queries) error {
+		row, err := queries.GetReplicationByPublicIDAndOwner(ctx, db.GetReplicationByPublicIDAndOwnerParams{PublicID: input.ID, OwnerID: user.ID})
+		if err != nil {
+			return err
+		}
+		if _, err := queries.DeleteLibraryReplication(ctx, db.DeleteLibraryReplicationParams{PublicID: input.ID, OwnerID: user.ID}); err != nil {
+			return err
+		}
+		return audit.Record(ctx, queries, replicationEvent(audit.ReplicationDeleted, user.ID, row))
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, huma.Error404NotFound("The replication does not exist.")
+	}
 	if err != nil {
 		return nil, s.internalError(ctx, "delete replication", err)
-	}
-	if count == 0 {
-		return nil, huma.Error404NotFound("The replication does not exist.")
 	}
 	return &noContentOutput{}, nil
 }
@@ -170,6 +187,23 @@ func (s *Service) remove(ctx context.Context, input *replicationInput) (*noConte
 func (s *Service) enqueue(ctx context.Context, replicationID int64) error {
 	_, err := s.queue.Insert(ctx, SyncArgs{ReplicationID: replicationID}, nil)
 	return err
+}
+
+func (s *Service) enqueueAndRecord(ctx context.Context, tx pgx.Tx, action audit.Action, userID int64, row db.GetReplicationByPublicIDAndOwnerRow) error {
+	if _, err := s.queue.InsertTx(ctx, tx, SyncArgs{ReplicationID: row.ID}, nil); err != nil {
+		return fmt.Errorf("enqueue replication sync: %w", err)
+	}
+	return audit.Record(ctx, db.New(tx), replicationEvent(action, userID, row))
+}
+
+func replicationEvent(action audit.Action, userID int64, row db.GetReplicationByPublicIDAndOwnerRow) audit.Event {
+	return audit.Event{
+		Action: action, ActorID: userID, TargetID: row.PublicID,
+		Details: audit.Details{
+			LibraryID: row.SourcePublicID, LibraryName: row.SourceName,
+			DestinationLibraryID: row.DestinationPublicID, DestinationLibraryName: row.DestinationName,
+		},
+	}
 }
 
 func fromListRow(row db.ListLibraryReplicationsByOwnerRow) Replication {

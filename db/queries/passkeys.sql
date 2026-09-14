@@ -33,8 +33,9 @@ SET name = sqlc.arg(name)
 WHERE public_id = sqlc.arg(public_id) AND user_id = sqlc.arg(user_id)
 RETURNING *;
 
--- name: DeletePasskey :execrows
-DELETE FROM passkeys WHERE public_id = sqlc.arg(public_id) AND user_id = sqlc.arg(user_id);
+-- name: DeletePasskey :one
+DELETE FROM passkeys WHERE public_id = sqlc.arg(public_id) AND user_id = sqlc.arg(user_id)
+RETURNING name;
 
 -- name: CreateWebAuthnCeremony :exec
 INSERT INTO webauthn_ceremonies (challenge, kind, user_id, session_data, expires_at)

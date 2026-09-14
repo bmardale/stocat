@@ -169,3 +169,20 @@ func (q *Queries) ListUserSessions(ctx context.Context, arg ListUserSessionsPara
 	}
 	return items, nil
 }
+
+const revokeSession = `-- name: RevokeSession :one
+DELETE FROM sessions WHERE token_hash = $1
+RETURNING user_id, public_id
+`
+
+type RevokeSessionRow struct {
+	UserID   int64
+	PublicID string
+}
+
+func (q *Queries) RevokeSession(ctx context.Context, tokenHash []byte) (RevokeSessionRow, error) {
+	row := q.db.QueryRow(ctx, revokeSession, tokenHash)
+	var i RevokeSessionRow
+	err := row.Scan(&i.UserID, &i.PublicID)
+	return i, err
+}

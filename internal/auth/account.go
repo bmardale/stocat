@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/bmardale/stocat/internal/audit"
 	"github.com/bmardale/stocat/internal/db"
 	"github.com/danielgtaylor/huma/v2"
 )
@@ -34,8 +35,26 @@ func (s *Service) updateAccount(ctx context.Context, input *updateAccountInput) 
 	if name == "" {
 		return nil, huma.Error422UnprocessableEntity("Enter a name.")
 	}
-	user, err := s.queries.UpdateUserAccount(ctx, db.UpdateUserAccountParams{
-		ID: current.ID, Name: name, Email: normalizeEmail(input.Body.Email),
+	var user db.User
+	err := db.InTx(ctx, s.pool, func(queries *db.Queries) error {
+		var err error
+		user, err = queries.UpdateUserAccount(ctx, db.UpdateUserAccountParams{
+			ID: current.ID, Name: name, Email: normalizeEmail(input.Body.Email),
+		})
+		if err != nil {
+			return err
+		}
+		var details audit.Details
+		if user.Name != current.Name {
+			details.Name, details.PreviousName = user.Name, current.Name
+		}
+		if user.Email != current.Email {
+			details.Email, details.PreviousEmail = user.Email, current.Email
+		}
+		if details == (audit.Details{}) {
+			return nil
+		}
+		return audit.Record(ctx, queries, audit.Event{Action: audit.AccountUpdated, ActorID: current.ID, Details: details})
 	})
 	if isEmailConflict(err) {
 		return nil, huma.Error409Conflict("An account with this email already exists.")
@@ -71,9 +90,12 @@ func (s *Service) changePassword(ctx context.Context, input *changePasswordInput
 		}); err != nil {
 			return err
 		}
-		return queries.DeleteOtherUserSessions(ctx, db.DeleteOtherUserSessionsParams{
+		if err := queries.DeleteOtherUserSessions(ctx, db.DeleteOtherUserSessionsParams{
 			UserID: current.ID, CurrentTokenHash: currentSession,
-		})
+		}); err != nil {
+			return err
+		}
+		return audit.Record(ctx, queries, audit.Event{Action: audit.AccountPasswordChanged, ActorID: current.ID})
 	})
 	if errors.Is(err, errCurrentPassword) {
 		return nil, huma.Error422UnprocessableEntity("The current password is incorrect.")

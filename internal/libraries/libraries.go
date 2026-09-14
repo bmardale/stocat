@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bmardale/stocat/internal/audit"
 	"github.com/bmardale/stocat/internal/auth"
 	"github.com/bmardale/stocat/internal/db"
 	"github.com/bmardale/stocat/internal/platform/id"
@@ -219,7 +220,13 @@ func (s *Service) create(ctx context.Context, input *createLibraryInput) (*libra
 		_, err = queries.CreateNodeWithID(ctx, db.CreateNodeWithIDParams{
 			ID: rootID, PublicID: id.New(id.Node), LibraryID: libraryID, Kind: nodeFolder,
 		})
-		return err
+		if err != nil {
+			return err
+		}
+		return audit.Record(ctx, queries, audit.Event{
+			Action: audit.LibraryCreated, ActorID: user.ID, TargetID: publicID,
+			Details: audit.Details{Name: name, Encrypted: input.Body.EncryptionMode == EncryptionE2EE},
+		})
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, huma.Error404NotFound("The enabled storage backend does not exist.")
@@ -265,9 +272,23 @@ func (s *Service) createFolder(ctx context.Context, input *folderInput) (*nodeOu
 	if err != nil {
 		return nil, err
 	}
-	row, err := s.queries.CreateNode(ctx, db.CreateNodeParams{
-		PublicID: id.New(id.Node), LibraryID: library.ID, ParentID: pgtype.Int8{Int64: parentID, Valid: true},
-		Kind: nodeFolder, Name: name, EncryptedName: encryptedName, NameToken: nameToken,
+	var row db.Node
+	err = db.InTx(ctx, s.pool, func(queries *db.Queries) error {
+		var err error
+		row, err = queries.CreateNode(ctx, db.CreateNodeParams{
+			PublicID: id.New(id.Node), LibraryID: library.ID, ParentID: pgtype.Int8{Int64: parentID, Valid: true},
+			Kind: nodeFolder, Name: name, EncryptedName: encryptedName, NameToken: nameToken,
+		})
+		if err != nil {
+			return err
+		}
+		return audit.Record(ctx, queries, audit.Event{
+			Action: audit.FolderCreated, ActorID: user.ID, TargetID: row.PublicID,
+			Details: audit.Details{
+				Name: name.String, Encrypted: library.EncryptionMode == EncryptionE2EE,
+				LibraryID: library.PublicID, LibraryName: library.Name,
+			},
+		})
 	})
 	if isConstraint(err, "nodes_plain_active_name_key") || isConstraint(err, "nodes_encrypted_active_name_key") {
 		return nil, huma.Error409Conflict("A file or folder with this name already exists.")

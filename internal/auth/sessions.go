@@ -6,6 +6,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/bmardale/stocat/internal/audit"
 	"github.com/bmardale/stocat/internal/db"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/jackc/pgx/v5"
@@ -53,7 +54,15 @@ func (s *Service) listSessions(ctx context.Context, _ *struct{}) (*sessionsOutpu
 
 func (s *Service) revokeSession(ctx context.Context, input *revokeSessionInput) (*revokeSessionOutput, error) {
 	user, _ := UserFromContext(ctx)
-	revoked, err := s.queries.DeleteUserSession(ctx, db.DeleteUserSessionParams{PublicID: input.ID, UserID: user.ID})
+	var revoked []byte
+	err := db.InTx(ctx, s.pool, func(queries *db.Queries) error {
+		var err error
+		revoked, err = queries.DeleteUserSession(ctx, db.DeleteUserSessionParams{PublicID: input.ID, UserID: user.ID})
+		if err != nil {
+			return err
+		}
+		return audit.Record(ctx, queries, audit.Event{Action: audit.SessionRevoked, ActorID: user.ID, TargetID: input.ID})
+	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, huma.Error404NotFound("The session does not exist.")
 	}
@@ -71,7 +80,13 @@ func (s *Service) revokeSession(ctx context.Context, input *revokeSessionInput) 
 func (s *Service) revokeOtherSessions(ctx context.Context, _ *struct{}) (*struct{}, error) {
 	user, _ := UserFromContext(ctx)
 	current, _ := ctx.Value(sessionKey{}).([]byte)
-	err := s.queries.DeleteOtherUserSessions(ctx, db.DeleteOtherUserSessionsParams{UserID: user.ID, CurrentTokenHash: current})
+	err := db.InTx(ctx, s.pool, func(queries *db.Queries) error {
+		err := queries.DeleteOtherUserSessions(ctx, db.DeleteOtherUserSessionsParams{UserID: user.ID, CurrentTokenHash: current})
+		if err != nil {
+			return err
+		}
+		return audit.Record(ctx, queries, audit.Event{Action: audit.SessionOthersRevoked, ActorID: user.ID})
+	})
 	if err != nil {
 		return nil, s.internalError(ctx, "revoke other sessions", err)
 	}

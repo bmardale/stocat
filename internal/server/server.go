@@ -10,8 +10,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/bmardale/stocat/internal/activity"
 	"github.com/bmardale/stocat/internal/admin"
 	"github.com/bmardale/stocat/internal/apierr"
+	"github.com/bmardale/stocat/internal/audit"
 	"github.com/bmardale/stocat/internal/auth"
 	"github.com/bmardale/stocat/internal/files"
 	"github.com/bmardale/stocat/internal/libraries"
@@ -81,6 +83,7 @@ func New(cfg Config, pool *pgxpool.Pool) (*Server, error) {
 
 	router := chi.NewRouter()
 	router.Use(o11y.RequestID)
+	router.Use(audit.Middleware)
 	router.Use(o11y.AccessLog(log))
 	router.Use(apierr.Recoverer(log))
 	router.Use(limitRequests(limiter))
@@ -104,7 +107,10 @@ func New(cfg Config, pool *pgxpool.Pool) (*Server, error) {
 	storageService := storage.New(pool, storage.Config{Encrypter: cfg.Encrypter, Logger: log})
 	storageService.Register(adminGroup)
 	admin.New(pool, log).Register(adminGroup)
+	activityService := activity.New(pool, log)
+	activityService.RegisterAdmin(adminGroup)
 	protected := authService.Protected(api, "/api/v1")
+	activityService.Register(protected)
 	libraries.New(pool, log).Register(protected)
 	quota.New(pool, log).Register(protected)
 	replicationService := replication.New(pool, storageService, log)
@@ -120,7 +126,7 @@ func New(cfg Config, pool *pgxpool.Pool) (*Server, error) {
 	}
 	var queue *river.Client[pgx.Tx]
 	if pool != nil {
-		queue, err = uploadService.ConfigureQueue(storageService, fileService.AddWorkers, replicationService.AddWorkers)
+		queue, err = uploadService.ConfigureQueue(storageService, fileService.AddWorkers, replicationService.AddWorkers, audit.Workers(pool))
 		if err != nil {
 			_ = uploadService.Close()
 			return nil, err

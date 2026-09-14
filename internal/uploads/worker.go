@@ -9,6 +9,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/bmardale/stocat/internal/audit"
 	"github.com/bmardale/stocat/internal/db"
 	"github.com/bmardale/stocat/internal/platform/id"
 	"github.com/bmardale/stocat/internal/storage"
@@ -307,9 +308,22 @@ func (s *Service) publish(ctx context.Context, upload db.GetUploadPublicationRow
 			return err
 		}
 		nodeID, versionID = node.ID, version.ID
-		return q.CompleteUploadSession(ctx, db.CompleteUploadSessionParams{
+		if err := q.CompleteUploadSession(ctx, db.CompleteUploadSessionParams{
 			ID: upload.ID, PublishedNodeID: validInt(nodeID), PublishedVersionID: validInt(versionID),
-		})
+		}); err != nil {
+			return err
+		}
+		action := audit.FileUploaded
+		if upload.TargetNodeID.Valid {
+			action = audit.FileReplaced
+		}
+		event, err := audit.FileEvent(ctx, q, action, node.ID)
+		if err != nil {
+			return err
+		}
+		event.ActorID = upload.OwnerID
+		event.Details.SizeBytes = contentSize
+		return audit.Record(ctx, q, event)
 	})
 	return nodeID, versionID, reused, err
 }

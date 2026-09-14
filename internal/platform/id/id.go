@@ -43,6 +43,8 @@ const (
 	Replication = "rep"
 	// Tag is the prefix of tag identifiers.
 	Tag = "tag"
+	// AuditEvent is the prefix of audit event identifiers.
+	AuditEvent = "aud"
 )
 
 const separator = "_"

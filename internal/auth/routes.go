@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/bmardale/stocat/internal/apierr"
+	"github.com/bmardale/stocat/internal/audit"
 	"github.com/bmardale/stocat/internal/db"
 	"github.com/bmardale/stocat/internal/platform/id"
 	"github.com/bmardale/stocat/internal/platform/ratelimit"
@@ -168,8 +169,10 @@ func (s *Service) register(ctx context.Context, input *registerInput) (*sessionO
 			return err
 		}
 		output.Body = publicUser(user)
-		output.SetCookie, err = s.createSession(ctx, queries, user.ID)
-		return err
+		if output.SetCookie, err = s.createSession(ctx, queries, user.ID); err != nil {
+			return err
+		}
+		return audit.Record(ctx, queries, audit.Event{Action: audit.AccountRegistered, ActorID: user.ID})
 	})
 	if err != nil {
 		if isEmailConflict(err) {
@@ -211,8 +214,12 @@ func (s *Service) login(ctx context.Context, input *loginInput) (*sessionOutput,
 			return errInvalidCredentials
 		}
 		output.Body = publicUser(user)
-		output.SetCookie, err = s.createSession(ctx, queries, user.ID)
-		return err
+		if output.SetCookie, err = s.createSession(ctx, queries, user.ID); err != nil {
+			return err
+		}
+		return audit.Record(ctx, queries, audit.Event{
+			Action: audit.AccountSignedIn, ActorID: user.ID, Details: audit.Details{Method: audit.MethodPassword},
+		})
 	})
 	if errors.Is(err, errInvalidCredentials) {
 		return nil, huma.Error401Unauthorized("The email or password is incorrect.")
@@ -226,7 +233,19 @@ func (s *Service) login(ctx context.Context, input *loginInput) (*sessionOutput,
 func (s *Service) logout(ctx context.Context, _ *struct{}) (*logoutOutput, error) {
 	meta, _ := ctx.Value(metadataKey{}).(requestMetadata)
 	if hash := tokenHash(meta.token); hash != nil {
-		if err := s.queries.DeleteSession(ctx, hash); err != nil {
+		err := db.InTx(ctx, s.pool, func(queries *db.Queries) error {
+			session, err := queries.RevokeSession(ctx, hash)
+			if errors.Is(err, pgx.ErrNoRows) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			return audit.Record(ctx, queries, audit.Event{
+				Action: audit.AccountSignedOut, ActorID: session.UserID, TargetID: session.PublicID,
+			})
+		})
+		if err != nil {
 			return nil, s.internalError(ctx, "delete session", err)
 		}
 	}

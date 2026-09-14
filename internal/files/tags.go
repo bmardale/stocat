@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/bmardale/stocat/internal/audit"
 	"github.com/bmardale/stocat/internal/auth"
 	"github.com/bmardale/stocat/internal/db"
 	"github.com/danielgtaylor/huma/v2"
@@ -34,9 +35,17 @@ func (s *Service) addTag(ctx context.Context, input *fileTagInput) (*struct{}, e
 	if err != nil {
 		return nil, err
 	}
-	if _, err = s.queries.AddFileTag(ctx, db.AddFileTagParams{
-		NodeID: file.ID, TagID: tag.ID, LibraryID: file.LibraryID,
-	}); err != nil {
+	user, _ := auth.UserFromContext(ctx)
+	err = db.InTx(ctx, s.pool, func(queries *db.Queries) error {
+		added, err := queries.AddFileTag(ctx, db.AddFileTagParams{
+			NodeID: file.ID, TagID: tag.ID, LibraryID: file.LibraryID,
+		})
+		if err != nil || added == 0 {
+			return err
+		}
+		return recordFileEvent(ctx, queries, audit.FileTagged, file.ID, user.ID, &tag)
+	})
+	if err != nil {
 		return nil, s.internalError(ctx, "add file tag", err)
 	}
 	return nil, nil
@@ -47,7 +56,15 @@ func (s *Service) removeTag(ctx context.Context, input *fileTagInput) (*struct{}
 	if err != nil {
 		return nil, err
 	}
-	if _, err = s.queries.RemoveFileTag(ctx, db.RemoveFileTagParams{NodeID: file.ID, TagID: tag.ID}); err != nil {
+	user, _ := auth.UserFromContext(ctx)
+	err = db.InTx(ctx, s.pool, func(queries *db.Queries) error {
+		removed, err := queries.RemoveFileTag(ctx, db.RemoveFileTagParams{NodeID: file.ID, TagID: tag.ID})
+		if err != nil || removed == 0 {
+			return err
+		}
+		return recordFileEvent(ctx, queries, audit.FileUntagged, file.ID, user.ID, &tag)
+	})
+	if err != nil {
 		return nil, s.internalError(ctx, "remove file tag", err)
 	}
 	return nil, nil

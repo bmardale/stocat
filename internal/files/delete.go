@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bmardale/stocat/internal/audit"
 	"github.com/bmardale/stocat/internal/auth"
 	"github.com/bmardale/stocat/internal/db"
 	"github.com/bmardale/stocat/internal/replication"
@@ -96,7 +97,13 @@ func (s *Service) remove(ctx context.Context, input *fileInput) (*struct{}, erro
 	if err := replication.EnsureLibraryWritable(ctx, s.queries, file.LibraryPublicID, user.ID); err != nil {
 		return nil, err
 	}
-	if _, err := s.queries.TrashFileNode(ctx, file.ID); err != nil {
+	err = db.InTx(ctx, s.pool, func(queries *db.Queries) error {
+		if _, err := queries.TrashFileNode(ctx, file.ID); err != nil {
+			return err
+		}
+		return recordFileEvent(ctx, queries, audit.FileTrashed, file.ID, user.ID, nil)
+	})
+	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, fileNotFound()
 		}
@@ -128,6 +135,14 @@ func (s *Service) permanentlyDelete(ctx context.Context, fileID int64, expiredOn
 			}
 			libraryID = row.LibraryID
 		}
+		event, err := audit.FileEvent(ctx, q, audit.FileDeleted, fileID)
+		if err != nil {
+			return err
+		}
+		// The purge job deletes expired files as the system. Otherwise the owner deletes the file.
+		if !expiredOnly {
+			event.ActorID = event.SubjectID
+		}
 		// Publication locks its upload session before the library. Keep the same order to prevent a deadlock.
 		if err := q.DetachUploadSessionsFromNode(ctx, pgtype.Int8{Int64: fileID, Valid: true}); err != nil {
 			return fmt.Errorf("detach upload sessions: %w", err)
@@ -158,7 +173,10 @@ func (s *Service) permanentlyDelete(ctx context.Context, fileID int64, expiredOn
 		if err := q.DeleteUnreferencedBlobs(ctx, blobIDs); err != nil {
 			return fmt.Errorf("delete blobs: %w", err)
 		}
-		return s.enqueueObjectDeletion(ctx, tx, locations)
+		if err := s.enqueueObjectDeletion(ctx, tx, locations); err != nil {
+			return err
+		}
+		return audit.Record(ctx, q, event)
 	})
 }
 
