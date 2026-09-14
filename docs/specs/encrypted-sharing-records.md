@@ -257,6 +257,39 @@ Migration 18 stores v2 bundles with `format_version` 2 and the identity generati
 V2 bundles store no legacy KDF parameters and no master-key-encrypted recovery key.
 Identity rows store the certificate signature and the optional continuity signature.
 
+## Client account formats
+
+The server stores these formats only as ciphertext. Browser clients must use them exactly.
+
+The `account-private` ciphertext encrypts this tuple:
+
+```text
+C("stocat/v2/private-bundle", generation, signing_seed, recipient_private_key, previous_keys)
+```
+
+The generation is a counter. The signing seed and the recipient private key contain 32 bytes each.
+`previous_keys` is a list with a four-byte count.
+Each entry contains a generation counter and a 32-byte X25519 private key.
+The client derives the Ed25519 key pair from the seed and the X25519 public key from the private key.
+The derived identity record must be byte-equal to the current identity record.
+
+Every bundle change must also replace the `account-private` envelope with the same new revision.
+The authenticated revision of that envelope then equals the bundle revision.
+The client rejects a bundle when the private envelope uses another revision.
+
+After a successful unlock or change, the client stores `<generation>.<bundle_revision>` in local storage.
+The checkpoint contains no key material.
+The client rejects a later bundle with a lower generation, or with the same generation and a lower revision.
+
+Display the recovery secret as unpadded base64url.
+Display its checksum separately as the first four bytes of this hash, in grouped uppercase hexadecimal:
+
+```text
+SHA256(C("stocat/v2/recovery-checksum", recovery_secret))
+```
+
+Display the identity fingerprint as the uppercase hexadecimal SHA-256 hash of the identity record, in groups of four.
+
 ## Fixtures and verification
 
 The fixtures reside in `internal/encryptionv2/testdata`.
