@@ -5,6 +5,8 @@ import {
   getAdminUsersListQueryKey,
   useAdminUsersCreate,
   useAdminUsersDelete,
+  useAdminUsersPasskeysRevoke,
+  useAdminUsersSessionsRevoke,
   useAdminUsersUpdate,
 } from "@/api/generated/admin/admin";
 import { useAppForm } from "@/components/form";
@@ -46,6 +48,7 @@ const userSchema = z.object({
     .pipe(z.email("Enter a valid email address.")),
   password: passwordSchema,
   isAdmin: z.boolean(),
+  isDisabled: z.boolean(),
 });
 const createUserSchema = userSchema.extend({
   password: passwordSchema.refine((value) => value !== "", "Enter a password."),
@@ -54,16 +57,23 @@ const createUserSchema = userSchema.extend({
 export function AdminUserDialog({
   open,
   user,
+  currentUserID,
   onOpenChange,
 }: {
   open: boolean;
   user?: AdminUser;
+  currentUserID?: string;
   onOpenChange: (open: boolean) => void;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
-        <UserForm key={user?.id ?? "new"} user={user} onOpenChange={onOpenChange} />
+        <UserForm
+          key={user?.id ?? "new"}
+          user={user}
+          currentUserID={currentUserID}
+          onOpenChange={onOpenChange}
+        />
       </DialogContent>
     </Dialog>
   );
@@ -71,9 +81,11 @@ export function AdminUserDialog({
 
 function UserForm({
   user,
+  currentUserID,
   onOpenChange,
 }: {
   user?: AdminUser;
+  currentUserID?: string;
   onOpenChange: (open: boolean) => void;
 }) {
   const queryClient = useQueryClient();
@@ -85,6 +97,7 @@ function UserForm({
       email: user?.email ?? "",
       password: "",
       isAdmin: user?.is_admin ?? false,
+      isDisabled: user?.is_disabled ?? false,
     },
     validators: { onSubmit: user ? userSchema : createUserSchema },
     onSubmit: async ({ value }) => {
@@ -95,7 +108,7 @@ function UserForm({
         ...(value.password ? { password: value.password } : {}),
       };
       if (user) {
-        await update.mutateAsync({ id: user.id, data });
+        await update.mutateAsync({ id: user.id, data: { ...data, is_disabled: value.isDisabled } });
       } else {
         await create.mutateAsync({ data: { ...data, password: value.password } });
       }
@@ -150,6 +163,21 @@ function UserForm({
               />
             )}
           </form.AppField>
+          {user && (
+            <form.AppField name="isDisabled">
+              {(field) => (
+                <field.SwitchField
+                  label="Suspended"
+                  disabled={user.id === currentUserID}
+                  description={
+                    user.id === currentUserID
+                      ? "You cannot suspend your own administrator account."
+                      : "Suspended users cannot sign in. Existing sessions are revoked."
+                  }
+                />
+              )}
+            </form.AppField>
+          )}
           {mutation.error && <FieldError>{mutation.error.message}</FieldError>}
         </FieldGroup>
         <DialogFooter className="mt-5">
@@ -162,6 +190,89 @@ function UserForm({
         </DialogFooter>
       </form>
     </>
+  );
+}
+
+export function AdminUserSecurityDialog({
+  open,
+  user,
+  onOpenChange,
+}: {
+  open: boolean;
+  user?: AdminUser;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const queryClient = useQueryClient();
+  const sessions = useAdminUsersSessionsRevoke({
+    mutation: {
+      onSuccess: async () => {
+        await queryClient.invalidateQueries({ queryKey: getAdminUsersListQueryKey() });
+        toast.add({ type: "success", description: "All user sessions were revoked." });
+        onOpenChange(false);
+      },
+    },
+  });
+  const passkeys = useAdminUsersPasskeysRevoke({
+    mutation: {
+      onSuccess: async () => {
+        await queryClient.invalidateQueries({ queryKey: getAdminUsersListQueryKey() });
+        toast.add({ type: "success", description: "All user passkeys were revoked." });
+        onOpenChange(false);
+      },
+    },
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Security for {user?.name}</DialogTitle>
+          <DialogDescription>
+            Revoke credentials if the user loses a device or you suspect account misuse.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
+            <div>
+              <div className="font-medium">Active sessions</div>
+              <div className="text-sm text-muted-foreground">
+                {user?.active_sessions ?? 0} active sessions
+              </div>
+            </div>
+            <Button
+              variant="destructive"
+              disabled={!user || sessions.isPending}
+              onClick={() => user && sessions.mutate({ id: user.id })}
+            >
+              {sessions.isPending ? "Revoking…" : "Sign out all"}
+            </Button>
+          </div>
+          <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
+            <div>
+              <div className="font-medium">Passkeys</div>
+              <div className="text-sm text-muted-foreground">
+                {user?.passkey_count ?? 0} registered passkeys
+              </div>
+            </div>
+            <Button
+              variant="destructive"
+              disabled={!user || passkeys.isPending}
+              onClick={() => user && passkeys.mutate({ id: user.id })}
+            >
+              {passkeys.isPending ? "Revoking…" : "Remove all"}
+            </Button>
+          </div>
+          {(sessions.error || passkeys.error) && (
+            <FieldError>{(sessions.error || passkeys.error)?.message}</FieldError>
+          )}
+        </div>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

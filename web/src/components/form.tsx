@@ -43,7 +43,15 @@ function TextField({ label, description, ...props }: TextFieldProps) {
   );
 }
 
-function SwitchField({ label, description }: { label: string; description?: string }) {
+function SwitchField({
+  label,
+  description,
+  disabled,
+}: {
+  label: string;
+  description?: string;
+  disabled?: boolean;
+}) {
   const field = useFieldContext<boolean>();
   const id = useId();
 
@@ -57,6 +65,7 @@ function SwitchField({ label, description }: { label: string; description?: stri
         id={id}
         name={field.name}
         checked={field.state.value}
+        disabled={disabled}
         onCheckedChange={(checked) => field.handleChange(checked)}
         onBlur={field.handleBlur}
       />

@@ -22,6 +22,8 @@ import type {
 
 import type {
   AdminUser,
+  AdminUserPage,
+  AdminUsersListParams,
   CreateUserInputBody,
   InviteCode,
   Problem,
@@ -770,39 +772,55 @@ export const useAdminQuotaSet = <TError = ErrorType<Problem>, TContext = unknown
 > => {
   return useMutation(getAdminQuotaSetMutationOptions(options), queryClient);
 };
-export const getAdminUsersListUrl = () => {
-  return `/api/v1/admin/users`;
+export const getAdminUsersListUrl = (params?: AdminUsersListParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : String(value));
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/v1/admin/users?${stringifiedParams}`
+    : `/api/v1/admin/users`;
 };
 
 /**
- * @summary List users with their quotas
+ * @summary List users with quotas and account details
  */
 export const adminUsersList = async (
+  params?: AdminUsersListParams,
   options?: Parameters<typeof apiFetch>[1],
-): Promise<AdminUser[]> => {
-  return apiFetch<AdminUser[]>(getAdminUsersListUrl(), {
+): Promise<AdminUserPage> => {
+  return apiFetch<AdminUserPage>(getAdminUsersListUrl(params), {
     ...options,
     method: "GET",
   });
 };
 
-export const getAdminUsersListQueryKey = () => {
-  return [`/api/v1/admin/users`] as const;
+export const getAdminUsersListQueryKey = (params?: AdminUsersListParams) => {
+  return [`/api/v1/admin/users`, ...(params ? [params] : [])] as const;
 };
 
 export const getAdminUsersListQueryOptions = <
   TData = Awaited<ReturnType<typeof adminUsersList>>,
   TError = ErrorType<Problem>,
->(options?: {
-  query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof adminUsersList>>, TError, TData>>;
-  request?: SecondParameter<typeof apiFetch>;
-}) => {
+>(
+  params?: AdminUsersListParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof adminUsersList>>, TError, TData>>;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
-  const queryKey = queryOptions?.queryKey ?? getAdminUsersListQueryKey();
+  const queryKey = queryOptions?.queryKey ?? getAdminUsersListQueryKey(params);
 
   const queryFn: QueryFunction<Awaited<ReturnType<typeof adminUsersList>>> = ({ signal }) =>
-    adminUsersList({ signal, ...requestOptions });
+    adminUsersList(params, { signal, ...requestOptions });
 
   return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof adminUsersList>>,
@@ -818,6 +836,7 @@ export function useAdminUsersList<
   TData = Awaited<ReturnType<typeof adminUsersList>>,
   TError = ErrorType<Problem>,
 >(
+  params: undefined | AdminUsersListParams,
   options: {
     query: Partial<UseQueryOptions<Awaited<ReturnType<typeof adminUsersList>>, TError, TData>> &
       Pick<
@@ -836,6 +855,7 @@ export function useAdminUsersList<
   TData = Awaited<ReturnType<typeof adminUsersList>>,
   TError = ErrorType<Problem>,
 >(
+  params?: AdminUsersListParams,
   options?: {
     query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof adminUsersList>>, TError, TData>> &
       Pick<
@@ -854,6 +874,7 @@ export function useAdminUsersList<
   TData = Awaited<ReturnType<typeof adminUsersList>>,
   TError = ErrorType<Problem>,
 >(
+  params?: AdminUsersListParams,
   options?: {
     query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof adminUsersList>>, TError, TData>>;
     request?: SecondParameter<typeof apiFetch>;
@@ -861,20 +882,21 @@ export function useAdminUsersList<
   queryClient?: QueryClient,
 ): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 /**
- * @summary List users with their quotas
+ * @summary List users with quotas and account details
  */
 
 export function useAdminUsersList<
   TData = Awaited<ReturnType<typeof adminUsersList>>,
   TError = ErrorType<Problem>,
 >(
+  params?: AdminUsersListParams,
   options?: {
     query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof adminUsersList>>, TError, TData>>;
     request?: SecondParameter<typeof apiFetch>;
   },
   queryClient?: QueryClient,
 ): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
-  const queryOptions = getAdminUsersListQueryOptions(options);
+  const queryOptions = getAdminUsersListQueryOptions(params, options);
 
   const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
     queryKey: DataTag<QueryKey, TData, TError>;
@@ -1178,6 +1200,90 @@ export const useAdminUsersUpdate = <TError = ErrorType<Problem>, TContext = unkn
 > => {
   return useMutation(getAdminUsersUpdateMutationOptions(options), queryClient);
 };
+export const getAdminUsersPasskeysRevokeUrl = (id: string) => {
+  return `/api/v1/admin/users/${id}/passkeys`;
+};
+
+/**
+ * @summary Revoke all passkeys of a user
+ */
+export const adminUsersPasskeysRevoke = async (
+  id: string,
+  options?: Parameters<typeof apiFetch>[1],
+): Promise<void> => {
+  return apiFetch<void>(getAdminUsersPasskeysRevokeUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getAdminUsersPasskeysRevokeMutationKey = () => ["adminUsersPasskeysRevoke"] as const;
+
+export const getAdminUsersPasskeysRevokeMutationOptions = <
+  TError = ErrorType<Problem>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof adminUsersPasskeysRevoke>>,
+    TError,
+    AdminUsersPasskeysRevokeMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof apiFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof adminUsersPasskeysRevoke>>,
+  TError,
+  AdminUsersPasskeysRevokeMutationVariables,
+  TContext
+> => {
+  const mutationKey = getAdminUsersPasskeysRevokeMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof adminUsersPasskeysRevoke>>,
+    AdminUsersPasskeysRevokeMutationVariables
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return adminUsersPasskeysRevoke(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AdminUsersPasskeysRevokeMutationResult = NonNullable<
+  Awaited<ReturnType<typeof adminUsersPasskeysRevoke>>
+>;
+
+export type AdminUsersPasskeysRevokeMutationError = ErrorType<Problem>;
+export type AdminUsersPasskeysRevokeMutationVariables = { id: string };
+
+/**
+ * @summary Revoke all passkeys of a user
+ */
+export const useAdminUsersPasskeysRevoke = <TError = ErrorType<Problem>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof adminUsersPasskeysRevoke>>,
+      TError,
+      AdminUsersPasskeysRevokeMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof adminUsersPasskeysRevoke>>,
+  TError,
+  AdminUsersPasskeysRevokeMutationVariables,
+  TContext
+> => {
+  return useMutation(getAdminUsersPasskeysRevokeMutationOptions(options), queryClient);
+};
 export const getAdminUsersQuotaSetUrl = (id: string) => {
   return `/api/v1/admin/users/${id}/quota`;
 };
@@ -1286,4 +1392,88 @@ export const useAdminUsersQuotaSet = <TError = ErrorType<Problem>, TContext = un
   TContext
 > => {
   return useMutation(getAdminUsersQuotaSetMutationOptions(options), queryClient);
+};
+export const getAdminUsersSessionsRevokeUrl = (id: string) => {
+  return `/api/v1/admin/users/${id}/sessions`;
+};
+
+/**
+ * @summary Revoke all sessions of a user
+ */
+export const adminUsersSessionsRevoke = async (
+  id: string,
+  options?: Parameters<typeof apiFetch>[1],
+): Promise<void> => {
+  return apiFetch<void>(getAdminUsersSessionsRevokeUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getAdminUsersSessionsRevokeMutationKey = () => ["adminUsersSessionsRevoke"] as const;
+
+export const getAdminUsersSessionsRevokeMutationOptions = <
+  TError = ErrorType<Problem>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof adminUsersSessionsRevoke>>,
+    TError,
+    AdminUsersSessionsRevokeMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof apiFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof adminUsersSessionsRevoke>>,
+  TError,
+  AdminUsersSessionsRevokeMutationVariables,
+  TContext
+> => {
+  const mutationKey = getAdminUsersSessionsRevokeMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof adminUsersSessionsRevoke>>,
+    AdminUsersSessionsRevokeMutationVariables
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return adminUsersSessionsRevoke(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AdminUsersSessionsRevokeMutationResult = NonNullable<
+  Awaited<ReturnType<typeof adminUsersSessionsRevoke>>
+>;
+
+export type AdminUsersSessionsRevokeMutationError = ErrorType<Problem>;
+export type AdminUsersSessionsRevokeMutationVariables = { id: string };
+
+/**
+ * @summary Revoke all sessions of a user
+ */
+export const useAdminUsersSessionsRevoke = <TError = ErrorType<Problem>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof adminUsersSessionsRevoke>>,
+      TError,
+      AdminUsersSessionsRevokeMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof adminUsersSessionsRevoke>>,
+  TError,
+  AdminUsersSessionsRevokeMutationVariables,
+  TContext
+> => {
+  return useMutation(getAdminUsersSessionsRevokeMutationOptions(options), queryClient);
 };

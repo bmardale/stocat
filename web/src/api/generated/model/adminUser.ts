@@ -8,6 +8,7 @@ import type { BackendQuota } from "./backendQuota.ts";
 import type { Quota } from "./quota.ts";
 
 export interface AdminUser {
+  active_sessions: number;
   /** A backend without an override uses the default quota of the user. */
   backend_quotas: BackendQuota[];
   /** The inherit mode uses the global default quota. */
@@ -15,5 +16,13 @@ export interface AdminUser {
   email: string;
   id: string;
   is_admin: boolean;
+  is_disabled: boolean;
+  /** The latest recorded sign-in or audited action. */
+  last_active_at?: string;
   name: string;
+  passkey_count: number;
+  /** Bytes reserved by unfinished uploads. */
+  storage_reserved_bytes: number;
+  /** Stored bytes of all file versions and trashed files. */
+  storage_used_bytes: number;
 }

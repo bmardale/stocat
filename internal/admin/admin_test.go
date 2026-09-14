@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"bytes"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -89,7 +90,7 @@ func TestAdminUserQuotas(t *testing.T) {
 
 	response := env.api.GetCtx(ctx, "/api/v1/admin/users", adminCookie)
 	requireStatus(t, response, http.StatusOK)
-	users := decode[[]AdminUser](t, response)
+	users := decode[AdminUserPage](t, response).Items
 	if len(users) != 2 {
 		t.Fatalf("users = %+v, want two", users)
 	}
@@ -113,7 +114,7 @@ func TestAdminUserQuotas(t *testing.T) {
 	requireStatus(t, response, http.StatusNotFound)
 	response = env.api.GetCtx(ctx, "/api/v1/admin/users", adminCookie)
 	requireStatus(t, response, http.StatusOK)
-	requireQuotas(t, findUser(t, decode[[]AdminUser](t, response), target.PublicID),
+	requireQuotas(t, findUser(t, decode[AdminUserPage](t, response).Items, target.PublicID),
 		Quota{Mode: ModeLimited, LimitBytes: ptr(10 << 30)},
 		[]BackendQuota{{BackendID: env.backendPublicID, Mode: ModeLimited, LimitBytes: ptr(1 << 30)}})
 
@@ -124,7 +125,7 @@ func TestAdminUserQuotas(t *testing.T) {
 	requireStatus(t, response, http.StatusOK)
 	response = env.api.GetCtx(ctx, "/api/v1/admin/users", adminCookie)
 	requireStatus(t, response, http.StatusOK)
-	requireQuotas(t, findUser(t, decode[[]AdminUser](t, response), target.PublicID),
+	requireQuotas(t, findUser(t, decode[AdminUserPage](t, response).Items, target.PublicID),
 		Quota{Mode: ModeInherit}, []BackendQuota{{BackendID: env.backendPublicID, Mode: ModeUnlimited}})
 
 	response = env.api.PutCtx(ctx, path, adminCookie, map[string]any{
@@ -134,7 +135,7 @@ func TestAdminUserQuotas(t *testing.T) {
 	requireStatus(t, response, http.StatusOK)
 	response = env.api.GetCtx(ctx, "/api/v1/admin/users", adminCookie)
 	requireStatus(t, response, http.StatusOK)
-	requireQuotas(t, findUser(t, decode[[]AdminUser](t, response), target.PublicID), Quota{Mode: ModeUnlimited}, nil)
+	requireQuotas(t, findUser(t, decode[AdminUserPage](t, response).Items, target.PublicID), Quota{Mode: ModeUnlimited}, nil)
 }
 
 func TestAdminUserManagement(t *testing.T) {
@@ -153,7 +154,7 @@ func TestAdminUserManagement(t *testing.T) {
 	}
 
 	response = env.api.PatchCtx(ctx, "/api/v1/admin/users/"+created.ID, adminCookie, map[string]any{
-		"name": "Updated User", "email": "updated@example.com", "password": "a new secure password", "is_admin": true,
+		"name": "Updated User", "email": "updated@example.com", "password": "a new secure password", "is_admin": true, "is_disabled": false,
 	})
 	requireStatus(t, response, http.StatusOK)
 	updated := decode[AdminUser](t, response)
@@ -162,12 +163,46 @@ func TestAdminUserManagement(t *testing.T) {
 	}
 
 	response = env.api.PatchCtx(ctx, "/api/v1/admin/users/"+created.ID, adminCookie, map[string]any{
-		"name": "Updated User", "email": "updated@example.com", "is_admin": false,
+		"name": "Updated User", "email": "updated@example.com", "is_admin": false, "is_disabled": false,
 	})
 	requireStatus(t, response, http.StatusOK)
 	if user := decode[AdminUser](t, response); user.IsAdmin {
 		t.Fatal("administrator role was not removed")
 	}
+
+	response = env.api.GetCtx(ctx, "/api/v1/admin/users?limit=1", adminCookie)
+	requireStatus(t, response, http.StatusOK)
+	page := decode[AdminUserPage](t, response)
+	if len(page.Items) != 1 || page.NextCursor == "" {
+		t.Fatalf("first user page = %+v", page)
+	}
+	response = env.api.GetCtx(ctx, "/api/v1/admin/users?search=Updated%20User", adminCookie)
+	requireStatus(t, response, http.StatusOK)
+	searchPage := decode[AdminUserPage](t, response)
+	if len(searchPage.Items) != 1 || searchPage.Items[0].ID != created.ID {
+		t.Fatalf("search page = %+v", searchPage)
+	}
+
+	response = env.api.PatchCtx(ctx, "/api/v1/admin/users/"+created.ID, adminCookie, map[string]any{
+		"name": "Updated User", "email": "updated@example.com", "is_admin": false, "is_disabled": true,
+	})
+	requireStatus(t, response, http.StatusOK)
+	if user := decode[AdminUser](t, response); !user.IsDisabled {
+		t.Fatal("user was not disabled")
+	}
+	requireStatus(t, env.api.PostCtx(ctx, "/api/v1/auth/login", map[string]any{
+		"email": "updated@example.com", "password": "a new secure password",
+	}), http.StatusUnauthorized)
+	response = env.api.PatchCtx(ctx, "/api/v1/admin/users/"+created.ID, adminCookie, map[string]any{
+		"name": "Updated User", "email": "updated@example.com", "is_admin": false, "is_disabled": false,
+	})
+	requireStatus(t, response, http.StatusOK)
+	requireStatus(t, env.api.PostCtx(ctx, "/api/v1/auth/login", map[string]any{
+		"email": "updated@example.com", "password": "a new secure password",
+	}), http.StatusOK)
+	requireStatus(t, env.api.PatchCtx(ctx, "/api/v1/admin/users/"+admin.PublicID, adminCookie, map[string]any{
+		"name": admin.Name, "email": admin.Email, "is_admin": true, "is_disabled": true,
+	}), http.StatusConflict)
 
 	response = env.api.DeleteCtx(ctx, "/api/v1/admin/users/"+created.ID, adminCookie)
 	requireStatus(t, response, http.StatusNoContent)
@@ -175,6 +210,35 @@ func TestAdminUserManagement(t *testing.T) {
 		t.Fatal("deleted user still exists")
 	}
 	requireStatus(t, env.api.DeleteCtx(ctx, "/api/v1/admin/users/"+admin.PublicID, adminCookie), http.StatusConflict)
+}
+
+func TestAdminCredentialRevocation(t *testing.T) {
+	pool := testutil.NewPostgres(t)
+	env := newAdminTestEnv(t, pool)
+	adminCookie, _ := env.register(t, true)
+	targetCookie, target := env.register(t, false)
+	ctx := t.Context()
+
+	requireStatus(t, env.api.DeleteCtx(ctx, "/api/v1/admin/users/"+target.PublicID+"/sessions", adminCookie), http.StatusNoContent)
+	requireStatus(t, env.api.GetCtx(ctx, "/api/v1/auth/me", targetCookie), http.StatusUnauthorized)
+
+	handle := bytes.Repeat([]byte{1}, 64)
+	if _, err := env.queries.EnsurePasskeyUser(ctx, db.EnsurePasskeyUserParams{UserID: target.ID, Handle: handle}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := env.queries.CreatePasskey(ctx, db.CreatePasskeyParams{
+		PublicID: id.New(id.Passkey), UserID: target.ID, CredentialID: []byte{2}, Name: "Laptop",
+		PublicKey: []byte{3}, AttestationType: "none", AttestationFormat: "none", Attestation: []byte("{}"),
+		Extensions: []byte("{}"), Transports: []string{}, Attachment: "platform",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	requireStatus(t, env.api.DeleteCtx(ctx, "/api/v1/admin/users/"+target.PublicID+"/passkeys", adminCookie), http.StatusNoContent)
+	if passkeys, err := env.queries.ListPasskeys(ctx, db.ListPasskeysParams{UserID: target.ID, RpID: ""}); err != nil {
+		t.Fatal(err)
+	} else if len(passkeys) != 0 {
+		t.Fatalf("passkeys = %+v", passkeys)
+	}
 }
 
 func TestAdminQuotaSettings(t *testing.T) {

@@ -274,6 +274,9 @@ func (s *Service) login(ctx context.Context, input *loginInput) (*sessionOutput,
 		if !verifyPassword(input.Body.Password, user.PasswordHash) {
 			return errInvalidCredentials
 		}
+		if user.DisabledAt.Valid {
+			return errInvalidCredentials
+		}
 		output.Body = publicUser(user)
 		if output.SetCookie, err = s.createSession(ctx, queries, user.ID); err != nil {
 			return err

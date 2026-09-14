@@ -124,6 +124,18 @@ func (q *Queries) CreateWebAuthnCeremony(ctx context.Context, arg CreateWebAuthn
 	return err
 }
 
+const deleteAllUserPasskeys = `-- name: DeleteAllUserPasskeys :execrows
+DELETE FROM passkeys WHERE user_id = $1
+`
+
+func (q *Queries) DeleteAllUserPasskeys(ctx context.Context, userID int64) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteAllUserPasskeys, userID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteExpiredWebAuthnCeremonies = `-- name: DeleteExpiredWebAuthnCeremonies :exec
 DELETE FROM webauthn_ceremonies WHERE expires_at <= now()
 `
@@ -150,6 +162,15 @@ func (q *Queries) DeletePasskey(ctx context.Context, arg DeletePasskeyParams) (s
 	return name, err
 }
 
+const deleteUserPasskeyUser = `-- name: DeleteUserPasskeyUser :exec
+DELETE FROM passkey_users WHERE user_id = $1
+`
+
+func (q *Queries) DeleteUserPasskeyUser(ctx context.Context, userID int64) error {
+	_, err := q.db.Exec(ctx, deleteUserPasskeyUser, userID)
+	return err
+}
+
 const ensurePasskeyUser = `-- name: EnsurePasskeyUser :one
 INSERT INTO passkey_users (user_id, handle)
 VALUES ($1, $2)
@@ -170,10 +191,10 @@ func (q *Queries) EnsurePasskeyUser(ctx context.Context, arg EnsurePasskeyUserPa
 }
 
 const getPasskeyUserByHandle = `-- name: GetPasskeyUserByHandle :one
-SELECT users.id, users.public_id, users.name, users.email, users.password_hash, users.created_at, users.updated_at, users.is_admin, passkey_users.handle
+SELECT users.id, users.public_id, users.name, users.email, users.password_hash, users.created_at, users.updated_at, users.is_admin, users.disabled_at, passkey_users.handle
 FROM passkey_users
 JOIN users ON users.id = passkey_users.user_id
-WHERE passkey_users.handle = $1
+WHERE passkey_users.handle = $1 AND users.disabled_at IS NULL
 `
 
 type GetPasskeyUserByHandleRow struct {
@@ -193,6 +214,7 @@ func (q *Queries) GetPasskeyUserByHandle(ctx context.Context, handle []byte) (Ge
 		&i.User.CreatedAt,
 		&i.User.UpdatedAt,
 		&i.User.IsAdmin,
+		&i.User.DisabledAt,
 		&i.Handle,
 	)
 	return i, err

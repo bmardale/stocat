@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -133,6 +135,23 @@ func TestActivity(t *testing.T) {
 	if event := filtered.Items[0]; event.Actor.Email != administrator.Email || event.IPAddress != testIP ||
 		event.Details.QuotaMode != admin.ModeUnlimited || event.TargetID != user.PublicID {
 		t.Errorf("the administrator sees the quota event as %+v", event)
+	}
+	future := url.QueryEscape(time.Now().Add(time.Hour).UTC().Format(time.RFC3339))
+	futurePage := env.page(t, "/api/v1/admin/audit-events?from="+future, adminCookie)
+	if len(futurePage.Items) != 0 {
+		t.Errorf("future audit filter returned %d events", len(futurePage.Items))
+	}
+	export := env.api.GetCtx(ctx, "/api/v1/admin/audit-events/export?action=quota.user_updated", adminCookie)
+	requireStatus(t, export, http.StatusOK)
+	if contentType := export.Header().Get("Content-Type"); contentType != "text/csv; charset=utf-8" {
+		t.Errorf("export content type = %q", contentType)
+	}
+	if disposition := export.Header().Get("Content-Disposition"); disposition != `attachment; filename="audit-log.csv"` {
+		t.Errorf("export disposition = %q", disposition)
+	}
+	if body := export.Body.String(); !strings.Contains(body, "created_at,actor,actor_email,action") ||
+		!strings.Contains(body, string(audit.UserQuotaUpdated)) {
+		t.Errorf("export body = %q", body)
 	}
 
 	for _, tc := range []struct {

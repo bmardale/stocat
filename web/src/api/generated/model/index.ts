@@ -7,6 +7,8 @@
 
 export * from "./activityListParams.ts";
 export * from "./adminUser.ts";
+export * from "./adminUserPage.ts";
+export * from "./adminUsersListParams.ts";
 export * from "./auditDetails.ts";
 export * from "./auditDetailsBackendType.ts";
 export * from "./auditDetailsMethod.ts";
@@ -15,6 +17,7 @@ export * from "./auditEvent.ts";
 export * from "./auditEventAction.ts";
 export * from "./auditEventActorType.ts";
 export * from "./auditEventPage.ts";
+export * from "./auditEventsExportParams.ts";
 export * from "./auditEventsListParams.ts";
 export * from "./auditUser.ts";
 export * from "./backend.ts";

@@ -2,12 +2,18 @@ import {
   Add01Icon,
   Delete02Icon,
   PencilEdit01Icon,
+  SecurityKeyUsbIcon,
   Settings01Icon,
   UserAccountIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { queryOptions, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import {
+  useInfiniteQuery,
+  queryOptions,
+  useQueryClient,
+  useSuspenseQuery,
+} from "@tanstack/react-query";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { z } from "zod";
 import type { AdminUser, Backend, QuotaSettings } from "@/api/generated/model";
@@ -25,7 +31,11 @@ import {
 } from "@/api/generated/storage/storage";
 import { useAppForm } from "@/components/form";
 import { useAuth } from "@/components/auth-provider";
-import { AdminUserDeleteDialog, AdminUserDialog } from "@/components/admin-user-dialogs";
+import {
+  AdminUserDeleteDialog,
+  AdminUserDialog,
+  AdminUserSecurityDialog,
+} from "@/components/admin-user-dialogs";
 import { QuotaPicker } from "@/components/quota-picker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -45,14 +55,24 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/toast";
 import { UserQuotaDialog } from "@/components/user-quota-dialog";
 import { quotaFromValue, quotaLabel, quotaValue, quotaValueSchema } from "@/lib/quota";
+import { formatBytes } from "@/lib/utils";
 
-const usersQueryOptions = queryOptions({
-  queryKey: getAdminUsersListQueryKey(),
-  queryFn: ({ signal }) => adminUsersList({ signal }),
-});
+const userPageSize = 50;
+
+function usersQueryOptions(search?: string) {
+  const params = { limit: userPageSize, ...(search ? { search } : {}) };
+  return {
+    queryKey: getAdminUsersListQueryKey(params),
+    queryFn: ({ pageParam, signal }: { pageParam: string | undefined; signal: AbortSignal }) =>
+      adminUsersList({ ...params, ...(pageParam ? { cursor: pageParam } : {}) }, { signal }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (page: { next_cursor?: string }) => page.next_cursor,
+  };
+}
 
 const quotaSettingsQueryOptions = queryOptions({
   queryKey: getAdminQuotaGetQueryKey(),
@@ -65,9 +85,11 @@ const backendsQueryOptions = queryOptions({
 });
 
 export const Route = createFileRoute("/_app/admin/users")({
-  loader: ({ context }) =>
+  validateSearch: z.object({ search: z.string().max(200).optional().catch(undefined) }),
+  loaderDeps: ({ search }) => ({ search: search.search }),
+  loader: ({ context, deps }) =>
     Promise.all([
-      context.queryClient.ensureQueryData(usersQueryOptions),
+      context.queryClient.ensureInfiniteQueryData(usersQueryOptions(deps.search)),
       context.queryClient.ensureQueryData(quotaSettingsQueryOptions),
       context.queryClient.ensureQueryData(backendsQueryOptions),
     ]),
@@ -76,11 +98,15 @@ export const Route = createFileRoute("/_app/admin/users")({
 
 function Users() {
   const { user: currentUser } = useAuth();
-  const { data: users } = useSuspenseQuery(usersQueryOptions);
+  const search = Route.useSearch();
+  const navigate = useNavigate();
+  const usersQuery = useInfiniteQuery(usersQueryOptions(search.search));
+  const users = usersQuery.data?.pages.flatMap((page) => page.items) ?? [];
   const { data: settings } = useSuspenseQuery(quotaSettingsQueryOptions);
   const { data: backends } = useSuspenseQuery(backendsQueryOptions);
   const [editing, setEditing] = useState<AdminUser>();
   const [userEditing, setUserEditing] = useState<AdminUser>();
+  const [securityEditing, setSecurityEditing] = useState<AdminUser>();
   const [deleting, setDeleting] = useState<AdminUser>();
   const [creating, setCreating] = useState(false);
   const globalLabel = `Global (${quotaLabel(settings.default_quota, "")})`;
@@ -100,6 +126,22 @@ function Users() {
           New user
         </Button>
       </div>
+      <div className="flex max-w-xl flex-col gap-2">
+        <label htmlFor="user-search" className="text-sm font-medium">
+          Search users
+        </label>
+        <Input
+          id="user-search"
+          value={search.search ?? ""}
+          placeholder="Name, email, or user ID"
+          onChange={(event) =>
+            void navigate({
+              to: "/admin/users",
+              search: { search: event.target.value || undefined },
+            })
+          }
+        />
+      </div>
       <GlobalQuotaForm settings={settings} />
       {users.length === 0 ? (
         <Empty className="border">
@@ -107,21 +149,26 @@ function Users() {
             <EmptyMedia variant="icon">
               <HugeiconsIcon icon={UserAccountIcon} strokeWidth={2} />
             </EmptyMedia>
-            <EmptyTitle>No users</EmptyTitle>
-            <EmptyDescription>Users appear here after they register.</EmptyDescription>
+            <EmptyTitle>{search.search ? "No matching users" : "No users"}</EmptyTitle>
+            <EmptyDescription>
+              {search.search ? "Try a different search." : "Users appear here after they register."}
+            </EmptyDescription>
           </EmptyHeader>
         </Empty>
       ) : (
-        <Card className="py-0">
+        <Card className="overflow-hidden py-0">
           <Table aria-label="Users">
             <TableHeader>
               <TableRow>
                 <TableHead className="pl-4">Name</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Role</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Storage</TableHead>
+                <TableHead>Last active</TableHead>
                 <TableHead>Default quota</TableHead>
                 <TableHead>Backend overrides</TableHead>
-                <TableHead className="w-28 pr-4">
+                <TableHead className="w-36 pr-4">
                   <span className="sr-only">Actions</span>
                 </TableHead>
               </TableRow>
@@ -135,6 +182,28 @@ function Users() {
                     <Badge variant={user.is_admin ? "secondary" : "outline"}>
                       {user.is_admin ? "Administrator" : "User"}
                     </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={user.is_disabled ? "destructive" : "outline"}>
+                      {user.is_disabled ? "Suspended" : "Active"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <div>{formatBytes(user.storage_used_bytes)}</div>
+                    {user.storage_reserved_bytes > 0 && (
+                      <div className="text-xs text-muted-foreground">
+                        + {formatBytes(user.storage_reserved_bytes)} pending
+                      </div>
+                    )}
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap text-muted-foreground">
+                    {user.last_active_at ? (
+                      <time dateTime={user.last_active_at}>
+                        {dateFormat.format(new Date(user.last_active_at))}
+                      </time>
+                    ) : (
+                      "Never"
+                    )}
                   </TableCell>
                   <TableCell>{quotaLabel(user.default_quota, globalLabel)}</TableCell>
                   <TableCell>
@@ -157,6 +226,14 @@ function Users() {
                         onClick={() => setEditing(user)}
                       >
                         <HugeiconsIcon icon={Settings01Icon} strokeWidth={2} />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`Manage security for ${user.name}`}
+                        onClick={() => setSecurityEditing(user)}
+                      >
+                        <HugeiconsIcon icon={SecurityKeyUsbIcon} strokeWidth={2} />
                       </Button>
                       {user.id !== currentUser?.id && (
                         <Button
@@ -191,11 +268,19 @@ function Users() {
       <AdminUserDialog
         open={creating || userEditing !== undefined}
         user={userEditing}
+        currentUserID={currentUser?.id}
         onOpenChange={(open) => {
           if (!open) {
             setCreating(false);
             setUserEditing(undefined);
           }
+        }}
+      />
+      <AdminUserSecurityDialog
+        open={securityEditing !== undefined}
+        user={securityEditing}
+        onOpenChange={(open) => {
+          if (!open) setSecurityEditing(undefined);
         }}
       />
       <AdminUserDeleteDialog
@@ -208,6 +293,8 @@ function Users() {
     </section>
   );
 }
+
+const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 
 function OverrideList({ user, backends }: { user: AdminUser; backends: Backend[] }) {
   if (user.backend_quotas.length === 0) {

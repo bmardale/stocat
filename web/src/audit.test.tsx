@@ -78,6 +78,11 @@ describe("audit log", () => {
       name: testUser.name,
       email: testUser.email,
       is_admin: false,
+      is_disabled: false,
+      active_sessions: 0,
+      passkey_count: 0,
+      storage_used_bytes: 0,
+      storage_reserved_bytes: 0,
       default_quota: { mode: "inherit" },
       backend_quotas: [],
     },
@@ -97,7 +102,7 @@ describe("audit log", () => {
     stubApi({
       "GET /api/v1/auth/me": () => jsonResponse(200, adminUser),
       "GET /api/v1/libraries": noLibraries,
-      "GET /api/v1/admin/users": () => jsonResponse(200, users),
+      "GET /api/v1/admin/users?limit=200": () => jsonResponse(200, { items: users }),
       "GET /api/v1/admin/audit-events": () => jsonResponse(200, { items: [quotaChanged, purged] }),
       "GET /api/v1/admin/audit-events?action=file.deleted": () =>
         jsonResponse(200, { items: [purged] }),

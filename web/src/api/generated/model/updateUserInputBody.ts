@@ -9,6 +9,7 @@ export interface UpdateUserInputBody {
   /** @maxLength 254 */
   email: string;
   is_admin: boolean;
+  is_disabled: boolean;
   /**
    * @minLength 1
    * @maxLength 200
