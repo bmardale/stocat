@@ -20,7 +20,15 @@ import type {
   UseQueryResult,
 } from "@tanstack/react-query";
 
-import type { FileDetails, FilesContentParams, Node, Problem, RenameInputBody } from "../model";
+import type {
+  FileDetails,
+  FilesContentParams,
+  FilesTrashListParams,
+  Node,
+  Problem,
+  RenameInputBody,
+  TrashPage,
+} from "../model";
 
 import { apiFetch } from "../../fetcher.ts";
 import type { ErrorType, BodyType } from "../../fetcher.ts";
@@ -42,12 +50,145 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
   return result;
 };
 
+export const getFilesTrashListUrl = (params?: FilesTrashListParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : String(value));
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/v1/files/trash?${stringifiedParams}`
+    : `/api/v1/files/trash`;
+};
+
+/**
+ * @summary List trashed files
+ */
+export const filesTrashList = async (
+  params?: FilesTrashListParams,
+  options?: Parameters<typeof apiFetch>[1],
+): Promise<TrashPage> => {
+  return apiFetch<TrashPage>(getFilesTrashListUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getFilesTrashListQueryKey = (params?: FilesTrashListParams) => {
+  return [`/api/v1/files/trash`, ...(params ? [params] : [])] as const;
+};
+
+export const getFilesTrashListQueryOptions = <
+  TData = Awaited<ReturnType<typeof filesTrashList>>,
+  TError = ErrorType<Problem>,
+>(
+  params?: FilesTrashListParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof filesTrashList>>, TError, TData>>;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getFilesTrashListQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof filesTrashList>>> = ({ signal }) =>
+    filesTrashList(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof filesTrashList>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type FilesTrashListQueryResult = NonNullable<Awaited<ReturnType<typeof filesTrashList>>>;
+export type FilesTrashListQueryError = ErrorType<Problem>;
+
+export function useFilesTrashList<
+  TData = Awaited<ReturnType<typeof filesTrashList>>,
+  TError = ErrorType<Problem>,
+>(
+  params: undefined | FilesTrashListParams,
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof filesTrashList>>, TError, TData>> &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof filesTrashList>>,
+          TError,
+          Awaited<ReturnType<typeof filesTrashList>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useFilesTrashList<
+  TData = Awaited<ReturnType<typeof filesTrashList>>,
+  TError = ErrorType<Problem>,
+>(
+  params?: FilesTrashListParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof filesTrashList>>, TError, TData>> &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof filesTrashList>>,
+          TError,
+          Awaited<ReturnType<typeof filesTrashList>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useFilesTrashList<
+  TData = Awaited<ReturnType<typeof filesTrashList>>,
+  TError = ErrorType<Problem>,
+>(
+  params?: FilesTrashListParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof filesTrashList>>, TError, TData>>;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary List trashed files
+ */
+
+export function useFilesTrashList<
+  TData = Awaited<ReturnType<typeof filesTrashList>>,
+  TError = ErrorType<Problem>,
+>(
+  params?: FilesTrashListParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof filesTrashList>>, TError, TData>>;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getFilesTrashListQueryOptions(params, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
 export const getFilesDeleteUrl = (id: string) => {
   return `/api/v1/files/${id}`;
 };
 
 /**
- * @summary Delete a file
+ * @summary Move a file to trash
  */
 export const filesDelete = async (
   id: string,
@@ -103,7 +244,7 @@ export type FilesDeleteMutationError = ErrorType<Problem>;
 export type FilesDeleteMutationVariables = { id: string };
 
 /**
- * @summary Delete a file
+ * @summary Move a file to trash
  */
 export const useFilesDelete = <TError = ErrorType<Problem>, TContext = unknown>(
   options?: {
@@ -493,3 +634,170 @@ export function useFilesContent<
 
   return withQueryKey(query, queryOptions.queryKey);
 }
+
+export const getFilesDeletePermanentlyUrl = (id: string) => {
+  return `/api/v1/files/${id}/permanent`;
+};
+
+/**
+ * @summary Permanently delete a trashed file
+ */
+export const filesDeletePermanently = async (
+  id: string,
+  options?: Parameters<typeof apiFetch>[1],
+): Promise<void> => {
+  return apiFetch<void>(getFilesDeletePermanentlyUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getFilesDeletePermanentlyMutationKey = () => ["filesDeletePermanently"] as const;
+
+export const getFilesDeletePermanentlyMutationOptions = <
+  TError = ErrorType<Problem>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof filesDeletePermanently>>,
+    TError,
+    FilesDeletePermanentlyMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof apiFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof filesDeletePermanently>>,
+  TError,
+  FilesDeletePermanentlyMutationVariables,
+  TContext
+> => {
+  const mutationKey = getFilesDeletePermanentlyMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof filesDeletePermanently>>,
+    FilesDeletePermanentlyMutationVariables
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return filesDeletePermanently(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type FilesDeletePermanentlyMutationResult = NonNullable<
+  Awaited<ReturnType<typeof filesDeletePermanently>>
+>;
+
+export type FilesDeletePermanentlyMutationError = ErrorType<Problem>;
+export type FilesDeletePermanentlyMutationVariables = { id: string };
+
+/**
+ * @summary Permanently delete a trashed file
+ */
+export const useFilesDeletePermanently = <TError = ErrorType<Problem>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof filesDeletePermanently>>,
+      TError,
+      FilesDeletePermanentlyMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof filesDeletePermanently>>,
+  TError,
+  FilesDeletePermanentlyMutationVariables,
+  TContext
+> => {
+  return useMutation(getFilesDeletePermanentlyMutationOptions(options), queryClient);
+};
+export const getFilesRestoreUrl = (id: string) => {
+  return `/api/v1/files/${id}/restore`;
+};
+
+/**
+ * @summary Restore a trashed file
+ */
+export const filesRestore = async (
+  id: string,
+  options?: Parameters<typeof apiFetch>[1],
+): Promise<Node> => {
+  return apiFetch<Node>(getFilesRestoreUrl(id), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getFilesRestoreMutationKey = () => ["filesRestore"] as const;
+
+export const getFilesRestoreMutationOptions = <
+  TError = ErrorType<Problem>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof filesRestore>>,
+    TError,
+    FilesRestoreMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof apiFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof filesRestore>>,
+  TError,
+  FilesRestoreMutationVariables,
+  TContext
+> => {
+  const mutationKey = getFilesRestoreMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof filesRestore>>,
+    FilesRestoreMutationVariables
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return filesRestore(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type FilesRestoreMutationResult = NonNullable<Awaited<ReturnType<typeof filesRestore>>>;
+
+export type FilesRestoreMutationError = ErrorType<Problem>;
+export type FilesRestoreMutationVariables = { id: string };
+
+/**
+ * @summary Restore a trashed file
+ */
+export const useFilesRestore = <TError = ErrorType<Problem>, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof filesRestore>>,
+      TError,
+      FilesRestoreMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof apiFetch>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof filesRestore>>,
+  TError,
+  FilesRestoreMutationVariables,
+  TContext
+> => {
+  return useMutation(getFilesRestoreMutationOptions(options), queryClient);
+};

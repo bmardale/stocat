@@ -540,7 +540,7 @@ describe("files", () => {
     fireEvent.click(await screen.findByRole("menuitem", { name: "Delete" }));
     const confirm = await screen.findByRole("alertdialog");
     expect(within(confirm).getByText("Delete todo.txt?")).toBeDefined();
-    fireEvent.click(within(confirm).getByRole("button", { name: "Delete" }));
+    fireEvent.click(within(confirm).getByRole("button", { name: "Move to trash" }));
     expect(await screen.findByText("This folder is empty")).toBeDefined();
     expect(deleted).toBe(true);
   });

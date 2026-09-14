@@ -189,6 +189,25 @@ func (q *Queries) GetCurrentFileByPublicIDAndOwner(ctx context.Context, arg GetC
 	return i, err
 }
 
+const getExpiredTrashedFileForUpdate = `-- name: GetExpiredTrashedFileForUpdate :one
+SELECT id, library_id
+FROM nodes
+WHERE id = $1 AND kind = 'file' AND trashed_at <= now() - INTERVAL '30 days'
+FOR UPDATE
+`
+
+type GetExpiredTrashedFileForUpdateRow struct {
+	ID        int64
+	LibraryID int64
+}
+
+func (q *Queries) GetExpiredTrashedFileForUpdate(ctx context.Context, id int64) (GetExpiredTrashedFileForUpdateRow, error) {
+	row := q.db.QueryRow(ctx, getExpiredTrashedFileForUpdate, id)
+	var i GetExpiredTrashedFileForUpdateRow
+	err := row.Scan(&i.ID, &i.LibraryID)
+	return i, err
+}
+
 const getFileNodeByPublicIDAndOwner = `-- name: GetFileNodeByPublicIDAndOwner :one
 SELECT n.id, n.library_id, l.public_id AS library_public_id, l.encryption_mode,
        parent.public_id AS parent_public_id
@@ -225,6 +244,185 @@ func (q *Queries) GetFileNodeByPublicIDAndOwner(ctx context.Context, arg GetFile
 	return i, err
 }
 
+const getTrashedFileCursorByPublicIDAndOwner = `-- name: GetTrashedFileCursorByPublicIDAndOwner :one
+SELECT n.id
+FROM nodes n
+JOIN libraries l ON l.id = n.library_id
+WHERE n.public_id = $1 AND n.kind = 'file' AND n.trashed_at IS NOT NULL
+  AND l.owner_id = $2
+`
+
+type GetTrashedFileCursorByPublicIDAndOwnerParams struct {
+	NodePublicID string
+	OwnerID      int64
+}
+
+func (q *Queries) GetTrashedFileCursorByPublicIDAndOwner(ctx context.Context, arg GetTrashedFileCursorByPublicIDAndOwnerParams) (int64, error) {
+	row := q.db.QueryRow(ctx, getTrashedFileCursorByPublicIDAndOwner, arg.NodePublicID, arg.OwnerID)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
+const getTrashedFileForUpdate = `-- name: GetTrashedFileForUpdate :one
+SELECT id, library_id
+FROM nodes
+WHERE id = $1 AND kind = 'file' AND trashed_at IS NOT NULL
+FOR UPDATE
+`
+
+type GetTrashedFileForUpdateRow struct {
+	ID        int64
+	LibraryID int64
+}
+
+func (q *Queries) GetTrashedFileForUpdate(ctx context.Context, id int64) (GetTrashedFileForUpdateRow, error) {
+	row := q.db.QueryRow(ctx, getTrashedFileForUpdate, id)
+	var i GetTrashedFileForUpdateRow
+	err := row.Scan(&i.ID, &i.LibraryID)
+	return i, err
+}
+
+const getTrashedFileNodeByPublicIDAndOwner = `-- name: GetTrashedFileNodeByPublicIDAndOwner :one
+SELECT n.id, n.library_id, n.trashed_at, l.public_id AS library_public_id,
+       parent.public_id AS parent_public_id
+FROM nodes n
+JOIN libraries l ON l.id = n.library_id
+JOIN nodes parent ON parent.id = n.parent_id
+WHERE n.public_id = $1 AND n.kind = 'file' AND n.trashed_at IS NOT NULL
+  AND l.owner_id = $2
+`
+
+type GetTrashedFileNodeByPublicIDAndOwnerParams struct {
+	NodePublicID string
+	OwnerID      int64
+}
+
+type GetTrashedFileNodeByPublicIDAndOwnerRow struct {
+	ID              int64
+	LibraryID       int64
+	TrashedAt       pgtype.Timestamptz
+	LibraryPublicID string
+	ParentPublicID  string
+}
+
+func (q *Queries) GetTrashedFileNodeByPublicIDAndOwner(ctx context.Context, arg GetTrashedFileNodeByPublicIDAndOwnerParams) (GetTrashedFileNodeByPublicIDAndOwnerRow, error) {
+	row := q.db.QueryRow(ctx, getTrashedFileNodeByPublicIDAndOwner, arg.NodePublicID, arg.OwnerID)
+	var i GetTrashedFileNodeByPublicIDAndOwnerRow
+	err := row.Scan(
+		&i.ID,
+		&i.LibraryID,
+		&i.TrashedAt,
+		&i.LibraryPublicID,
+		&i.ParentPublicID,
+	)
+	return i, err
+}
+
+const listExpiredTrashedFileIDs = `-- name: ListExpiredTrashedFileIDs :many
+SELECT id
+FROM nodes
+WHERE kind = 'file' AND trashed_at <= now() - INTERVAL '30 days'
+ORDER BY trashed_at, id
+LIMIT $1
+`
+
+func (q *Queries) ListExpiredTrashedFileIDs(ctx context.Context, limit int32) ([]int64, error) {
+	rows, err := q.db.Query(ctx, listExpiredTrashedFileIDs, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTrashedFilesByOwner = `-- name: ListTrashedFilesByOwner :many
+SELECT n.id, n.public_id, n.library_id, n.parent_id, n.kind, n.name, n.encrypted_name, n.name_token, n.current_version_id, n.revision, n.trashed_at, n.created_at, n.updated_at, l.public_id AS library_public_id, l.name AS library_name,
+       l.encryption_mode, parent.public_id AS parent_public_id
+FROM nodes n
+JOIN libraries l ON l.id = n.library_id
+JOIN nodes parent ON parent.id = n.parent_id
+WHERE l.owner_id = $1 AND n.kind = 'file' AND n.trashed_at IS NOT NULL
+  AND n.id > $2
+ORDER BY n.id
+LIMIT $3
+`
+
+type ListTrashedFilesByOwnerParams struct {
+	OwnerID   int64
+	AfterID   int64
+	PageLimit int32
+}
+
+type ListTrashedFilesByOwnerRow struct {
+	ID               int64
+	PublicID         string
+	LibraryID        int64
+	ParentID         pgtype.Int8
+	Kind             string
+	Name             pgtype.Text
+	EncryptedName    []byte
+	NameToken        []byte
+	CurrentVersionID pgtype.Int8
+	Revision         int64
+	TrashedAt        pgtype.Timestamptz
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+	LibraryPublicID  string
+	LibraryName      string
+	EncryptionMode   string
+	ParentPublicID   string
+}
+
+func (q *Queries) ListTrashedFilesByOwner(ctx context.Context, arg ListTrashedFilesByOwnerParams) ([]ListTrashedFilesByOwnerRow, error) {
+	rows, err := q.db.Query(ctx, listTrashedFilesByOwner, arg.OwnerID, arg.AfterID, arg.PageLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListTrashedFilesByOwnerRow
+	for rows.Next() {
+		var i ListTrashedFilesByOwnerRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.PublicID,
+			&i.LibraryID,
+			&i.ParentID,
+			&i.Kind,
+			&i.Name,
+			&i.EncryptedName,
+			&i.NameToken,
+			&i.CurrentVersionID,
+			&i.Revision,
+			&i.TrashedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.LibraryPublicID,
+			&i.LibraryName,
+			&i.EncryptionMode,
+			&i.ParentPublicID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const renameFileNode = `-- name: RenameFileNode :one
 UPDATE nodes
 SET name = $2, encrypted_name = $3, name_token = $4, updated_at = now()
@@ -246,6 +444,76 @@ func (q *Queries) RenameFileNode(ctx context.Context, arg RenameFileNodeParams) 
 		arg.EncryptedName,
 		arg.NameToken,
 	)
+	var i Node
+	err := row.Scan(
+		&i.ID,
+		&i.PublicID,
+		&i.LibraryID,
+		&i.ParentID,
+		&i.Kind,
+		&i.Name,
+		&i.EncryptedName,
+		&i.NameToken,
+		&i.CurrentVersionID,
+		&i.Revision,
+		&i.TrashedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const restoreFileNode = `-- name: RestoreFileNode :one
+UPDATE nodes
+SET trashed_at = NULL, updated_at = now()
+WHERE id = $1 AND kind = 'file' AND trashed_at IS NOT NULL
+RETURNING id, public_id, library_id, parent_id, kind, name, encrypted_name, name_token, current_version_id, revision, trashed_at, created_at, updated_at
+`
+
+func (q *Queries) RestoreFileNode(ctx context.Context, id int64) (Node, error) {
+	row := q.db.QueryRow(ctx, restoreFileNode, id)
+	var i Node
+	err := row.Scan(
+		&i.ID,
+		&i.PublicID,
+		&i.LibraryID,
+		&i.ParentID,
+		&i.Kind,
+		&i.Name,
+		&i.EncryptedName,
+		&i.NameToken,
+		&i.CurrentVersionID,
+		&i.Revision,
+		&i.TrashedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const setFileTrashedAt = `-- name: SetFileTrashedAt :exec
+UPDATE nodes SET trashed_at = $2, updated_at = now() WHERE id = $1 AND kind = 'file'
+`
+
+type SetFileTrashedAtParams struct {
+	ID        int64
+	TrashedAt pgtype.Timestamptz
+}
+
+func (q *Queries) SetFileTrashedAt(ctx context.Context, arg SetFileTrashedAtParams) error {
+	_, err := q.db.Exec(ctx, setFileTrashedAt, arg.ID, arg.TrashedAt)
+	return err
+}
+
+const trashFileNode = `-- name: TrashFileNode :one
+UPDATE nodes
+SET trashed_at = now(), updated_at = now()
+WHERE id = $1 AND kind = 'file' AND trashed_at IS NULL
+RETURNING id, public_id, library_id, parent_id, kind, name, encrypted_name, name_token, current_version_id, revision, trashed_at, created_at, updated_at
+`
+
+func (q *Queries) TrashFileNode(ctx context.Context, id int64) (Node, error) {
+	row := q.db.QueryRow(ctx, trashFileNode, id)
 	var i Node
 	err := row.Scan(
 		&i.ID,

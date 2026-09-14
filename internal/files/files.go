@@ -93,6 +93,10 @@ func (s *Service) Register(api huma.API) {
 	group := huma.NewGroup(api, "/files")
 	group.UseSimpleModifier(func(op *huma.Operation) { op.Tags = []string{"Files"} })
 	huma.Register(group, huma.Operation{
+		OperationID: "files-trash-list", Method: http.MethodGet, Path: "/trash", Summary: "List trashed files",
+		Errors: []int{http.StatusUnprocessableEntity},
+	}, s.listTrash)
+	huma.Register(group, huma.Operation{
 		OperationID: "files-get", Method: http.MethodGet, Path: "/{id}", Summary: "Get file metadata",
 		Errors: []int{http.StatusNotFound},
 	}, s.get)
@@ -101,10 +105,19 @@ func (s *Service) Register(api huma.API) {
 		MaxBodyBytes: 65536, Errors: []int{http.StatusConflict, http.StatusNotFound, http.StatusUnprocessableEntity},
 	}, s.rename)
 	huma.Register(group, huma.Operation{
-		OperationID: "files-delete", Method: http.MethodDelete, Path: "/{id}", Summary: "Delete a file",
+		OperationID: "files-delete", Method: http.MethodDelete, Path: "/{id}", Summary: "Move a file to trash",
 		DefaultStatus: http.StatusNoContent,
-		Errors:        []int{http.StatusConflict, http.StatusNotFound, http.StatusServiceUnavailable},
+		Errors:        []int{http.StatusNotFound},
 	}, s.remove)
+	huma.Register(group, huma.Operation{
+		OperationID: "files-restore", Method: http.MethodPost, Path: "/{id}/restore", Summary: "Restore a trashed file",
+		Errors: []int{http.StatusConflict, http.StatusNotFound},
+	}, s.restore)
+	huma.Register(group, huma.Operation{
+		OperationID: "files-delete-permanently", Method: http.MethodDelete, Path: "/{id}/permanent",
+		Summary: "Permanently delete a trashed file", DefaultStatus: http.StatusNoContent,
+		Errors: []int{http.StatusConflict, http.StatusNotFound, http.StatusServiceUnavailable},
+	}, s.deletePermanently)
 	huma.Register(group, huma.Operation{
 		OperationID: "files-content", Method: http.MethodGet, Path: "/{id}/content", Summary: "Stream file content",
 		Errors: []int{http.StatusNotFound, http.StatusRequestedRangeNotSatisfiable, http.StatusServiceUnavailable},
