@@ -11,6 +11,8 @@ Use these authenticated routes:
 | GET | `/api/v1/libraries` | List the current user's libraries. |
 | POST | `/api/v1/libraries` | Create a library and its root folder. |
 | GET | `/api/v1/libraries/{id}` | Get one library. |
+| PATCH | `/api/v1/libraries/{id}` | Rename one library. |
+| DELETE | `/api/v1/libraries/{id}` | Delete a library that contains no files. |
 | POST | `/api/v1/libraries/{id}/folders` | Create a folder. |
 | GET | `/api/v1/libraries/{id}/nodes` | List direct children of a folder. |
 

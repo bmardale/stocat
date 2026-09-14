@@ -105,6 +105,10 @@ func (s *Service) Register(api huma.API) {
 		MaxBodyBytes: 65536, Errors: []int{http.StatusConflict, http.StatusNotFound, http.StatusUnprocessableEntity},
 	}, s.rename)
 	huma.Register(group, huma.Operation{
+		OperationID: "files-move", Method: http.MethodPost, Path: "/{id}/move", Summary: "Move a file",
+		MaxBodyBytes: 65536, Errors: []int{http.StatusConflict, http.StatusNotFound},
+	}, s.move)
+	huma.Register(group, huma.Operation{
 		OperationID: "files-delete", Method: http.MethodDelete, Path: "/{id}", Summary: "Move a file to trash",
 		DefaultStatus: http.StatusNoContent,
 		Errors:        []int{http.StatusNotFound},

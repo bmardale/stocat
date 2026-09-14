@@ -149,6 +149,31 @@ func (q *Queries) CreateNodeWithID(ctx context.Context, arg CreateNodeWithIDPara
 	return i, err
 }
 
+const deleteEmptyLibrary = `-- name: DeleteEmptyLibrary :execrows
+WITH candidate AS (
+    SELECT l.id
+    FROM libraries l
+    WHERE l.public_id = $1 AND l.owner_id = $2
+      AND NOT EXISTS (SELECT 1 FROM nodes n WHERE n.library_id = l.id AND n.kind = 'file')
+), removed_uploads AS (
+    DELETE FROM upload_sessions WHERE library_id IN (SELECT id FROM candidate)
+)
+DELETE FROM libraries WHERE id IN (SELECT id FROM candidate)
+`
+
+type DeleteEmptyLibraryParams struct {
+	PublicID string
+	OwnerID  int64
+}
+
+func (q *Queries) DeleteEmptyLibrary(ctx context.Context, arg DeleteEmptyLibraryParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteEmptyLibrary, arg.PublicID, arg.OwnerID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getEnabledBackendByPublicID = `-- name: GetEnabledBackendByPublicID :one
 SELECT id, public_id, name, type, config, encrypted_secrets, enabled, created_at, updated_at FROM storage_backends WHERE public_id = $1 AND enabled = true
 `
@@ -427,4 +452,35 @@ func (q *Queries) NextNodeID(ctx context.Context) (int64, error) {
 	var column_1 int64
 	err := row.Scan(&column_1)
 	return column_1, err
+}
+
+const renameLibrary = `-- name: RenameLibrary :one
+UPDATE libraries
+SET name = $3, updated_at = now()
+WHERE public_id = $1 AND owner_id = $2
+RETURNING id, public_id, owner_id, backend_id, root_node_id, name, encryption_mode, key_envelope, created_at, updated_at
+`
+
+type RenameLibraryParams struct {
+	PublicID string
+	OwnerID  int64
+	Name     string
+}
+
+func (q *Queries) RenameLibrary(ctx context.Context, arg RenameLibraryParams) (Library, error) {
+	row := q.db.QueryRow(ctx, renameLibrary, arg.PublicID, arg.OwnerID, arg.Name)
+	var i Library
+	err := row.Scan(
+		&i.ID,
+		&i.PublicID,
+		&i.OwnerID,
+		&i.BackendID,
+		&i.RootNodeID,
+		&i.Name,
+		&i.EncryptionMode,
+		&i.KeyEnvelope,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }

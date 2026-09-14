@@ -244,6 +244,70 @@ func (q *Queries) GetFileNodeByPublicIDAndOwner(ctx context.Context, arg GetFile
 	return i, err
 }
 
+const getMoveDestination = `-- name: GetMoveDestination :one
+SELECT l.id, l.public_id, l.name, l.backend_id, l.encryption_mode,
+       root.id AS root_node_id, root.public_id AS root_node_public_id
+FROM libraries l
+JOIN nodes root ON root.id = l.root_node_id
+WHERE l.public_id = $1 AND l.owner_id = $2
+`
+
+type GetMoveDestinationParams struct {
+	LibraryPublicID string
+	OwnerID         int64
+}
+
+type GetMoveDestinationRow struct {
+	ID               int64
+	PublicID         string
+	Name             string
+	BackendID        int64
+	EncryptionMode   string
+	RootNodeID       int64
+	RootNodePublicID string
+}
+
+func (q *Queries) GetMoveDestination(ctx context.Context, arg GetMoveDestinationParams) (GetMoveDestinationRow, error) {
+	row := q.db.QueryRow(ctx, getMoveDestination, arg.LibraryPublicID, arg.OwnerID)
+	var i GetMoveDestinationRow
+	err := row.Scan(
+		&i.ID,
+		&i.PublicID,
+		&i.Name,
+		&i.BackendID,
+		&i.EncryptionMode,
+		&i.RootNodeID,
+		&i.RootNodePublicID,
+	)
+	return i, err
+}
+
+const getMoveFolder = `-- name: GetMoveFolder :one
+SELECT n.id, n.public_id
+FROM nodes n
+JOIN libraries l ON l.id = n.library_id
+WHERE n.public_id = $1 AND l.owner_id = $2
+  AND n.library_id = $3 AND n.kind = 'folder' AND n.trashed_at IS NULL
+`
+
+type GetMoveFolderParams struct {
+	NodePublicID string
+	OwnerID      int64
+	LibraryID    int64
+}
+
+type GetMoveFolderRow struct {
+	ID       int64
+	PublicID string
+}
+
+func (q *Queries) GetMoveFolder(ctx context.Context, arg GetMoveFolderParams) (GetMoveFolderRow, error) {
+	row := q.db.QueryRow(ctx, getMoveFolder, arg.NodePublicID, arg.OwnerID, arg.LibraryID)
+	var i GetMoveFolderRow
+	err := row.Scan(&i.ID, &i.PublicID)
+	return i, err
+}
+
 const getTrashedFileCursorByPublicIDAndOwner = `-- name: GetTrashedFileCursorByPublicIDAndOwner :one
 SELECT n.id
 FROM nodes n
@@ -421,6 +485,75 @@ func (q *Queries) ListTrashedFilesByOwner(ctx context.Context, arg ListTrashedFi
 		return nil, err
 	}
 	return items, nil
+}
+
+const moveFileNode = `-- name: MoveFileNode :one
+WITH file_blobs AS (
+    SELECT DISTINCT v.blob_id
+    FROM file_versions v
+    WHERE v.node_id = $3
+), movable AS (
+    SELECT (SELECT library_id FROM nodes WHERE id = $3) = $1
+      OR NOT EXISTS (
+        SELECT 1
+        FROM file_versions v
+        JOIN file_blobs b ON b.blob_id = v.blob_id
+        WHERE v.node_id <> $3
+    ) AS ok
+), removed_tags AS (
+    DELETE FROM file_tags
+    WHERE node_id = $3
+      AND library_id <> $1
+), moved_uploads AS (
+    UPDATE upload_sessions
+    SET library_id = $1,
+        parent_id = $2, updated_at = now()
+    WHERE (target_node_id = $3 OR published_node_id = $3)
+      AND (SELECT ok FROM movable)
+), moved_locations AS (
+    UPDATE blob_locations
+    SET library_id = $1, updated_at = now()
+    WHERE blob_id IN (SELECT blob_id FROM file_blobs) AND (SELECT ok FROM movable)
+), moved_versions AS (
+    UPDATE file_versions
+    SET library_id = $1
+    WHERE node_id = $3 AND (SELECT ok FROM movable)
+), moved_blobs AS (
+    UPDATE blobs
+    SET library_id = $1
+    WHERE id IN (SELECT blob_id FROM file_blobs) AND (SELECT ok FROM movable)
+)
+UPDATE nodes
+SET library_id = $1, parent_id = $2, updated_at = now()
+WHERE nodes.id = $3 AND nodes.kind = 'file' AND nodes.trashed_at IS NULL AND (SELECT ok FROM movable)
+RETURNING nodes.id, nodes.public_id, nodes.library_id, nodes.parent_id, nodes.kind, nodes.name, nodes.encrypted_name, nodes.name_token, nodes.current_version_id, nodes.revision, nodes.trashed_at, nodes.created_at, nodes.updated_at
+`
+
+type MoveFileNodeParams struct {
+	DestinationLibraryID int64
+	DestinationParentID  pgtype.Int8
+	NodeID               int64
+}
+
+func (q *Queries) MoveFileNode(ctx context.Context, arg MoveFileNodeParams) (Node, error) {
+	row := q.db.QueryRow(ctx, moveFileNode, arg.DestinationLibraryID, arg.DestinationParentID, arg.NodeID)
+	var i Node
+	err := row.Scan(
+		&i.ID,
+		&i.PublicID,
+		&i.LibraryID,
+		&i.ParentID,
+		&i.Kind,
+		&i.Name,
+		&i.EncryptedName,
+		&i.NameToken,
+		&i.CurrentVersionID,
+		&i.Revision,
+		&i.TrashedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const renameFileNode = `-- name: RenameFileNode :one

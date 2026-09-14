@@ -181,6 +181,28 @@ func TestLibraryFolders(t *testing.T) {
 	requireLibraryStatus(t, env.api.GetCtx(ctx, "/api/v1/libraries/"+plain.ID+"/nodes?parent_id="+secret.ID, owner), http.StatusNotFound)
 }
 
+func TestRenameAndDeleteLibrary(t *testing.T) {
+	pool := testutil.NewPostgres(t)
+	env := newLibraryTestEnv(t, pool)
+	owner := env.signUp(t)
+	other := env.signUp(t)
+	library := createTestLibrary(t, env, owner, "Old name", EncryptionNone, nil)
+
+	response := env.api.Patch("/api/v1/libraries/"+library.ID, owner, map[string]any{"name": " New name "})
+	requireLibraryStatus(t, response, http.StatusOK)
+	renamed := decodeLibrary[Library](t, response)
+	if renamed.Name != "New name" {
+		t.Fatalf("renamed library = %+v", renamed)
+	}
+	requireLibraryStatus(t, env.api.Patch("/api/v1/libraries/"+library.ID, other,
+		map[string]any{"name": "Hidden"}), http.StatusNotFound)
+
+	response = env.api.Post("/api/v1/libraries/"+library.ID+"/folders", owner, map[string]any{"name": "Empty folder"})
+	requireLibraryStatus(t, response, http.StatusCreated)
+	requireLibraryStatus(t, env.api.Delete("/api/v1/libraries/"+library.ID, owner), http.StatusNoContent)
+	requireLibraryStatus(t, env.api.Get("/api/v1/libraries/"+library.ID, owner), http.StatusNotFound)
+}
+
 func TestBlobDeduplicationScope(t *testing.T) {
 	pool := testutil.NewPostgres(t)
 	env := newLibraryTestEnv(t, pool)

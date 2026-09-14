@@ -117,6 +117,37 @@ func TestRenameFile(t *testing.T) {
 	}
 }
 
+func TestMoveFileBetweenLibraries(t *testing.T) {
+	f := newFixture(t)
+	file, _ := f.createFile(t, "move.txt", f.storeBlob(t, "blobs/test/move", []byte("move")))
+	response := f.api.Post("/api/v1/libraries", f.cookie, map[string]any{
+		"name": "Archive", "backend_id": f.backendID, "encryption_mode": libraries.EncryptionNone,
+	})
+	requireFileStatus(t, response, http.StatusCreated)
+	var destination libraries.Library
+	decodeFile(t, response, &destination)
+
+	response = f.api.Post("/api/v1/files/"+file.PublicID+"/move", f.cookie,
+		map[string]any{"library_id": destination.ID})
+	requireFileStatus(t, response, http.StatusOK)
+	var moved libraries.Node
+	decodeFile(t, response, &moved)
+	if moved.ID != file.PublicID || moved.LibraryID != destination.ID || moved.ParentID != destination.RootNodeID {
+		t.Fatalf("moved file = %+v", moved)
+	}
+	requireFileStatus(t, f.api.Get("/api/v1/libraries/"+f.library.PublicID+"/nodes", f.cookie), http.StatusOK)
+	pageResponse := f.api.Get("/api/v1/libraries/"+destination.ID+"/nodes", f.cookie)
+	requireFileStatus(t, pageResponse, http.StatusOK)
+	var page struct {
+		Items []libraries.Node `json:"items"`
+	}
+	decodeFile(t, pageResponse, &page)
+	if len(page.Items) != 1 || page.Items[0].ID != file.PublicID {
+		t.Fatalf("destination files = %+v", page.Items)
+	}
+	requireFileStatus(t, f.api.Delete("/api/v1/libraries/"+destination.ID, f.cookie), http.StatusConflict)
+}
+
 func TestFileTags(t *testing.T) {
 	f := newFixture(t)
 	file, _ := f.createFile(t, "tagged.txt", f.storeBlob(t, "blobs/test/tagged", []byte("tagged")))
