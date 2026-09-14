@@ -141,6 +141,7 @@ func New(cfg Config, pool *pgxpool.Pool) (*Server, error) {
 	encryption.New(pool, authService, log).Register(v2)
 	vault.New(pool, log).Register(v2)
 	uploadService.RegisterV2(v2)
+	fileService.RegisterV2(v2)
 
 	s := &Server{api: api, log: log, queue: queue, uploads: uploadService, httpServer: &http.Server{
 		Addr: cfg.Addr, Handler: router,

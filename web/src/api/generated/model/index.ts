@@ -39,6 +39,7 @@ export * from "./createLibraryInputBodyEncryptionMode.ts";
 export * from "./createPasskeyInputBody.ts";
 export * from "./createReplicationInputBody.ts";
 export * from "./createV2Body.ts";
+export * from "./encryptedFileDetails.ts";
 export * from "./encryptedLibrary.ts";
 export * from "./encryptedNode.ts";
 export * from "./encryptedNodeKind.ts";

@@ -330,6 +330,23 @@ The file version stores the plaintext size from the header and no plaintext hash
 The node row stores the current-version record and its signature.
 A changed content revision or key epoch sets the session state to `conflict`.
 
+## Owner download API
+
+`GET /api/v2/files/{id}` returns the current version identifier, the content revision, and the plaintext and ciphertext sizes.
+It also returns the file-key record, the signed manifest, and the signed current-version record.
+`GET /api/v2/files/{id}/content` streams the stored ciphertext and accepts one byte range.
+
+The content route always sends `application/octet-stream` as the attachment `download.bin`.
+The server cannot read the file name or the media type.
+The v1 file routes return status 404 for v2 files.
+
+Before the client uses plaintext, it must apply these checks:
+
+- Verify the current-version and manifest signatures with the owner identity.
+- Compare the manifest header with the first 64 bytes of the ciphertext.
+- Verify each covering frame before it releases plaintext from that frame.
+- Verify a complete download against `ciphertext_hash` and the expected frame count.
+
 ## Client account formats
 
 The server stores these formats only as ciphertext. Browser clients must use them exactly.

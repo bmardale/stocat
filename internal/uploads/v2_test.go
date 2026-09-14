@@ -20,6 +20,7 @@ import (
 	"github.com/bmardale/stocat/internal/db"
 	"github.com/bmardale/stocat/internal/encryption"
 	"github.com/bmardale/stocat/internal/encryptionv2"
+	"github.com/bmardale/stocat/internal/files"
 	"github.com/bmardale/stocat/internal/libraries"
 	"github.com/bmardale/stocat/internal/platform/id"
 	"github.com/bmardale/stocat/internal/storage"
@@ -68,6 +69,9 @@ func newV2Env(t *testing.T) v2Env {
 	libraries.New(pool, log).Register(v1)
 	vault.New(pool, log).Register(v2)
 	stores := storage.New(pool, storage.Config{Logger: log})
+	fileService := files.New(pool, stores, log)
+	fileService.Register(v1)
+	fileService.RegisterV2(v2)
 	service, err := New(pool, nil, Config{StagingDir: t.TempDir(), Logger: log})
 	if err != nil {
 		t.Fatal(err)
@@ -317,6 +321,26 @@ func TestEncryptedUploadsPublishFiles(t *testing.T) {
 	if node := env.fileNode(t); node.Revision != "3" {
 		t.Fatalf("replaced node = %+v", node)
 	}
+
+	response := env.api.Get("/api/v2/files/"+nodeID, env.cookie)
+	requireStatus(t, response, http.StatusOK)
+	var details files.EncryptedFileDetails
+	decodeBody(t, response.Body.Bytes(), &details)
+	if details.Revision != "3" || details.Size != encryptionv2.MinFrameSize+1 || details.StoredSize != int64(len(replacement.ciphertext)) {
+		t.Fatalf("encrypted file details = %+v", details)
+	}
+	content := env.api.Get(details.ContentURL, env.cookie)
+	requireStatus(t, content, http.StatusOK)
+	if !bytes.Equal(content.Body.Bytes(), replacement.ciphertext) || content.Header().Get("Content-Disposition") != "attachment; filename=download.bin" {
+		t.Fatalf("encrypted content has %d bytes, disposition %q", content.Body.Len(), content.Header().Get("Content-Disposition"))
+	}
+	partial := env.api.Get(details.ContentURL, env.cookie, "Range: bytes=0-63")
+	requireStatus(t, partial, http.StatusPartialContent)
+	if !bytes.Equal(partial.Body.Bytes(), replacement.header) {
+		t.Fatal("encrypted range does not contain the header")
+	}
+	requireStatus(t, env.api.Get("/api/v1/files/"+nodeID, env.cookie), http.StatusNotFound)
+	requireStatus(t, env.api.Get("/api/v1/files/"+nodeID+"/content", env.cookie), http.StatusNotFound)
 
 	stale := newV2File(t, 1)
 	upload = env.start(t, map[string]any{

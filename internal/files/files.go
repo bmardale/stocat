@@ -145,23 +145,37 @@ func (s *Service) content(ctx context.Context, input *contentInput) (*huma.Strea
 	if err != nil {
 		return nil, err
 	}
-	byteRange, err := parseRange(input.Range, row.StoredSizeBytes)
+	name, contentType, disposition := presentation(row.Name, input.Disposition)
+	return s.stream(ctx, streamSource{
+		backendPublicID: row.BackendPublicID, objectKey: row.ObjectKey, storedSize: row.StoredSizeBytes,
+		checksum: row.CiphertextSha256, filename: name, contentType: contentType, disposition: disposition,
+	}, input.Range)
+}
+
+type streamSource struct {
+	backendPublicID, objectKey         string
+	storedSize                         int64
+	checksum                           []byte
+	filename, contentType, disposition string
+}
+
+func (s *Service) stream(ctx context.Context, source streamSource, rangeHeader string) (*huma.StreamResponse, error) {
+	byteRange, err := parseRange(rangeHeader, source.storedSize)
 	if err != nil {
 		return nil, huma.ErrorWithHeaders(
 			huma.Error416RequestedRangeNotSatisfiable("The byte range is not valid for this file."),
-			http.Header{"Content-Range": {fmt.Sprintf("bytes */%d", row.StoredSizeBytes)}},
+			http.Header{"Content-Range": {fmt.Sprintf("bytes */%d", source.storedSize)}},
 		)
 	}
-	store, err := s.stores.ObjectStore(ctx, row.BackendPublicID)
+	store, err := s.stores.ObjectStore(ctx, source.backendPublicID)
 	if err != nil {
 		return nil, s.storageError(ctx, "open file backend", err)
 	}
-	object, err := store.Open(ctx, row.ObjectKey, byteRange)
+	object, err := store.Open(ctx, source.objectKey, byteRange)
 	if err != nil {
 		_ = store.Close()
 		return nil, s.storageError(ctx, "open file content", err)
 	}
-	name, contentType, disposition := presentation(row.Name, input.Disposition)
 	status := http.StatusOK
 	if byteRange != nil {
 		status = http.StatusPartialContent
@@ -174,13 +188,13 @@ func (s *Service) content(ctx context.Context, input *contentInput) (*huma.Strea
 		}()
 		stream.SetHeader("Accept-Ranges", "bytes")
 		stream.SetHeader("Cache-Control", "private, no-cache")
-		stream.SetHeader("Content-Type", contentType)
+		stream.SetHeader("Content-Type", source.contentType)
 		stream.SetHeader("Content-Length", strconv.FormatInt(object.Size, 10))
-		stream.SetHeader("Content-Disposition", mime.FormatMediaType(disposition, map[string]string{"filename": name}))
-		stream.SetHeader("ETag", `"`+hex.EncodeToString(row.CiphertextSha256)+`"`)
+		stream.SetHeader("Content-Disposition", mime.FormatMediaType(source.disposition, map[string]string{"filename": source.filename}))
+		stream.SetHeader("ETag", `"`+hex.EncodeToString(source.checksum)+`"`)
 		stream.SetHeader("X-Content-Type-Options", "nosniff")
 		// Chromium does not render a PDF in a sandboxed document.
-		if mediaType(contentType) != "application/pdf" {
+		if mediaType(source.contentType) != "application/pdf" {
 			stream.SetHeader("Content-Security-Policy", "sandbox")
 		}
 		if byteRange != nil {
