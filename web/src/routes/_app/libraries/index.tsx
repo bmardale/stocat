@@ -1,7 +1,10 @@
 import {
   Add01Icon,
   ArrowRight01Icon,
+  Delete02Icon,
   LibraryIcon,
+  MoreVerticalIcon,
+  PencilEdit02Icon,
   SquareLock02Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -10,11 +13,23 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { librariesQueryOptions, libraryBackendsQueryOptions } from "@/api/libraries";
 import { replicationsQueryOptions } from "@/api/replications";
-import { BackendIcon, CreateLibraryDialog } from "@/components/library-dialogs";
+import {
+  BackendIcon,
+  CreateLibraryDialog,
+  DeleteLibraryDialog,
+  type LibraryDialogState,
+  RenameLibraryDialog,
+} from "@/components/library-dialogs";
 import { CreateReplicationDialog, ReplicationActions } from "@/components/replication-dialogs";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Empty,
   EmptyContent,
@@ -50,6 +65,8 @@ function Libraries() {
   const { data: replications } = useSuspenseQuery(replicationsQueryOptions);
   const [creating, setCreating] = useState(false);
   const [creatingReplication, setCreatingReplication] = useState(false);
+  const [renaming, setRenaming] = useState<LibraryDialogState>({ open: false });
+  const [deleting, setDeleting] = useState<LibraryDialogState>({ open: false });
   const newLibraryButton = (
     <Button onClick={() => setCreating(true)}>
       <HugeiconsIcon icon={Add01Icon} strokeWidth={2} data-icon="inline-start" />
@@ -89,7 +106,7 @@ function Libraries() {
                 <TableHead>Storage backend</TableHead>
                 <TableHead>Encryption</TableHead>
                 <TableHead>Created</TableHead>
-                <TableHead className="w-16 pr-4">
+                <TableHead className="w-28 pr-4">
                   <span className="sr-only">Actions</span>
                 </TableHead>
               </TableRow>
@@ -125,14 +142,42 @@ function Libraries() {
                     </time>
                   </TableCell>
                   <TableCell className="pr-4 text-right">
-                    <Link
-                      to="/"
-                      search={{ library: library.id }}
-                      aria-label={`Open ${library.name} in Files`}
-                      className={buttonVariants({ variant: "ghost", size: "sm" })}
-                    >
-                      Open
-                    </Link>
+                    <div className="flex justify-end gap-1">
+                      <Link
+                        to="/"
+                        search={{ library: library.id }}
+                        aria-label={`Open ${library.name} in Files`}
+                        className={buttonVariants({ variant: "ghost", size: "sm" })}
+                      >
+                        Open
+                      </Link>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          render={
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              aria-label={`Actions for ${library.name}`}
+                            />
+                          }
+                        >
+                          <HugeiconsIcon icon={MoreVerticalIcon} strokeWidth={2} />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-auto min-w-40">
+                          <DropdownMenuItem onClick={() => setRenaming({ open: true, library })}>
+                            <HugeiconsIcon icon={PencilEdit02Icon} strokeWidth={2} />
+                            Rename
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            variant="destructive"
+                            onClick={() => setDeleting({ open: true, library })}
+                          >
+                            <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -141,6 +186,14 @@ function Libraries() {
         </Card>
       )}
       <CreateLibraryDialog open={creating} backends={backends} onOpenChange={setCreating} />
+      <RenameLibraryDialog
+        state={renaming}
+        onOpenChange={(open) => setRenaming((state) => ({ ...state, open }))}
+      />
+      <DeleteLibraryDialog
+        state={deleting}
+        onOpenChange={(open) => setDeleting((state) => ({ ...state, open }))}
+      />
       {libraries.length > 1 && (
         <section className="flex flex-col gap-4 pt-2">
           <div className="flex flex-wrap items-end justify-between gap-3">

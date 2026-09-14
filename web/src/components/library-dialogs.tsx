@@ -13,9 +13,12 @@ import {
   foldersCreate,
   getLibrariesListQueryKey,
   getNodesListQueryKey,
+  librariesDelete,
   librariesCreate,
+  librariesRename,
 } from "@/api/generated/libraries/libraries";
 import { getStorageUsageListQueryKey } from "@/api/generated/quota/quota";
+import { getReplicationsListQueryKey } from "@/api/generated/replications/replications";
 import type {
   CreateLibraryInputBody,
   FolderInputBody,
@@ -36,6 +39,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Field,
   FieldContent,
@@ -58,6 +71,14 @@ import {
 } from "@/lib/library-crypto";
 
 type EncryptionMode = Library["encryption_mode"];
+
+export type LibraryDialogState = { open: boolean; library?: Library };
+
+const libraryNameSchema = z
+  .string()
+  .trim()
+  .min(1, "Enter a library name.")
+  .max(100, "Use 100 characters or fewer.");
 
 const encryptionModes: { value: EncryptionMode; label: string; description: string }[] = [
   {
@@ -90,11 +111,7 @@ export function BackendIcon({
 
 const librarySchema = z
   .object({
-    name: z
-      .string()
-      .trim()
-      .min(1, "Enter a library name.")
-      .max(100, "Use 100 characters or fewer."),
+    name: libraryNameSchema,
     backendId: z.string().min(1, "Choose a storage backend."),
     encryption: z.enum(["none", "e2ee"]),
     passphrase: z.string(),
@@ -322,6 +339,133 @@ function CreateLibraryForm({
         </Button>
       </DialogFooter>
     </>
+  );
+}
+
+const renameLibrarySchema = z.object({ name: libraryNameSchema });
+
+export function RenameLibraryDialog({
+  state,
+  onOpenChange,
+}: {
+  state: LibraryDialogState;
+  onOpenChange: (open: boolean) => void;
+}) {
+  return (
+    <Dialog open={state.open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        {state.library && (
+          <RenameLibraryForm
+            key={state.library.id}
+            library={state.library}
+            onRenamed={() => onOpenChange(false)}
+          />
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function RenameLibraryForm({ library, onRenamed }: { library: Library; onRenamed: () => void }) {
+  const queryClient = useQueryClient();
+  const formId = useId();
+  const rename = useMutation({
+    mutationFn: (name: string) => librariesRename(library.id, { name }),
+    onSuccess: async () => {
+      toast.add({ type: "success", description: "Library renamed." });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: getLibrariesListQueryKey() }),
+        queryClient.invalidateQueries({ queryKey: getReplicationsListQueryKey() }),
+      ]);
+    },
+  });
+  const form = useAppForm({
+    defaultValues: { name: library.name },
+    validators: { onSubmit: renameLibrarySchema },
+    onSubmit: ({ value }) => rename.mutate(value.name.trim(), { onSuccess: onRenamed }),
+  });
+
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>Rename library</DialogTitle>
+        <DialogDescription>Enter a new name for {library.name}.</DialogDescription>
+      </DialogHeader>
+      <form
+        id={formId}
+        noValidate
+        onSubmit={(event) => {
+          event.preventDefault();
+          void form.handleSubmit();
+        }}
+      >
+        <FieldGroup>
+          <form.AppField name="name">
+            {(field) => <field.TextField label="Name" autoComplete="off" autoFocus />}
+          </form.AppField>
+          {rename.error && <FieldError>{rename.error.message}</FieldError>}
+        </FieldGroup>
+      </form>
+      <DialogFooter>
+        <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
+        <Button type="submit" form={formId} disabled={rename.isPending}>
+          Rename library
+        </Button>
+      </DialogFooter>
+    </>
+  );
+}
+
+export function DeleteLibraryDialog({
+  state,
+  onOpenChange,
+}: {
+  state: LibraryDialogState;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const queryClient = useQueryClient();
+  const remove = useMutation({
+    mutationFn: () => librariesDelete(state.library?.id ?? ""),
+    onSuccess: async () => {
+      toast.add({ type: "success", description: "Library deleted." });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: getLibrariesListQueryKey() }),
+        queryClient.invalidateQueries({ queryKey: getReplicationsListQueryKey() }),
+        queryClient.invalidateQueries({ queryKey: getStorageUsageListQueryKey() }),
+      ]);
+    },
+  });
+
+  return (
+    <AlertDialog
+      open={state.open}
+      onOpenChange={(open) => {
+        onOpenChange(open);
+        if (!open) remove.reset();
+      }}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete {state.library?.name}?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Only empty libraries can be deleted. Delete all files in this library first.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        {remove.error && <FieldError>{remove.error.message}</FieldError>}
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            variant="destructive"
+            disabled={!state.library || remove.isPending}
+            onClick={() =>
+              state.library && remove.mutate(undefined, { onSuccess: () => onOpenChange(false) })
+            }
+          >
+            Delete library
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 

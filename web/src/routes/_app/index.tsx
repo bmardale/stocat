@@ -6,6 +6,7 @@ import {
   FilterIcon,
   Folder01Icon,
   FolderAddIcon,
+  FolderTransferIcon,
   LibraryIcon,
   MoreVerticalIcon,
   PencilEdit02Icon,
@@ -50,6 +51,7 @@ import {
 } from "@/components/file-preview";
 import {
   DeleteFileDialog,
+  MoveFileDialog,
   RenameFileDialog,
   type FileDialogState,
 } from "@/components/file-dialogs";
@@ -152,6 +154,7 @@ function Files() {
         <FileBrowser
           key={library.id}
           library={library}
+          libraries={libraries}
           // A folder belongs to the library in the URL. Ignore it for a fallback library.
           folder={search.library === library.id ? search.folder : undefined}
           tag={search.library === library.id ? search.tag : undefined}
@@ -355,11 +358,13 @@ const crumbLinkClass = "text-muted-foreground hover:text-foreground";
 
 function FileBrowser({
   library,
+  libraries,
   folder,
   tag,
   onUnlock,
 }: {
   library: Library;
+  libraries: Library[];
   folder?: string;
   tag?: string;
   onUnlock: () => void;
@@ -373,6 +378,7 @@ function FileBrowser({
   const [creating, setCreating] = useState(false);
   const [previewing, setPreviewing] = useState<PreviewState>({ open: false });
   const [renaming, setRenaming] = useState<FileDialogState>({ open: false });
+  const [moving, setMoving] = useState<FileDialogState>({ open: false });
   const [deleting, setDeleting] = useState<FileDialogState>({ open: false });
   const [tagging, setTagging] = useState<TagFileDialogState>({ open: false });
   const [managingTags, setManagingTags] = useState(false);
@@ -493,6 +499,7 @@ function FileBrowser({
             onPreview={(file) => setPreviewing({ open: true, file })}
             onDownload={(file) => void downloads.download(file)}
             onRename={(file) => setRenaming({ open: true, file })}
+            onMove={(file) => setMoving({ open: true, file })}
             onTags={(file) => setTagging({ open: true, file })}
             onDelete={(file) => setDeleting({ open: true, file })}
           />
@@ -525,6 +532,12 @@ function FileBrowser({
         library={library}
         keys={keys}
       />
+      <MoveFileDialog
+        state={moving}
+        onOpenChange={(open) => setMoving((state) => ({ ...state, open }))}
+        library={library}
+        libraries={libraries}
+      />
       <DeleteFileDialog
         state={deleting}
         onOpenChange={(open) => setDeleting((state) => ({ ...state, open }))}
@@ -556,6 +569,7 @@ function FolderContents({
   onPreview,
   onDownload,
   onRename,
+  onMove,
   onTags,
   onDelete,
 }: {
@@ -566,6 +580,7 @@ function FolderContents({
   onPreview: (file: FileTarget) => void;
   onDownload: (file: FileTarget) => void;
   onRename: (file: FileTarget) => void;
+  onMove: (file: FileTarget) => void;
   onTags: (file: TaggedFileTarget) => void;
   onDelete: (file: FileTarget) => void;
 }) {
@@ -646,6 +661,7 @@ function FolderContents({
                       onPreview={onPreview}
                       onDownload={onDownload}
                       onRename={onRename}
+                      onMove={onMove}
                       onTags={onTags}
                       onDelete={onDelete}
                     />
@@ -725,6 +741,7 @@ function FileActions({
   onPreview,
   onDownload,
   onRename,
+  onMove,
   onTags,
   onDelete,
 }: {
@@ -732,6 +749,7 @@ function FileActions({
   onPreview: (file: FileTarget) => void;
   onDownload: (file: FileTarget) => void;
   onRename: (file: FileTarget) => void;
+  onMove: (file: FileTarget) => void;
   onTags: (file: TaggedFileTarget) => void;
   onDelete: (file: FileTarget) => void;
 }) {
@@ -754,6 +772,10 @@ function FileActions({
         <DropdownMenuItem onClick={() => onRename(file)}>
           <HugeiconsIcon icon={PencilEdit02Icon} strokeWidth={2} />
           Rename
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => onMove(file)}>
+          <HugeiconsIcon icon={FolderTransferIcon} strokeWidth={2} />
+          Move
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => onTags(file)}>
           <HugeiconsIcon icon={TagsIcon} strokeWidth={2} />

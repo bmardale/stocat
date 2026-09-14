@@ -587,6 +587,53 @@ describe("files", () => {
     expect(deleted).toBe(true);
   });
 
+  it("moves a file to a folder in a compatible library", async () => {
+    const archive: Library = {
+      ...documents,
+      id: "lib_archive",
+      name: "Archive",
+      root_node_id: "nod_archive_root",
+    };
+    const note: Node = { ...folder("nod_note", "notes.txt"), kind: "file" };
+    const archiveFolder: Node = {
+      ...folder("nod_archive_folder", "Archive", archive.root_node_id),
+      library_id: archive.id,
+    };
+    let sourceItems: Node[] = [note];
+    let moveBody: unknown;
+    stubApi({
+      "GET /api/v1/auth/me": () => jsonResponse(200, testUser),
+      "GET /api/v1/libraries": () => jsonResponse(200, [documents, archive]),
+      "GET /api/v1/replications": () => jsonResponse(200, []),
+      "GET /api/v1/libraries/lib_docs/nodes": () => jsonResponse(200, { items: sourceItems }),
+      "GET /api/v1/libraries/lib_archive/nodes": () =>
+        jsonResponse(200, { items: [archiveFolder] }),
+      "GET /api/v1/libraries/lib_archive/nodes?parent_id=nod_archive_folder": () =>
+        jsonResponse(200, { items: [] }),
+      "POST /api/v1/files/nod_note/move": (init) => {
+        moveBody = JSON.parse(init?.body as string);
+        sourceItems = [];
+        return jsonResponse(200, {
+          ...note,
+          library_id: archive.id,
+          parent_id: archiveFolder.id,
+        });
+      },
+    });
+    await renderApp("/");
+    fireEvent.click(await screen.findByRole("button", { name: "Actions for notes.txt" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Move" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("radio", { name: /Archive/ }));
+    fireEvent.click(await within(dialog).findByRole("button", { name: "Archive" }));
+    expect(await within(dialog).findByText("No folders here.")).toBeDefined();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Move" }));
+    await waitFor(() =>
+      expect(moveBody).toEqual({ library_id: archive.id, parent_id: archiveFolder.id }),
+    );
+    expect(await screen.findByText("This folder is empty")).toBeDefined();
+  });
+
   it("encrypts the new name of a file in an encrypted library", async () => {
     const { library, keys } = await encryptedLibrary();
     const report: Node = {
@@ -719,6 +766,49 @@ describe("library setup", () => {
     expect(await screen.findByRole("heading", { name: "Files" })).toBeDefined();
     expect(router.state.location.search).toEqual({ library: "lib_docs" });
     expect(await screen.findByText("This folder is empty")).toBeDefined();
+  });
+
+  it("renames and deletes a library", async () => {
+    const archive: Library = {
+      ...documents,
+      id: "lib_archive",
+      name: "Archive",
+      root_node_id: "nod_archive_root",
+    };
+    let libraries: Library[] = [documents, archive];
+    let renameBody: unknown;
+    stubApi({
+      "GET /api/v1/auth/me": () => jsonResponse(200, testUser),
+      "GET /api/v1/libraries": () => jsonResponse(200, libraries),
+      "GET /api/v1/storage-backends": () => jsonResponse(200, [backend]),
+      "GET /api/v1/replications": () => jsonResponse(200, []),
+      "PATCH /api/v1/libraries/lib_archive": (init) => {
+        renameBody = JSON.parse(init?.body as string);
+        libraries = [{ ...libraries[0] }, { ...archive, name: "Cold storage" }];
+        return jsonResponse(200, libraries[1]);
+      },
+      "DELETE /api/v1/libraries/lib_archive": () => {
+        libraries = [libraries[0]];
+        return new Response(null, { status: 204 });
+      },
+    });
+    await renderApp("/libraries");
+    fireEvent.click(screen.getByRole("button", { name: "Actions for Archive" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
+    const renameDialog = await screen.findByRole("dialog");
+    fill(renameDialog, "Name", "Cold storage");
+    fireEvent.click(within(renameDialog).getByRole("button", { name: "Rename library" }));
+    expect(await screen.findByText("Cold storage")).toBeDefined();
+    expect(renameBody).toEqual({ name: "Cold storage" });
+    await waitFor(() => expect(document.querySelector('[data-slot="dialog-content"]')).toBeNull());
+
+    fireEvent.click(screen.getByRole("button", { name: "Actions for Cold storage" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete" }));
+    const deleteDialog = await screen.findByRole("alertdialog");
+    expect(within(deleteDialog).getByText("Delete Cold storage?")).toBeDefined();
+    fireEvent.click(within(deleteDialog).getByRole("button", { name: "Delete library" }));
+    expect(await screen.findByRole("button", { name: "Actions for Documents" })).toBeDefined();
+    expect(screen.queryByText("Cold storage")).toBeNull();
   });
 
   it("sets up and syncs library replication", async () => {
